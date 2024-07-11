@@ -1,11 +1,14 @@
+use std::env::args;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::time::Duration;
+use nostr_sdk::async_utility::futures_util::TryFutureExt;
 use nostr_sdk::prelude::*;
 
 #[tokio::main]
 async fn main() {
     let my_keys: Keys = Keys::generate();
-
     let client = Client::new(&my_keys);
+
     let proxy = Some(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 9050)));
 
     client.add_relay("ws://localhost:4736").await;
@@ -37,10 +40,26 @@ async fn main() {
 
     client.connect().await;
 
-    let filter = Filter::new().kind(Kind::from(90002));
-    let sub_id: SubscriptionId = client.subscribe(vec![filter], None).await;
+    let timeout = Duration::from_secs(3);
+    let task_kind = Kind::from(90002);
+
+    let filter = Filter::new().kind(task_kind);
+    let sub_id: SubscriptionId = client.subscribe(vec![filter.clone()], None).await;
+
+    for argument in args().skip(1) {
+        println!("Sending {}", argument);
+        let event = EventBuilder::new(task_kind, argument, []).to_event(&my_keys).unwrap();
+        let _ = client.send_event(event).await;
+    }
+
+    println!("Finding existing events");
+    let res = client.get_events_of(vec![filter], Option::from(timeout)).map_ok(|res|
+    for event in res {
+        println!("Found {} {:?}", event.content, event.tags)
+    }).await;
 
     let mut notifications = client.notifications();
+    println!("Listening for events...");
     while let Ok(notification) = notifications.recv().await {
         if let RelayPoolNotification::Event { subscription_id, event, .. } = notification {
             let kind = event.kind;
