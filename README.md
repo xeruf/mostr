@@ -11,3 +11,9 @@ https://github.com/coracle-social/bucket
 cargo run # Listen to events
 nostril --envelope --content "realtime message" --kind 90002 | websocat ws://localhost:4736 # Send a test event
 ```
+
+## Plans
+
+- TUI
+- Send messages asynchronously
+- How to clear terminal?
