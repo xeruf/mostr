@@ -109,7 +109,8 @@ async fn repl() {
                 }
                 match input.split_once(": ") {
                     None => {
-                        position = EventId::parse(input).ok();
+                        position = EventId::parse(input).ok().or(
+                            position.and_then(|p| tasks.get(&p)).and_then(|t| t.parent_id()));
                     }
                     Some(s) => {
                         let mut tags: Vec<Tag> = s.1.split(" ").map(|t| Tag::Hashtag(t.to_string())).collect();
