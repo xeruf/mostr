@@ -92,7 +92,15 @@ async fn repl() {
     let mut tasks: HashMap<EventId, Task> = HashMap::new();
     let mut position: Option<EventId> = None;
     loop {
-        print!(" {}> ", position.map_or(String::from(""), |id| tasks.get(&id).map_or(id.to_string(), |t| t.event.content.clone())));
+        let mut prompt = String::from("");
+        let mut pos = position;
+        while pos.is_some() {
+            let id = pos.unwrap();
+            let task = tasks.get(&id);
+            prompt = task.map_or(id.to_string(), |t| t.event.content.clone()) + " " + &prompt;
+            pos = task.and_then(|t| t.parent_id());
+        }
+        print!(" {}> ", prompt);
         stdout().flush().unwrap();
         match stdin().lines().next() {
             Some(Ok(input)) => {
