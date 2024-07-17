@@ -1,8 +1,9 @@
 use std::borrow::Borrow;
+use std::collections::HashMap;
 use std::env::args;
 use std::io::{stdin, stdout, Write};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::ops::Deref;
+use std::ops::{Deref};
 use std::time::Duration;
 use once_cell::sync::Lazy;
 use nostr_sdk::async_utility::futures_util::TryFutureExt;
@@ -53,7 +54,7 @@ async fn main() {
     let sub_id: SubscriptionId = CLIENT.subscribe(vec![filter.clone()], None).await;
 
     for argument in args().skip(1) {
-        let _ = send(argument, &[]).await;
+        let _ = send(&argument, &[]).await;
     }
 
     repl().await;
@@ -76,35 +77,70 @@ async fn main() {
     }
 }
 
-async fn send(text: String, tags: &[Tag]) -> Result<EventId, Error> {
+fn make_event(text: &str, tags: &[Tag]) -> Event {
+    EventBuilder::new(*TASK_KIND, text, tags.to_vec()).to_event(&MY_KEYS).unwrap()
+}
+
+async fn send(text: &str, tags: &[Tag]) -> (Event, Result<EventId, Error>) {
     println!("Sending {}", text);
     let event = EventBuilder::new(*TASK_KIND, text, tags.to_vec()).to_event(&MY_KEYS).unwrap();
-    return CLIENT.send_event(event).await;
+    let result = CLIENT.send_event(event.clone()).await;
+    return (event, result);
 }
 
 async fn repl() {
+    let mut tasks: HashMap<EventId, Task> = HashMap::new();
+    let mut position: Option<EventId> = None;
     loop {
-        print!("> ");
+        print!(" {}> ", position.map_or(String::from(""), |id| tasks.get(&id).map_or(id.to_string(), |t| t.event.content.clone())));
         stdout().flush().unwrap();
         match stdin().lines().next() {
             Some(Ok(input)) => {
                 if input.trim() == "exit" {
                     break;
                 }
-                if input.trim().is_empty() {
-                    continue;
-                }
-                let fut = match input.split_once(": ") {
+                match input.split_once(": ") {
                     None => {
-                        send(input, &[Tag::Name("default".to_string())]).await; 
+                        position = EventId::parse(input).ok();
                     }
                     Some(s) => {
-                        let tags: Vec<Tag> = s.1.split(" ").map(|t|Tag::Hashtag(t.to_string())).collect();
-                        send(s.0.to_string(), &tags).await;
+                        let mut tags: Vec<Tag> = s.1.split(" ").map(|t| Tag::Hashtag(t.to_string())).collect();
+                        if let Some(pos) = position {
+                            tags.push(Tag::event(pos));
+                        }
+                        let event = make_event(s.0, &tags);
+                        for tag in event.tags.iter() {
+                            match tag {
+                                Tag::Event { event_id, .. } => {
+                                    tasks.get_mut(event_id).unwrap().children.push(event.clone());
+                                }
+                                _ => {}
+                            }
+                        }
+                        tasks.insert(event.id, Task::new(event));
                     }
                 };
+                let events: Vec<&Event> = position.map_or(tasks.values().map(|t| &t.event).collect(),
+                                                          |p| tasks.get(&p).map_or(Vec::new(), |t| t.children.iter().collect()));
+                for event in events {
+                    println!("{}: {}", event.id, event.content);
+                }
             }
             _ => {}
+        }
+    }
+    CLIENT.batch_event(tasks.into_values().map(|t| t.event).collect(), RelaySendOptions::new().skip_send_confirmation(true)).await.unwrap();
+}
+
+struct Task {
+    event: Event,
+    children: Vec<Event>,
+}
+impl Task {
+    fn new(event: Event) -> Task {
+        Task {
+            event,
+            children: Vec::new(),
         }
     }
 }
