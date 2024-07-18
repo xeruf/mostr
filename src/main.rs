@@ -111,6 +111,17 @@ async fn repl() {
 
     let mut properties: Vec<String> = vec!["id".into(), "name".into(), "state".into()];
     let mut position: Option<EventId> = None;
+    let print_tasks = |tasks: Vec<&Task>, properties: &Vec<String>| {
+        println!("{}", properties.join(" "));
+        for task in tasks {
+            println!("{}", properties.iter().map(|p| task.get(p).unwrap_or(String::new())).collect::<Vec<String>>().join(" "));
+        }
+        println!();
+    };
+    
+    println!();
+    print_tasks(tasks.values().collect(), &properties);
+    
     loop {
         let mut prompt = String::with_capacity(64);
         let mut pos = position;
@@ -147,12 +158,12 @@ async fn repl() {
                                 Tag::Event { event_id, .. } => {
                                     tasks
                                         .get_mut(event_id)
-                                        .map(|t| t.children.push(event.clone()));
+                                        .map(|t| t.children.push(event.id));
                                 }
                                 _ => {}
                             }
                         }
-                        add_task(&mut tasks, event);
+                        let _ = add_task(&mut tasks, event);
                     }
                     1 => match input[1..2].parse::<usize>() {
                         Ok(index) => {
@@ -179,17 +190,15 @@ async fn repl() {
                         }
                         let _ = EventId::parse(&input[dots..]).map(|p| position = Some(p));
                     }
-                };
-                let events: Vec<&Event> =
-                    position.map_or(tasks.values().map(|t| &t.event).collect(), |p| {
-                        tasks
-                            .get(&p)
-                            .map_or(Vec::new(), |t| t.children.iter().collect())
-                    });
-                println!("{}", properties.join(" "));
-                for event in events {
-                    println!("{}: {}", event.id, event.content);
                 }
+                
+                let tasks: Vec<&Task> =
+                    position.map_or(tasks.values().collect(),
+                                    |p| {
+                                        tasks.get(&p)
+                                            .map_or(Vec::new(), |t| t.children.iter().filter_map(|id| tasks.get(id)).collect())
+                                    });
+                print_tasks(tasks, &properties);
             }
             _ => {}
         }
@@ -204,13 +213,15 @@ async fn repl() {
 
 struct Task {
     event: Event,
-    children: Vec<Event>,
+    children: Vec<EventId>,
+    props: Vec<Event>
 }
 impl Task {
     fn new(event: Event) -> Task {
         Task {
             event,
             children: Vec::new(),
+            props: Vec::new(),
         }
     }
 
@@ -225,7 +236,7 @@ impl Task {
     }
 
     fn states(&self) -> impl Iterator<Item = TaskState> + '_ {
-        self.children.iter().filter_map(|event| {
+        self.props.iter().filter_map(|event| {
             match event.kind.as_u32() {
                 1630 => Some(Open),
                 1631 => Some(Done),
@@ -242,7 +253,7 @@ impl Task {
     }
 
     fn descriptions(&self) -> impl Iterator<Item = String> + '_ {
-        self.children.iter().filter_map(|event| {
+        self.props.iter().filter_map(|event| {
             if event.kind == Kind::TextNote {
                 Some(event.content.clone())
             } else {
