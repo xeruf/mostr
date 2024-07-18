@@ -22,8 +22,6 @@ use std::time::Duration;
    31923 (Calendar, with Time)
 */
 
-static TASK_KIND: Lazy<Kind> = Lazy::new(|| Kind::from(1621));
-
 static MY_KEYS: Lazy<Keys> = Lazy::new(|| Keys::generate());
 static CLIENT: Lazy<Client> = Lazy::new(|| Client::new(MY_KEYS.borrow().deref()));
 
@@ -62,12 +60,8 @@ async fn main() {
 
     let timeout = Duration::from_secs(3);
 
-    let filter = Filter::new().kind(*TASK_KIND);
+    let filter = Filter::new();
     let sub_id: SubscriptionId = CLIENT.subscribe(vec![filter.clone()], None).await;
-
-    for argument in args().skip(1) {
-        let _ = send(&argument, &[]).await;
-    }
 
     repl().await;
 
@@ -99,22 +93,22 @@ async fn main() {
 }
 
 fn make_event(text: &str, tags: &[Tag]) -> Event {
-    EventBuilder::new(*TASK_KIND, text, tags.to_vec())
+    EventBuilder::new(Kind::from(1621), text, tags.to_vec())
         .to_event(&MY_KEYS)
         .unwrap()
 }
 
-async fn send(text: &str, tags: &[Tag]) -> (Event, Result<EventId, Error>) {
-    println!("Sending {}", text);
-    let event = EventBuilder::new(*TASK_KIND, text, tags.to_vec())
-        .to_event(&MY_KEYS)
-        .unwrap();
-    let result = CLIENT.send_event(event.clone()).await;
-    return (event, result);
-}
-
 async fn repl() {
     let mut tasks: HashMap<EventId, Task> = HashMap::new();
+    let add_task =
+        |tasks: &mut HashMap<EventId, Task>, event: Event| tasks.insert(event.id, Task::new(event));
+    for argument in args().skip(1) {
+        add_task(
+            &mut tasks,
+            make_event(&argument, &[Tag::Hashtag("arg".to_string())]),
+        );
+    }
+
     let mut position: Option<EventId> = None;
     let mut properties: Vec<String> = vec!["id".into(), "name".into(), "state".into()];
     loop {
@@ -180,7 +174,7 @@ async fn repl() {
                                     _ => {}
                                 }
                             }
-                            tasks.insert(event.id, Task::new(event));
+                            add_task(&mut tasks, event);
                         }
                     }
                 };
