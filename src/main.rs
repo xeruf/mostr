@@ -98,10 +98,10 @@ fn make_event(text: &str, tags: &[Tag]) -> Event {
         .unwrap()
 }
 
+type TaskMap = HashMap<EventId, Task>;
 async fn repl() {
-    let mut tasks: HashMap<EventId, Task> = HashMap::new();
-    let add_task =
-        |tasks: &mut HashMap<EventId, Task>, event: Event| tasks.insert(event.id, Task::new(event));
+    let mut tasks: TaskMap = HashMap::new();
+    let add_task = |tasks: &mut TaskMap, event: Event| tasks.insert(event.id, Task::new(event));
     for argument in args().skip(1) {
         add_task(
             &mut tasks,
@@ -109,8 +109,8 @@ async fn repl() {
         );
     }
 
-    let mut position: Option<EventId> = None;
     let mut properties: Vec<String> = vec!["id".into(), "name".into(), "state".into()];
+    let mut position: Option<EventId> = None;
     loop {
         let mut prompt = String::with_capacity(64);
         let mut pos = position;
@@ -127,11 +127,36 @@ async fn repl() {
                 if input.trim() == "exit" {
                     break;
                 }
-                if input.starts_with(".") {
-                    match input[1..2].parse::<usize>() {
+                let dots = input.chars().take_while(|c| c == &'.').count();
+                match dots {
+                    0 => {
+                        let mut tags: Vec<Tag> = Vec::new();
+                        position.inspect(|p| tags.push(Tag::event(*p)));
+                        let event = match input.split_once(": ") {
+                            None => make_event(&input, &tags),
+                            Some(s) => {
+                                tags.append(
+                                    &mut s.1.split(" ")
+                                        .map(|t| Tag::Hashtag(t.to_string()))
+                                        .collect());
+                                make_event(s.0, &tags)
+                            }
+                        };
+                        for tag in event.tags.iter() {
+                            match tag {
+                                Tag::Event { event_id, .. } => {
+                                    tasks
+                                        .get_mut(event_id)
+                                        .map(|t| t.children.push(event.clone()));
+                                }
+                                _ => {}
+                            }
+                        }
+                        add_task(&mut tasks, event);
+                    }
+                    1 => match input[1..2].parse::<usize>() {
                         Ok(index) => {
                             properties.insert(index, input[2..].to_string());
-                            continue;
                         }
                         Err(_) => {
                             let prop = &input[1..];
@@ -145,37 +170,14 @@ async fn repl() {
                                 }
                             }
                         }
-                    }
-                } else {
-                    match input.split_once(": ") {
-                        None => {
-                            position = EventId::parse(input).ok().or(position
-                                .and_then(|p| tasks.get(&p))
-                                .and_then(|t| t.parent_id()));
+                    },
+                    _ => {
+                        for _ in 1..dots {
+                            position = position
+                                .and_then(|id| tasks.get(&id))
+                                .and_then(|t| t.parent_id());
                         }
-                        Some(s) => {
-                            let mut tags: Vec<Tag> =
-                                s.1.split(" ")
-                                    .map(|t| Tag::Hashtag(t.to_string()))
-                                    .collect();
-                            if let Some(pos) = position {
-                                tags.push(Tag::event(pos));
-                            }
-                            let event = make_event(s.0, &tags);
-                            for tag in event.tags.iter() {
-                                match tag {
-                                    Tag::Event { event_id, .. } => {
-                                        tasks
-                                            .get_mut(event_id)
-                                            .unwrap()
-                                            .children
-                                            .push(event.clone());
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            add_task(&mut tasks, event);
-                        }
+                        let _ = EventId::parse(&input[dots..]).map(|p| position = Some(p));
                     }
                 };
                 let events: Vec<&Event> =
@@ -192,13 +194,12 @@ async fn repl() {
             _ => {}
         }
     }
-    CLIENT
+    let _ = CLIENT
         .batch_event(
             tasks.into_values().map(|t| t.event).collect(),
             RelaySendOptions::new().skip_send_confirmation(true),
         )
-        .await
-        .unwrap();
+        .await;
 }
 
 struct Task {
