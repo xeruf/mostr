@@ -72,15 +72,24 @@ async fn main() {
     repl().await;
 
     println!("Finding existing events");
-    let res = CLIENT.get_events_of(vec![filter], Option::from(timeout)).map_ok(|res|
-    for event in res {
-        println!("Found {} {:?}", event.content, event.tags)
-    }).await;
+    let res = CLIENT
+        .get_events_of(vec![filter], Option::from(timeout))
+        .map_ok(|res| {
+            for event in res {
+                println!("Found {} {:?}", event.content, event.tags)
+            }
+        })
+        .await;
 
     let mut notifications = CLIENT.notifications();
     println!("Listening for events...");
     while let Ok(notification) = notifications.recv().await {
-        if let RelayPoolNotification::Event { subscription_id, event, .. } = notification {
+        if let RelayPoolNotification::Event {
+            subscription_id,
+            event,
+            ..
+        } = notification
+        {
             let kind = event.kind;
             let content = &event.content;
             println!("{kind}: {content}");
@@ -90,12 +99,16 @@ async fn main() {
 }
 
 fn make_event(text: &str, tags: &[Tag]) -> Event {
-    EventBuilder::new(*TASK_KIND, text, tags.to_vec()).to_event(&MY_KEYS).unwrap()
+    EventBuilder::new(*TASK_KIND, text, tags.to_vec())
+        .to_event(&MY_KEYS)
+        .unwrap()
 }
 
 async fn send(text: &str, tags: &[Tag]) -> (Event, Result<EventId, Error>) {
     println!("Sending {}", text);
-    let event = EventBuilder::new(*TASK_KIND, text, tags.to_vec()).to_event(&MY_KEYS).unwrap();
+    let event = EventBuilder::new(*TASK_KIND, text, tags.to_vec())
+        .to_event(&MY_KEYS)
+        .unwrap();
     let result = CLIENT.send_event(event.clone()).await;
     return (event, result);
 }
@@ -185,7 +198,13 @@ async fn repl() {
             _ => {}
         }
     }
-    CLIENT.batch_event(tasks.into_values().map(|t| t.event).collect(), RelaySendOptions::new().skip_send_confirmation(true)).await.unwrap();
+    CLIENT
+        .batch_event(
+            tasks.into_values().map(|t| t.event).collect(),
+            RelaySendOptions::new().skip_send_confirmation(true),
+        )
+        .await
+        .unwrap();
 }
 
 struct Task {
