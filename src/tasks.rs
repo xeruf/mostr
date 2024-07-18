@@ -1,4 +1,5 @@
-use crate::{make_event, make_task, State, Task};
+use crate::{make_event, make_task};
+use crate::task::{Task, State};
 use nostr_sdk::{Event, EventId, Tag};
 use std::collections::HashMap;
 
@@ -135,8 +136,7 @@ impl Tasks {
     {
         self.tasks.get_mut(id).map(|t| {
             f(t).map(|s| {
-                t.props
-                    .push(make_event(s.kind(), comment, &[Tag::event(id.clone())]))
+                t.update_state(s, comment);
             })
         });
     }
