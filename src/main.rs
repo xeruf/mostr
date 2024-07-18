@@ -6,6 +6,7 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::env::args;
 use std::fmt;
+use std::fmt::{Display, Formatter};
 use std::io::{stdin, stdout, Write};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::ops::Deref;
@@ -167,8 +168,8 @@ async fn repl() {
                     Some('>') | Some('<') => {
                         position.inspect(|e| {
                             let pos = tasks.get(e)
-                                .map(|t| t.state().state)
-                                .and_then(|state| STATES.iter().position(|s| s == &state))
+                                .and_then(|t| t.state())
+                                .and_then(|state| STATES.iter().position(|s| s == &state.state))
                                 .unwrap_or(1);
                             tasks.get_mut(e).map(|t| t.props.push(make_event(STATES[if op.unwrap() == '<' { pos - 1 } else { pos + 1 }].kind(), &input[1..], &[Tag::event(e.clone())])));
                         });
@@ -258,22 +259,6 @@ impl Task {
         None
     }
 
-    fn states(&self) -> impl Iterator<Item = TaskState> + '_ {
-        self.props.iter().filter_map(|event| {
-            match event.kind.as_u32() {
-                1630 => Some(Open),
-                1631 => Some(Done),
-                1632 => Some(Closed),
-                1633 => Some(Active),
-                _ => None,
-            }.map(|s| TaskState {
-                name: event.content.clone(),
-                state: s,
-                time: event.created_at.clone(),
-            })
-        })
-    }
-
     fn descriptions(&self) -> impl Iterator<Item = String> + '_ {
         self.props.iter().filter_map(|event| {
             if event.kind == Kind::TextNote {
@@ -284,19 +269,39 @@ impl Task {
         })
     }
 
-    fn state(&self) -> TaskState {
-        self.states().max_by_key(|t| t.time).unwrap_or(TaskState {
-            name: String::new(),
+    fn states(&self) -> impl Iterator<Item = TaskState> + '_ {
+        self.props.iter().filter_map(|event| {
+            match event.kind.as_u32() {
+                1630 => Some(Open),
+                1631 => Some(Done),
+                1632 => Some(Closed),
+                1633 => Some(Active),
+                _ => None,
+            }.map(|s| TaskState {
+                name: if event.content.is_empty() { None } else { Some(event.content.clone()) },
+                state: s,
+                time: event.created_at.clone(),
+            })
+        })
+    }
+
+    fn state(&self) -> Option<TaskState> {
+        self.states().max_by_key(|t| t.time)
+    }
+
+    fn default_state(&self) -> TaskState {
+        TaskState {
+            name: None,
             state: Open,
             time: self.event.created_at,
-        })
+        }
     }
 
     fn get(&self, property: &str) -> Option<String> {
         match property {
             "id" => Some(self.event.id.to_string()),
             "parentid" => self.parent_id().map(|i| i.to_string()),
-            "state" => Some(self.state().state.to_string()),
+            "state" => self.state().map(|s| s.to_string()),
             "name" => Some(self.event.content.clone()),
             "desc" | "description" => self.descriptions().fold(None, |total, s| {
                 Some(match total {
@@ -313,9 +318,14 @@ impl Task {
 }
 
 struct TaskState {
-    name: String,
+    name: Option<String>,
     state: State,
     time: Timestamp,
+}
+impl Display for TaskState {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self.state, self.name.as_ref().map_or(String::new(), |s| format!(": {}", s)))
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
