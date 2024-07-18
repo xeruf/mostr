@@ -1,4 +1,4 @@
-use crate::State::{Active, Closed, Done, Open};
+use crate::State::*;
 use nostr_sdk::async_utility::futures_util::TryFutureExt;
 use nostr_sdk::prelude::*;
 use once_cell::sync::Lazy;
@@ -138,12 +138,40 @@ async fn repl() {
         stdout().flush().unwrap();
         match stdin().lines().next() {
             Some(Ok(input)) => {
-                if input.trim() == "exit" {
-                    break;
-                }
-                let dots = input.chars().take_while(|c| c == &'.').count();
-                match dots {
-                    0 => {
+                let mut iter = input.chars();
+                match iter.next() {
+                    None => {}
+                    
+                    Some(':') => match input[1..2].parse::<usize>() {
+                        Ok(index) => {
+                            properties.insert(index, input[2..].to_string());
+                        }
+                        Err(_) => {
+                            let prop = &input[1..];
+                            let pos = properties.iter().position(|s| s == &prop);
+                            match pos {
+                                None => {
+                                    properties.push(prop.to_string());
+                                }
+                                Some(i) => {
+                                    properties.remove(i);
+                                }
+                            }
+                        }
+                    },
+                    
+                    Some('.') => {
+                        let mut dots = 1;
+                        for _ in iter.take_while(|c| c == &'.') {
+                            dots += 1;
+                            position = position
+                                .and_then(|id| tasks.get(&id))
+                                .and_then(|t| t.parent_id());
+                        }
+                        let _ = EventId::parse(&input[dots..]).map(|p| position = Some(p));
+                    }
+                    
+                    _ => {
                         let mut tags: Vec<Tag> = Vec::new();
                         position.inspect(|p| tags.push(Tag::event(*p)));
                         let event = match input.split_once(": ") {
@@ -167,31 +195,6 @@ async fn repl() {
                             }
                         }
                         let _ = add_task(&mut tasks, event);
-                    }
-                    1 => match input[1..2].parse::<usize>() {
-                        Ok(index) => {
-                            properties.insert(index, input[2..].to_string());
-                        }
-                        Err(_) => {
-                            let prop = &input[1..];
-                            let pos = properties.iter().position(|s| s == &prop);
-                            match pos {
-                                None => {
-                                    properties.push(prop.to_string());
-                                }
-                                Some(i) => {
-                                    properties.remove(i);
-                                }
-                            }
-                        }
-                    },
-                    _ => {
-                        for _ in 1..dots {
-                            position = position
-                                .and_then(|id| tasks.get(&id))
-                                .and_then(|t| t.parent_id());
-                        }
-                        let _ = EventId::parse(&input[dots..]).map(|p| position = Some(p));
                     }
                 }
                 
