@@ -1,9 +1,11 @@
+mod tasks;
+
+use crate::tasks::Tasks;
 use crate::State::*;
 use nostr_sdk::async_utility::futures_util::TryFutureExt;
 use nostr_sdk::prelude::*;
 use once_cell::sync::Lazy;
 use std::borrow::Borrow;
-use std::collections::HashMap;
 use std::env::args;
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -102,43 +104,17 @@ fn make_event(kind: Kind, text: &str, tags: &[Tag]) -> Event {
         .unwrap()
 }
 
-type TaskMap = HashMap<EventId, Task>;
-fn add_task(tasks: &mut TaskMap, event: Event) -> Option<Task> {
-    tasks.insert(event.id, Task::new(event))
-}
-
 async fn repl() {
-    let mut tasks: TaskMap = HashMap::new();
+    let mut tasks: Tasks = Default::default();
     for argument in args().skip(1) {
-        add_task(
-            &mut tasks,
-            make_task(&argument, &[Tag::Hashtag("arg".to_string())]),
-        );
+        tasks.add_task(make_task(&argument, &[Tag::Hashtag("arg".to_string())]));
     }
 
-    let mut properties: Vec<String> = vec!["id".into(), "name".into(), "state".into()];
-    let mut position: Option<EventId> = None;
-    let print_tasks = |tasks: Vec<&Task>, properties: &Vec<String>| {
-        println!("{}", properties.join(" "));
-        for task in tasks {
-            println!("{}", properties.iter().map(|p| task.get(p).unwrap_or(String::new())).collect::<Vec<String>>().join(" "));
-        }
-        println!();
-    };
-
     println!();
-    print_tasks(tasks.values().collect(), &properties);
+    tasks.print_current_tasks();
 
     loop {
-        let mut prompt = String::with_capacity(64);
-        let mut pos = position;
-        while pos.is_some() {
-            let id = pos.unwrap();
-            let task = tasks.get(&id);
-            prompt = task.map_or(id.to_string(), |t| t.event.content.clone()) + " " + &prompt;
-            pos = task.and_then(|t| t.parent_id());
-        }
-        print!(" {}> ", prompt);
+        print!(" {}> ", tasks.taskpath(tasks.get_position()));
         stdout().flush().unwrap();
         match stdin().lines().next() {
             Some(Ok(input)) => {
@@ -149,99 +125,56 @@ async fn repl() {
 
                     Some(':') => match input[1..2].parse::<usize>() {
                         Ok(index) => {
-                            properties.insert(index, input[2..].to_string());
+                            tasks.properties.insert(index, input[2..].to_string());
                         }
                         Err(_) => {
                             let prop = &input[1..];
-                            let pos = properties.iter().position(|s| s == &prop);
+                            let pos = tasks.properties.iter().position(|s| s == &prop);
                             match pos {
                                 None => {
-                                    properties.push(prop.to_string());
+                                    tasks.properties.push(prop.to_string());
                                 }
                                 Some(i) => {
-                                    properties.remove(i);
+                                    tasks.properties.remove(i);
                                 }
                             }
                         }
                     },
 
                     Some('>') | Some('<') => {
-                        position.inspect(|e| {
-                            tasks.get_mut(e).map(|t| t.props.push(make_event(
-                                (if op.unwrap() == '<' { Closed } else { Done }).kind(), &input[1..], &[Tag::event(e.clone())])));
+                        tasks.update_state(&input[1..], |_| {
+                            Some(if op.unwrap() == '<' { Closed } else { Done })
                         });
-                        position = position
-                            .and_then(|id| tasks.get_mut(&id))
-                            .and_then(|t| t.parent_id())
+                        tasks.move_up()
                     }
 
                     Some('.') => {
-                        if input.len() > 1 {
-                            position.and_then(|p| tasks.get_mut(&p))
-                                .map(|t| {
-                                    if t.state().map(|s| s.state) == Some(Active) {
-                                        t.update_state(Open, "");
-                                    }
-                                });
-                        }
                         let mut dots = 1;
+                        let mut pos = tasks.get_position();
                         for _ in iter.take_while(|c| c == &'.') {
                             dots += 1;
-                            position = position
-                                .and_then(|id| tasks.get(&id))
-                                .and_then(|t| t.parent_id());
+                            pos = tasks.parent(pos);
                         }
                         let slice = &input[dots..];
                         if !slice.is_empty() {
-                            position = EventId::parse(slice).ok().or_else(|| {
-                                let task = make_task(slice, &[]);
+                            pos = EventId::parse(slice).ok().or_else(|| {
+                                tasks.move_to(pos);
+                                let task = tasks.make_task(slice);
                                 let ret = Some(task.id);
-                                add_task(&mut tasks, task);
+                                tasks.add_task(task);
                                 ret
-                            }).inspect(|id| {
-                                tasks.get_mut(id).map(|t| 
-                                    if t.state().map_or(Open, |s| s.state) == Open {
-                                        t.update_state(Active, "")
-                                    }
-                                );
-                            })
+                            });
+                            tasks.move_to(pos);
                         }
+                        tasks.move_to(pos);
                     }
 
                     _ => {
-                        let mut tags: Vec<Tag> = Vec::new();
-                        position.inspect(|p| tags.push(Tag::event(*p)));
-                        let event = match input.split_once(": ") {
-                            None => make_task(&input, &tags),
-                            Some(s) => {
-                                tags.append(
-                                    &mut s.1.split(" ")
-                                        .map(|t| Tag::Hashtag(t.to_string()))
-                                        .collect());
-                                make_task(s.0, &tags)
-                            }
-                        };
-                        for tag in event.tags.iter() {
-                            match tag {
-                                Tag::Event { event_id, .. } => {
-                                    tasks
-                                        .get_mut(event_id)
-                                        .map(|t| t.children.push(event.id));
-                                }
-                                _ => {}
-                            }
-                        }
-                        let _ = add_task(&mut tasks, event);
+                        tasks.add_task(tasks.make_task(&input));
                     }
                 }
 
-                let tasks: Vec<&Task> =
-                    position.map_or(tasks.values().collect(),
-                                    |p| {
-                                        tasks.get(&p)
-                                            .map_or(Vec::new(), |t| t.children.iter().filter_map(|id| tasks.get(id)).collect())
-                                    });
-                print_tasks(tasks, &properties);
+                tasks.print_current_tasks();
             }
             Some(Err(e)) => eprintln!("{}", e),
             None => break,
@@ -252,11 +185,15 @@ async fn repl() {
     println!("Submitting created events");
     let _ = CLIENT
         .batch_event(
-            tasks.into_values().flat_map(|mut t| {
-                let mut ev = t.props;
-                ev.push(t.event);
-                ev
-            }).collect(),
+            tasks
+                .tasks
+                .into_values()
+                .flat_map(|t| {
+                    let mut ev = t.props;
+                    ev.push(t.event);
+                    ev
+                })
+                .collect(),
             RelaySendOptions::new().skip_send_confirmation(true),
         )
         .await;
@@ -265,7 +202,7 @@ async fn repl() {
 struct Task {
     event: Event,
     children: Vec<EventId>,
-    props: Vec<Event>
+    props: Vec<Event>,
 }
 impl Task {
     fn new(event: Event) -> Task {
@@ -304,8 +241,13 @@ impl Task {
                 1632 => Some(Closed),
                 1633 => Some(Active),
                 _ => None,
-            }.map(|s| TaskState {
-                name: if event.content.is_empty() { None } else { Some(event.content.clone()) },
+            }
+            .map(|s| TaskState {
+                name: if event.content.is_empty() {
+                    None
+                } else {
+                    Some(event.content.clone())
+                },
                 state: s,
                 time: event.created_at.clone(),
             })
@@ -314,6 +256,10 @@ impl Task {
 
     fn state(&self) -> Option<TaskState> {
         self.states().max_by_key(|t| t.time)
+    }
+
+    fn pure_state(&self) -> State {
+        self.state().map_or(Open, |s| s.state)
     }
 
     fn default_state(&self) -> TaskState {
@@ -325,7 +271,11 @@ impl Task {
     }
 
     fn update_state(&mut self, state: State, comment: &str) {
-        self.props.push(make_event(state.kind(), comment, &[Tag::event(self.event.id)]))
+        self.props.push(make_event(
+            state.kind(),
+            comment,
+            &[Tag::event(self.event.id)],
+        ))
     }
 
     fn get(&self, property: &str) -> Option<String> {
@@ -343,7 +293,7 @@ impl Task {
             _ => {
                 eprintln!("Unknown column {}", property);
                 None
-            },
+            }
         }
     }
 }
@@ -355,7 +305,14 @@ struct TaskState {
 }
 impl Display for TaskState {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}", self.state, self.name.as_ref().map_or(String::new(), |s| format!(": {}", s)))
+        write!(
+            f,
+            "{}{}",
+            self.state,
+            self.name
+                .as_ref()
+                .map_or(String::new(), |s| format!(": {}", s))
+        )
     }
 }
 
