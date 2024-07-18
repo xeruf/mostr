@@ -167,15 +167,23 @@ async fn repl() {
 
                     Some('>') | Some('<') => {
                         position.inspect(|e| {
-                            let pos = tasks.get(e)
-                                .and_then(|t| t.state())
-                                .and_then(|state| STATES.iter().position(|s| s == &state.state))
-                                .unwrap_or(1);
-                            tasks.get_mut(e).map(|t| t.props.push(make_event(STATES[if op.unwrap() == '<' { pos - 1 } else { pos + 1 }].kind(), &input[1..], &[Tag::event(e.clone())])));
+                            tasks.get_mut(e).map(|t| t.props.push(make_event(
+                                (if op.unwrap() == '<' { Closed } else { Done }).kind(), &input[1..], &[Tag::event(e.clone())])));
                         });
+                        position = position
+                            .and_then(|id| tasks.get_mut(&id))
+                            .and_then(|t| t.parent_id())
                     }
 
                     Some('.') => {
+                        if input.len() > 1 {
+                            position.and_then(|p| tasks.get_mut(&p))
+                                .map(|t| {
+                                    if t.state().map(|s| s.state) == Some(Active) {
+                                        t.update_state(Open, "");
+                                    }
+                                });
+                        }
                         let mut dots = 1;
                         for _ in iter.take_while(|c| c == &'.') {
                             dots += 1;
@@ -190,6 +198,12 @@ async fn repl() {
                                 let ret = Some(task.id);
                                 add_task(&mut tasks, task);
                                 ret
+                            }).inspect(|id| {
+                                tasks.get_mut(id).map(|t| 
+                                    if t.state().map_or(Open, |s| s.state) == Open {
+                                        t.update_state(Active, "")
+                                    }
+                                );
                             })
                         }
                     }
@@ -305,6 +319,10 @@ impl Task {
         }
     }
 
+    fn update_state(&mut self, state: State, comment: &str) {
+        self.props.push(make_event(state.kind(), comment, &[Tag::event(self.event.id)]))
+    }
+
     fn get(&self, property: &str) -> Option<String> {
         match property {
             "id" => Some(self.event.id.to_string()),
@@ -346,10 +364,10 @@ enum State {
 impl State {
     fn kind(&self) -> Kind {
         match self {
-            Closed => Kind::from(1632),
             Open => Kind::from(1630),
-            Active => Kind::from(1633),
             Done => Kind::from(1631),
+            Closed => Kind::from(1632),
+            Active => Kind::from(1633),
         }
     }
 }
