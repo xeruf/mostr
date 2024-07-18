@@ -75,7 +75,10 @@ impl Tasks {
                 "{}",
                 self.properties
                     .iter()
-                    .map(|p| task.get(p).unwrap_or(String::new()))
+                    .map(|p| match p.as_str() {
+                        "path" => self.taskpath(Some(task.event.id)),
+                        prop => task.get(prop).unwrap_or(String::new()),
+                    })
                     .collect::<Vec<String>>()
                     .join(" ")
             );
