@@ -1,19 +1,31 @@
+use crate::State::{Active, Closed, Done, Open};
+use nostr_sdk::async_utility::futures_util::TryFutureExt;
+use nostr_sdk::prelude::*;
+use once_cell::sync::Lazy;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::env::args;
+use std::fmt;
 use std::io::{stdin, stdout, Write};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::ops::{Deref};
+use std::ops::Deref;
 use std::time::Duration;
-use once_cell::sync::Lazy;
-use nostr_sdk::async_utility::futures_util::TryFutureExt;
-use nostr_sdk::prelude::*;
 
+/*
+      1: Task Description
+   Issue Tracking: https://github.com/nostr-protocol/nips/blob/master/34.md
+   1621: MD Issue
+   1622: MD Reply
+   1630-1633: Status (Time-tracking, Kanban)
+   Calendar: https://github.com/nostr-protocol/nips/blob/master/52.md
+   31922 (GANTT, only Date)
+   31923 (Calendar, with Time)
+*/
 
-static TASK_KIND: Lazy<Kind> = Lazy::new(||Kind::from(90002));
+static TASK_KIND: Lazy<Kind> = Lazy::new(|| Kind::from(1621));
 
-static MY_KEYS: Lazy<Keys> = Lazy::new(||Keys::generate());
-static CLIENT: Lazy<Client> = Lazy::new(||Client::new(MY_KEYS.borrow().deref()));
+static MY_KEYS: Lazy<Keys> = Lazy::new(|| Keys::generate());
+static CLIENT: Lazy<Client> = Lazy::new(|| Client::new(MY_KEYS.borrow().deref()));
 
 #[tokio::main]
 async fn main() {
@@ -151,5 +163,23 @@ impl Task {
             event,
             children: Vec::new(),
         }
+    }
+}
+
+struct TaskState {
+    name: String,
+    state: State,
+    time: Timestamp,
+}
+#[derive(Debug)]
+enum State {
+    Open,
+    Active,
+    Done,
+    Closed,
+}
+impl fmt::Display for State {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
     }
 }
