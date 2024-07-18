@@ -92,15 +92,18 @@ async fn main() {
     }
 }
 
-fn make_event(text: &str, tags: &[Tag]) -> Event {
-    EventBuilder::new(Kind::from(1621), text, tags.to_vec())
+fn make_task(text: &str, tags: &[Tag]) -> Event {
+    make_event(Kind::from(1621), text, tags)
+}
+fn make_event(kind: Kind, text: &str, tags: &[Tag]) -> Event {
+    EventBuilder::new(kind, text, tags.to_vec())
         .to_event(&MY_KEYS)
         .unwrap()
 }
 
 type TaskMap = HashMap<EventId, Task>;
-fn add_task(tasks: &mut TaskMap, event: Event) -> Option<Task> { 
-    tasks.insert(event.id, Task::new(event)) 
+fn add_task(tasks: &mut TaskMap, event: Event) -> Option<Task> {
+    tasks.insert(event.id, Task::new(event))
 }
 
 async fn repl() {
@@ -108,7 +111,7 @@ async fn repl() {
     for argument in args().skip(1) {
         add_task(
             &mut tasks,
-            make_event(&argument, &[Tag::Hashtag("arg".to_string())]),
+            make_task(&argument, &[Tag::Hashtag("arg".to_string())]),
         );
     }
 
@@ -121,10 +124,10 @@ async fn repl() {
         }
         println!();
     };
-    
+
     println!();
     print_tasks(tasks.values().collect(), &properties);
-    
+
     loop {
         let mut prompt = String::with_capacity(64);
         let mut pos = position;
@@ -139,9 +142,10 @@ async fn repl() {
         match stdin().lines().next() {
             Some(Ok(input)) => {
                 let mut iter = input.chars();
-                match iter.next() {
+                let op = iter.next();
+                match op {
                     None => {}
-                    
+
                     Some(':') => match input[1..2].parse::<usize>() {
                         Ok(index) => {
                             properties.insert(index, input[2..].to_string());
@@ -159,7 +163,17 @@ async fn repl() {
                             }
                         }
                     },
-                    
+
+                    Some('>') | Some('<') => {
+                        position.inspect(|e| {
+                            let pos = tasks.get(e)
+                                .map(|t| t.state().state)
+                                .and_then(|state| STATES.iter().position(|s| s == &state))
+                                .unwrap_or(1);
+                            tasks.get_mut(e).map(|t| t.props.push(make_event(STATES[if op.unwrap() == '<' { pos - 1 } else { pos + 1 }].kind(), &input[1..], &[Tag::event(e.clone())])));
+                        });
+                    }
+
                     Some('.') => {
                         let mut dots = 1;
                         for _ in iter.take_while(|c| c == &'.') {
@@ -170,18 +184,18 @@ async fn repl() {
                         }
                         let _ = EventId::parse(&input[dots..]).map(|p| position = Some(p));
                     }
-                    
+
                     _ => {
                         let mut tags: Vec<Tag> = Vec::new();
                         position.inspect(|p| tags.push(Tag::event(*p)));
                         let event = match input.split_once(": ") {
-                            None => make_event(&input, &tags),
+                            None => make_task(&input, &tags),
                             Some(s) => {
                                 tags.append(
                                     &mut s.1.split(" ")
                                         .map(|t| Tag::Hashtag(t.to_string()))
                                         .collect());
-                                make_event(s.0, &tags)
+                                make_task(s.0, &tags)
                             }
                         };
                         for tag in event.tags.iter() {
@@ -197,7 +211,7 @@ async fn repl() {
                         let _ = add_task(&mut tasks, event);
                     }
                 }
-                
+
                 let tasks: Vec<&Task> =
                     position.map_or(tasks.values().collect(),
                                     |p| {
@@ -210,7 +224,7 @@ async fn repl() {
             None => break,
         }
     }
-    
+
     println!();
     let _ = CLIENT
         .batch_event(
@@ -252,11 +266,10 @@ impl Task {
                 1632 => Some(Closed),
                 1633 => Some(Active),
                 _ => None,
-            }
-            .map(|s| TaskState {
-                name: self.event.content.clone(),
+            }.map(|s| TaskState {
+                name: event.content.clone(),
                 state: s,
-                time: self.event.created_at.clone(),
+                time: event.created_at.clone(),
             })
         })
     }
@@ -271,15 +284,19 @@ impl Task {
         })
     }
 
-    fn state(&self) -> Option<TaskState> {
-        self.states().max_by_key(|t| t.time)
+    fn state(&self) -> TaskState {
+        self.states().max_by_key(|t| t.time).unwrap_or(TaskState {
+            name: String::new(),
+            state: Open,
+            time: self.event.created_at,
+        })
     }
 
     fn get(&self, property: &str) -> Option<String> {
         match property {
             "id" => Some(self.event.id.to_string()),
             "parentid" => self.parent_id().map(|i| i.to_string()),
-            "state" => self.state().map(|s| s.state.to_string()),
+            "state" => Some(self.state().state.to_string()),
             "name" => Some(self.event.content.clone()),
             "desc" | "description" => self.descriptions().fold(None, |total, s| {
                 Some(match total {
@@ -300,13 +317,25 @@ struct TaskState {
     state: State,
     time: Timestamp,
 }
-#[derive(Debug)]
+
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum State {
+    Closed,
     Open,
     Active,
     Done,
-    Closed,
 }
+impl State {
+    fn kind(&self) -> Kind {
+        match self {
+            Closed => Kind::from(1632),
+            Open => Kind::from(1630),
+            Active => Kind::from(1633),
+            Done => Kind::from(1631),
+        }
+    }
+}
+static STATES: [State; 4] = [Closed, Open, Active, Done];
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(self, f)
