@@ -103,8 +103,9 @@ async fn send(text: &str, tags: &[Tag]) -> (Event, Result<EventId, Error>) {
 async fn repl() {
     let mut tasks: HashMap<EventId, Task> = HashMap::new();
     let mut position: Option<EventId> = None;
+    let mut properties: Vec<String> = vec!["id".into(), "name".into(), "state".into()];
     loop {
-        let mut prompt = String::from("");
+        let mut prompt = String::with_capacity(64);
         let mut pos = position;
         while pos.is_some() {
             let id = pos.unwrap();
@@ -119,30 +120,64 @@ async fn repl() {
                 if input.trim() == "exit" {
                     break;
                 }
-                match input.split_once(": ") {
-                    None => {
-                        position = EventId::parse(input).ok().or(
-                            position.and_then(|p| tasks.get(&p)).and_then(|t| t.parent_id()));
-                    }
-                    Some(s) => {
-                        let mut tags: Vec<Tag> = s.1.split(" ").map(|t| Tag::Hashtag(t.to_string())).collect();
-                        if let Some(pos) = position {
-                            tags.push(Tag::event(pos));
+                if input.starts_with(".") {
+                    match input[1..2].parse::<usize>() {
+                        Ok(index) => {
+                            properties.insert(index, input[2..].to_string());
+                            continue;
                         }
-                        let event = make_event(s.0, &tags);
-                        for tag in event.tags.iter() {
-                            match tag {
-                                Tag::Event { event_id, .. } => {
-                                    tasks.get_mut(event_id).unwrap().children.push(event.clone());
+                        Err(_) => {
+                            let prop = &input[1..];
+                            let pos = properties.iter().position(|s| s == &prop);
+                            match pos {
+                                None => {
+                                    properties.push(prop.to_string());
                                 }
-                                _ => {}
+                                Some(i) => {
+                                    properties.remove(i);
+                                }
                             }
                         }
-                        tasks.insert(event.id, Task::new(event));
+                    }
+                } else {
+                    match input.split_once(": ") {
+                        None => {
+                            position = EventId::parse(input).ok().or(position
+                                .and_then(|p| tasks.get(&p))
+                                .and_then(|t| t.parent_id()));
+                        }
+                        Some(s) => {
+                            let mut tags: Vec<Tag> =
+                                s.1.split(" ")
+                                    .map(|t| Tag::Hashtag(t.to_string()))
+                                    .collect();
+                            if let Some(pos) = position {
+                                tags.push(Tag::event(pos));
+                            }
+                            let event = make_event(s.0, &tags);
+                            for tag in event.tags.iter() {
+                                match tag {
+                                    Tag::Event { event_id, .. } => {
+                                        tasks
+                                            .get_mut(event_id)
+                                            .unwrap()
+                                            .children
+                                            .push(event.clone());
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            tasks.insert(event.id, Task::new(event));
+                        }
                     }
                 };
-                let events: Vec<&Event> = position.map_or(tasks.values().map(|t| &t.event).collect(),
-                                                          |p| tasks.get(&p).map_or(Vec::new(), |t| t.children.iter().collect()));
+                let events: Vec<&Event> =
+                    position.map_or(tasks.values().map(|t| &t.event).collect(), |p| {
+                        tasks
+                            .get(&p)
+                            .map_or(Vec::new(), |t| t.children.iter().collect())
+                    });
+                println!("{}", properties.join(" "));
                 for event in events {
                     println!("{}: {}", event.id, event.content);
                 }
@@ -162,6 +197,63 @@ impl Task {
         Task {
             event,
             children: Vec::new(),
+        }
+    }
+
+    fn parent_id(&self) -> Option<EventId> {
+        for tag in self.event.tags.iter() {
+            match tag {
+                Tag::Event { event_id, .. } => return Some(*event_id),
+                _ => {}
+            }
+        }
+        None
+    }
+
+    fn states(&self) -> impl Iterator<Item = TaskState> + '_ {
+        self.children.iter().filter_map(|event| {
+            match event.kind.as_u32() {
+                1630 => Some(Open),
+                1631 => Some(Done),
+                1632 => Some(Closed),
+                1633 => Some(Active),
+                _ => None,
+            }
+            .map(|s| TaskState {
+                name: self.event.content.clone(),
+                state: s,
+                time: self.event.created_at.clone(),
+            })
+        })
+    }
+
+    fn descriptions(&self) -> impl Iterator<Item = String> + '_ {
+        self.children.iter().filter_map(|event| {
+            if event.kind == Kind::TextNote {
+                Some(event.content.clone())
+            } else {
+                None
+            }
+        })
+    }
+
+    fn state(&self) -> Option<TaskState> {
+        self.states().max_by_key(|t| t.time)
+    }
+
+    fn get(&self, property: &str) -> Option<String> {
+        match property {
+            "id" => Some(self.event.id.to_string()),
+            "parentid" => self.parent_id().map(|i| i.to_string()),
+            "state" => self.state().map(|s| s.state.to_string()),
+            "name" => Some(self.event.content.clone()),
+            "desc" | "description" => self.descriptions().fold(None, |total, s| {
+                Some(match total {
+                    None => s,
+                    Some(i) => i + " " + &s,
+                })
+            }),
+            _ => None,
         }
     }
 }
