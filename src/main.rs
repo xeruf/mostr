@@ -183,7 +183,15 @@ async fn repl() {
                                 .and_then(|id| tasks.get(&id))
                                 .and_then(|t| t.parent_id());
                         }
-                        let _ = EventId::parse(&input[dots..]).map(|p| position = Some(p));
+                        let slice = &input[dots..];
+                        if !slice.is_empty() {
+                            position = EventId::parse(slice).ok().or_else(|| {
+                                let task = make_task(slice, &[]);
+                                let ret = Some(task.id);
+                                add_task(&mut tasks, task);
+                                ret
+                            })
+                        }
                     }
 
                     _ => {
