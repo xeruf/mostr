@@ -71,7 +71,7 @@ async fn main() {
         .get_events_of(vec![filter], Option::from(timeout))
         .map_ok(|res| {
             for event in res {
-                println!("Found {} {:?}", event.content, event.tags)
+                println!("Found {} '{}' {:?}", event.kind, event.content, event.tags)
             }
         })
         .await;
@@ -249,9 +249,14 @@ async fn repl() {
     }
 
     println!();
+    println!("Submitting created events");
     let _ = CLIENT
         .batch_event(
-            tasks.into_values().map(|t| t.event).collect(),
+            tasks.into_values().flat_map(|mut t| {
+                let mut ev = t.props;
+                ev.push(t.event);
+                ev
+            }).collect(),
             RelaySendOptions::new().skip_send_confirmation(true),
         )
         .await;
