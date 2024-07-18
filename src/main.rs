@@ -99,9 +99,12 @@ fn make_event(text: &str, tags: &[Tag]) -> Event {
 }
 
 type TaskMap = HashMap<EventId, Task>;
+fn add_task(tasks: &mut TaskMap, event: Event) -> Option<Task> { 
+    tasks.insert(event.id, Task::new(event)) 
+}
+
 async fn repl() {
     let mut tasks: TaskMap = HashMap::new();
-    let add_task = |tasks: &mut TaskMap, event: Event| tasks.insert(event.id, Task::new(event));
     for argument in args().skip(1) {
         add_task(
             &mut tasks,
@@ -200,9 +203,12 @@ async fn repl() {
                                     });
                 print_tasks(tasks, &properties);
             }
-            _ => {}
+            Some(Err(e)) => eprintln!("{}", e),
+            None => break,
         }
     }
+    
+    println!();
     let _ = CLIENT
         .batch_event(
             tasks.into_values().map(|t| t.event).collect(),
@@ -278,7 +284,10 @@ impl Task {
                     Some(i) => i + " " + &s,
                 })
             }),
-            _ => None,
+            _ => {
+                eprintln!("Unknown column {}", property);
+                None
+            },
         }
     }
 }
