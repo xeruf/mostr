@@ -65,14 +65,6 @@ impl Task {
         self.state().map_or(State::Open, |s| s.state)
     }
 
-    fn default_state(&self) -> TaskState {
-        TaskState {
-            name: None,
-            state: State::Open,
-            time: self.event.created_at,
-        }
-    }
-
     pub(crate) fn update_state(&mut self, state: State, comment: &str) {
         self.props.push(make_event(
             state.kind(),
@@ -81,12 +73,40 @@ impl Task {
         ))
     }
 
+    fn default_state(&self) -> TaskState {
+        TaskState {
+            name: None,
+            state: State::Open,
+            time: self.event.created_at,
+        }
+    }
+
+    /// Total time this task has been active.
+    /// Todo: Recursive
+    pub(crate) fn time_tracked(&self) -> u64 {
+        let mut total = 0;
+        let mut start: Option<Timestamp> = None;
+        for state in self.states() {
+            match state.state {
+                State::Active => start = start.or(Some(state.time)),
+                _ => {
+                    if let Some(stamp) = start {
+                        total += (state.time - stamp).as_u64();
+                        start = None;
+                    }
+                }
+            }
+        }
+        total
+    }
+
     pub(crate) fn get(&self, property: &str) -> Option<String> {
         match property {
             "id" => Some(self.event.id.to_string()),
             "parentid" => self.parent_id().map(|i| i.to_string()),
             "state" => self.state().map(|s| s.to_string()),
             "name" => Some(self.event.content.clone()),
+            "time" => Some(self.time_tracked().to_string()), // TODO: format properly
             "desc" | "description" => self.descriptions().fold(None, |total, s| {
                 Some(match total {
                     None => s,
