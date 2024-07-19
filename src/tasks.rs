@@ -35,6 +35,13 @@ impl Tasks {
         tasks.iter().filter_map(|id| self.tasks.get(id)).collect()
     }
     
+    /// Total time this task and its subtasks have been active
+    fn total_time_tracked(&self, task: &EventId) -> u64 {
+        self.tasks.get(task).map_or(0, |t| {
+            t.time_tracked() + t.children.iter().map(|e| self.total_time_tracked(e)).sum::<u64>()
+        })
+    }
+    
     pub(crate) fn set_filter(&mut self, view: Vec<EventId>) {
        self.view = view 
     }
@@ -62,6 +69,7 @@ impl Tasks {
                     .iter()
                     .map(|p| match p.as_str() {
                         "path" => self.taskpath(Some(task.event.id)),
+                        "ttime" => self.total_time_tracked(&task.event.id).to_string(),
                         prop => task.get(prop).unwrap_or(String::new()),
                     })
                     .collect::<Vec<String>>()

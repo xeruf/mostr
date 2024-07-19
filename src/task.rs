@@ -82,7 +82,7 @@ impl Task {
     }
 
     /// Total time this task has been active.
-    /// Todo: Recursive
+    /// TODO: Consider caching
     pub(crate) fn time_tracked(&self) -> u64 {
         let mut total = 0;
         let mut start: Option<Timestamp> = None;
