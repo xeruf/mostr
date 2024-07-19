@@ -105,9 +105,21 @@ impl Tasks {
         }
     }
 
+    pub(crate) fn add(&mut self, event: Event) {
+        if event.kind.as_u64() == 1621 {
+            self.add_task(event)
+        } else {
+            self.add_prop(&event)
+        }
+    }
+
     pub(crate) fn add_task(&mut self, event: Event) {
         self.referenced_tasks(&event, |t| t.children.push(event.id));
         self.tasks.insert(event.id, Task::new(event));
+    }
+    
+    pub(crate) fn add_prop(&mut self, event: &Event) {
+        self.referenced_tasks(&event, |t| t.props.push(event.clone()));
     }
 
     pub(crate) fn move_up(&mut self) {

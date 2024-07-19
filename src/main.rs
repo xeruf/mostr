@@ -62,25 +62,8 @@ async fn main() {
 
     CLIENT.connect().await;
 
-    let sub_id: SubscriptionId = CLIENT.subscribe(vec![Filter::new()], Some(SubscribeAutoCloseOptions::default())).await;
-
     repl().await;
 
-    let mut notifications = CLIENT.notifications();
-    println!("Listening for events...");
-    while let Ok(notification) = notifications.recv().await {
-        if let RelayPoolNotification::Event {
-            subscription_id,
-            event,
-            ..
-        } = notification
-        {
-            let kind = event.kind;
-            let content = &event.content;
-            println!("{kind}: {content}");
-            //break; // Exit
-        }
-    }
 }
 
 fn make_task(text: &str, tags: &[Tag]) -> Event {
@@ -92,11 +75,18 @@ fn make_event(kind: Kind, text: &str, tags: &[Tag]) -> Event {
         .unwrap()
 }
 
+fn print_event(event: &Event) {
+    println!("At {} found {} kind {} '{}' {:?}", event.created_at, event.id, event.kind, event.content, event.tags);
+}
+
 async fn repl() {
     let mut tasks: Tasks = Default::default();
     for argument in args().skip(1) {
         tasks.add_task(make_task(&argument, &[Tag::Hashtag("arg".to_string())]));
     }
+
+    let sub_id: SubscriptionId = CLIENT.subscribe(vec![Filter::new()], None).await;
+    let mut notifications = CLIENT.notifications();
 
     println!("Finding existing events");
     let res = CLIENT
@@ -106,12 +96,12 @@ async fn repl() {
             let (mut task_events, props): (Vec<Event>, Vec<Event>) = res.into_iter().partition(|e| e.kind.as_u32() == 1621);
             task_events.sort_unstable();
             for event in task_events {
-                println!("{} found {} '{}' {:?}", event.created_at, event.kind, event.content, event.tags);
+                print_event(&event);
                 tasks.add_task(event);
             }
             for event in props {
-                println!("{} found {} '{}' {:?}", event.created_at, event.kind, event.content, event.tags);
-                tasks.referenced_tasks(&event, |t| t.props.push(event.clone()));
+                print_event(&event);
+                tasks.add_prop(&event);
             }
         })
         .await;
@@ -202,12 +192,24 @@ async fn repl() {
                         tasks.add_task(tasks.make_task(&input));
                     }
                 }
-
-                tasks.print_current_tasks();
             }
             Some(Err(e)) => eprintln!("{}", e),
             None => break,
         }
+        
+        while let Ok(notification) = notifications.try_recv() {
+            if let RelayPoolNotification::Event {
+                subscription_id,
+                event,
+                ..
+            } = notification
+            {
+                print_event(&event);
+                tasks.add(*event);
+            }
+        }
+
+        tasks.print_current_tasks();
     }
 
     tasks.update_state("", |t| if t.pure_state() == State::Active { Some(State::Open) } else { None });
