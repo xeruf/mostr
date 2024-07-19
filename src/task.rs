@@ -1,6 +1,6 @@
-use std::fmt;
-use nostr_sdk::{Event, EventId, Kind, Tag, Timestamp};
 use crate::make_event;
+use nostr_sdk::{Event, EventId, Kind, Tag, Timestamp};
+use std::fmt;
 
 pub(crate) struct Task {
     pub(crate) event: Event,
@@ -45,15 +45,15 @@ impl Task {
                 1633 => Some(State::Active),
                 _ => None,
             }
-                .map(|s| TaskState {
-                    name: if event.content.is_empty() {
-                        None
-                    } else {
-                        Some(event.content.clone())
-                    },
-                    state: s,
-                    time: event.created_at.clone(),
-                })
+            .map(|s| TaskState {
+                name: if event.content.is_empty() {
+                    None
+                } else {
+                    Some(event.content.clone())
+                },
+                state: s,
+                time: event.created_at.clone(),
+            })
         })
     }
 

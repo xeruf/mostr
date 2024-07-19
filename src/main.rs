@@ -215,7 +215,8 @@ async fn repl() {
     tasks.update_state("", |t| if t.pure_state() == State::Active { Some(State::Open) } else { None });
 
     println!();
-    println!("Submitting created events");
+    println!("Submitting events");
+    // TODO send via message passing
     let _ = CLIENT
         .batch_event(
             tasks

@@ -1,7 +1,9 @@
-use crate::{make_event, make_task};
-use crate::task::{Task, State};
-use nostr_sdk::{Event, EventId, Tag};
 use std::collections::HashMap;
+
+use nostr_sdk::{Event, EventId, Tag};
+
+use crate::make_task;
+use crate::task::{State, Task};
 
 type TaskMap = HashMap<EventId, Task>;
 pub(crate) struct Tasks {
@@ -30,34 +32,39 @@ impl Tasks {
     pub(crate) fn get_position(&self) -> Option<EventId> {
         self.position
     }
-    
+
     fn collect_tasks(&self, tasks: &Vec<EventId>) -> Vec<&Task> {
         tasks.iter().filter_map(|id| self.tasks.get(id)).collect()
     }
-    
+
     /// Total time this task and its subtasks have been active
     fn total_time_tracked(&self, task: &EventId) -> u64 {
         self.tasks.get(task).map_or(0, |t| {
-            t.time_tracked() + t.children.iter().map(|e| self.total_time_tracked(e)).sum::<u64>()
+            t.time_tracked()
+                + t.children
+                    .iter()
+                    .map(|e| self.total_time_tracked(e))
+                    .sum::<u64>()
         })
     }
-    
+
     pub(crate) fn set_filter(&mut self, view: Vec<EventId>) {
-       self.view = view 
+        self.view = view
     }
-    
+
     pub(crate) fn current_tasks(&self) -> Vec<&Task> {
         let res = self.collect_tasks(&self.view);
         if res.len() > 0 {
             return res;
         }
         self.position.map_or_else(
-            || self.tasks.values().collect(), 
+            || self.tasks.values().collect(),
             |p| {
-            self.tasks.get(&p).map_or(Vec::new(), |t| {
-                self.collect_tasks(&t.children)
-            })
-        })
+                self.tasks
+                    .get(&p)
+                    .map_or(Vec::new(), |t| self.collect_tasks(&t.children))
+            },
+        )
     }
 
     pub(crate) fn print_current_tasks(&self) {
@@ -78,7 +85,7 @@ impl Tasks {
         }
         println!();
     }
-    
+
     pub(crate) fn make_task(&self, input: &str) -> Event {
         let mut tags: Vec<Tag> = Vec::new();
         self.position.inspect(|p| tags.push(Tag::event(*p)));
