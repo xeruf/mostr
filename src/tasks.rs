@@ -5,9 +5,14 @@ use std::collections::HashMap;
 
 type TaskMap = HashMap<EventId, Task>;
 pub(crate) struct Tasks {
+    /// The Tasks
     pub(crate) tasks: TaskMap,
+    /// The task properties currently visible
     pub(crate) properties: Vec<String>,
+    /// The task currently selected.
     position: Option<EventId>,
+    /// A filtered view of the current tasks
+    view: Vec<EventId>,
 }
 
 impl Default for Tasks {
@@ -16,6 +21,7 @@ impl Default for Tasks {
             tasks: Default::default(),
             properties: vec!["id".into(), "name".into(), "state".into()],
             position: None,
+            view: Default::default(),
         }
     }
 }
@@ -24,7 +30,47 @@ impl Tasks {
     pub(crate) fn get_position(&self) -> Option<EventId> {
         self.position
     }
+    
+    fn collect_tasks(&self, tasks: &Vec<EventId>) -> Vec<&Task> {
+        tasks.iter().filter_map(|id| self.tasks.get(id)).collect()
+    }
+    
+    pub(crate) fn set_filter(&mut self, view: Vec<EventId>) {
+       self.view = view 
+    }
+    
+    pub(crate) fn current_tasks(&self) -> Vec<&Task> {
+        let res = self.collect_tasks(&self.view);
+        if res.len() > 0 {
+            return res;
+        }
+        self.position.map_or_else(
+            || self.tasks.values().collect(), 
+            |p| {
+            self.tasks.get(&p).map_or(Vec::new(), |t| {
+                self.collect_tasks(&t.children)
+            })
+        })
+    }
 
+    pub(crate) fn print_current_tasks(&self) {
+        println!("{}", self.properties.join(" "));
+        for task in self.current_tasks() {
+            println!(
+                "{}",
+                self.properties
+                    .iter()
+                    .map(|p| match p.as_str() {
+                        "path" => self.taskpath(Some(task.event.id)),
+                        prop => task.get(prop).unwrap_or(String::new()),
+                    })
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            );
+        }
+        println!();
+    }
+    
     pub(crate) fn make_task(&self, input: &str) -> Event {
         let mut tags: Vec<Tag> = Vec::new();
         self.position.inspect(|p| tags.push(Tag::event(*p)));
@@ -57,35 +103,6 @@ impl Tasks {
         self.tasks.insert(event.id, Task::new(event));
     }
 
-    pub(crate) fn current_tasks(&self) -> Vec<&Task> {
-        self.position.map_or(self.tasks.values().collect(), |p| {
-            self.tasks.get(&p).map_or(Vec::new(), |t| {
-                t.children
-                    .iter()
-                    .filter_map(|id| self.tasks.get(id))
-                    .collect()
-            })
-        })
-    }
-
-    pub(crate) fn print_current_tasks(&self) {
-        println!("{}", self.properties.join(" "));
-        for task in self.current_tasks() {
-            println!(
-                "{}",
-                self.properties
-                    .iter()
-                    .map(|p| match p.as_str() {
-                        "path" => self.taskpath(Some(task.event.id)),
-                        prop => task.get(prop).unwrap_or(String::new()),
-                    })
-                    .collect::<Vec<String>>()
-                    .join(" ")
-            );
-        }
-        println!();
-    }
-
     pub(crate) fn move_up(&mut self) {
         self.move_to(
             self.position
@@ -95,6 +112,7 @@ impl Tasks {
     }
 
     pub(crate) fn move_to(&mut self, id: Option<EventId>) {
+        self.view.clear();
         if id == self.position {
             return;
         }

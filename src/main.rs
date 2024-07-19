@@ -164,14 +164,32 @@ async fn repl() {
                         if !slice.is_empty() {
                             pos = EventId::parse(slice).ok().or_else(|| {
                                 tasks.move_to(pos);
-                                let task = tasks.make_task(slice);
-                                let ret = Some(task.id);
-                                tasks.add_task(task);
-                                ret
+                                let filtered: Vec<EventId> = tasks.current_tasks().iter().filter(|t| t.event.content.starts_with(slice)).map(|t| t.event.id).collect();
+                                match filtered.len() { 
+                                    0 => {
+                                        // No match, new task
+                                        let task = tasks.make_task(slice);
+                                        let ret = Some(task.id);
+                                        tasks.add_task(task);
+                                        ret
+                                    }
+                                    1 => {
+                                        // One match, select
+                                        Some(filtered.first().unwrap().clone())
+                                    }
+                                    _ => {
+                                        // Multiple match, filter
+                                        tasks.set_filter(filtered);
+                                        None
+                                    }
+                                } 
                             });
+                            if pos != None {
+                                tasks.move_to(pos);
+                            }
+                        } else {
                             tasks.move_to(pos);
                         }
-                        tasks.move_to(pos);
                     }
 
                     _ => {
