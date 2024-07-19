@@ -97,17 +97,16 @@ impl Tasks {
         };
     }
 
-    pub(crate) fn add_task(&mut self, event: Event) {
+    pub(crate) fn referenced_tasks<F: Fn(&mut Task)>(&mut self, event: &Event, f: F) {
         for tag in event.tags.iter() {
-            match tag {
-                Tag::Event { event_id, .. } => {
-                    self.tasks
-                        .get_mut(event_id)
-                        .map(|t| t.children.push(event.id));
-                }
-                _ => {}
+            if let Tag::Event { event_id, .. } = tag {
+                self.tasks.get_mut(event_id).map(|t| f(t));
             }
         }
+    }
+
+    pub(crate) fn add_task(&mut self, event: Event) {
+        self.referenced_tasks(&event, |t| t.children.push(event.id));
         self.tasks.insert(event.id, Task::new(event));
     }
 
@@ -156,6 +155,7 @@ impl Tasks {
         ParentIterator {
             tasks: &self.tasks,
             current: id,
+            prev: None,
         }
     }
 
@@ -183,12 +183,16 @@ impl Tasks {
 struct ParentIterator<'a> {
     tasks: &'a TaskMap,
     current: Option<EventId>,
+    /// Inexpensive helper to assert correctness
+    prev: Option<EventId>,
 }
 impl<'a> Iterator for ParentIterator<'a> {
     type Item = &'a Task;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.current.and_then(|id| self.tasks.get(&id)).map(|t| {
+            self.prev.map(|id| assert!(t.children.contains(&id)));
+            self.prev = self.current;
             self.current = t.parent_id();
             t
         })

@@ -62,22 +62,9 @@ async fn main() {
 
     CLIENT.connect().await;
 
-    let timeout = Duration::from_secs(3);
-
-    let filter = Filter::new();
-    let sub_id: SubscriptionId = CLIENT.subscribe(vec![filter.clone()], None).await;
+    let sub_id: SubscriptionId = CLIENT.subscribe(vec![Filter::new()], Some(SubscribeAutoCloseOptions::default())).await;
 
     repl().await;
-
-    println!("Finding existing events");
-    let res = CLIENT
-        .get_events_of(vec![filter], Option::from(timeout))
-        .map_ok(|res| {
-            for event in res {
-                println!("Found {} '{}' {:?}", event.kind, event.content, event.tags)
-            }
-        })
-        .await;
 
     let mut notifications = CLIENT.notifications();
     println!("Listening for events...");
@@ -110,6 +97,25 @@ async fn repl() {
     for argument in args().skip(1) {
         tasks.add_task(make_task(&argument, &[Tag::Hashtag("arg".to_string())]));
     }
+
+    println!("Finding existing events");
+    let res = CLIENT
+        .get_events_of(vec![Filter::new()], None)
+        .map_ok(|res| {
+            println!("Found {} events", res.len());
+            let (mut task_events, props): (Vec<Event>, Vec<Event>) = res.into_iter().partition(|e| e.kind.as_u32() == 1621);
+            task_events.sort_unstable();
+            for event in task_events {
+                println!("{} found {} '{}' {:?}", event.created_at, event.kind, event.content, event.tags);
+                tasks.add_task(event);
+            }
+            for event in props {
+                println!("{} found {} '{}' {:?}", event.created_at, event.kind, event.content, event.tags);
+                tasks.referenced_tasks(&event, |t| t.props.push(event.clone()));
+            }
+        })
+        .await;
+
 
     println!();
     tasks.print_current_tasks();
@@ -165,7 +171,7 @@ async fn repl() {
                             pos = EventId::parse(slice).ok().or_else(|| {
                                 tasks.move_to(pos);
                                 let filtered: Vec<EventId> = tasks.current_tasks().iter().filter(|t| t.event.content.starts_with(slice)).map(|t| t.event.id).collect();
-                                match filtered.len() { 
+                                match filtered.len() {
                                     0 => {
                                         // No match, new task
                                         let task = tasks.make_task(slice);
@@ -182,7 +188,7 @@ async fn repl() {
                                         tasks.set_filter(filtered);
                                         None
                                     }
-                                } 
+                                }
                             });
                             if pos != None {
                                 tasks.move_to(pos);
