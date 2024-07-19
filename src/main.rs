@@ -210,6 +210,8 @@ async fn repl() {
         }
     }
 
+    tasks.update_state("", |t| if t.pure_state() == State::Active { Some(State::Open) } else { None });
+
     println!();
     println!("Submitting created events");
     let _ = CLIENT
