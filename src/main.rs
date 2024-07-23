@@ -27,21 +27,21 @@ mod tasks;
 */
 
 static MY_KEYS: Lazy<Keys> = Lazy::new(|| Keys::generate());
-static CLIENT: Lazy<Client> = Lazy::new(|| Client::new(MY_KEYS.borrow().deref()));
 
 #[tokio::main]
 async fn main() {
     let proxy = Some(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 9050)));
 
-    CLIENT.add_relay("ws://localhost:4736").await;
-    //CLIENT.add_relay("wss://relay.damus.io").await;
-    //CLIENT
+    let client = Client::new(MY_KEYS.borrow().deref());
+    client.add_relay("ws://localhost:4736").await;
+    //client.add_relay("wss://relay.damus.io").await;
+    //client
     //    .add_relay_with_opts(
     //        "wss://relay.nostr.info",
     //        RelayOptions::new().proxy(proxy).flags(RelayServiceFlags::default().remove(RelayServiceFlags::WRITE)),
     //    )
     //    .await?;
-    //CLIENT
+    //client
     //    .add_relay_with_opts(
     //        "ws://jgqaglhautb4k6e6i2g34jakxiemqp6z4wynlirltuukgkft2xuglmqd.onion",
     //        RelayOptions::new().proxy(proxy),
@@ -58,38 +58,20 @@ async fn main() {
     //    .lud16("yuki@getalby.com")
     //    .custom_field("custom_field", "my value");
 
-    //CLIENT.set_metadata(&metadata).await?;
+    //client.set_metadata(&metadata).await?;
 
-    CLIENT.connect().await;
+    client.connect().await;
 
-    repl().await;
-
-}
-
-fn make_task(text: &str, tags: &[Tag]) -> Event {
-    make_event(Kind::from(1621), text, tags)
-}
-fn make_event(kind: Kind, text: &str, tags: &[Tag]) -> Event {
-    EventBuilder::new(kind, text, tags.to_vec())
-        .to_event(&MY_KEYS)
-        .unwrap()
-}
-
-fn print_event(event: &Event) {
-    println!("At {} found {} kind {} '{}' {:?}", event.created_at, event.id, event.kind, event.content, event.tags);
-}
-
-async fn repl() {
     let mut tasks: Tasks = Default::default();
     for argument in args().skip(1) {
         tasks.add_task(make_task(&argument, &[Tag::Hashtag("arg".to_string())]));
     }
 
-    let sub_id: SubscriptionId = CLIENT.subscribe(vec![Filter::new()], None).await;
-    let mut notifications = CLIENT.notifications();
+    let sub_id: SubscriptionId = client.subscribe(vec![Filter::new()], None).await;
+    let mut notifications = client.notifications();
 
     println!("Finding existing events");
-    let res = CLIENT
+    let res = client
         .get_events_of(vec![Filter::new()], None)
         .map_ok(|res| {
             println!("Found {} events", res.len());
@@ -217,7 +199,7 @@ async fn repl() {
     println!();
     println!("Submitting events");
     // TODO send via message passing
-    let _ = CLIENT
+    let _ = client
         .batch_event(
             tasks
                 .tasks
@@ -231,4 +213,17 @@ async fn repl() {
             RelaySendOptions::new().skip_send_confirmation(true),
         )
         .await;
+}
+
+fn make_task(text: &str, tags: &[Tag]) -> Event {
+    make_event(Kind::from(1621), text, tags)
+}
+fn make_event(kind: Kind, text: &str, tags: &[Tag]) -> Event {
+    EventBuilder::new(kind, text, tags.to_vec())
+        .to_event(&MY_KEYS)
+        .unwrap()
+}
+
+fn print_event(event: &Event) {
+    println!("At {} found {} kind {} '{}' {:?}", event.created_at, event.id, event.kind, event.content, event.tags);
 }
