@@ -65,12 +65,14 @@ impl Task {
         self.state().map_or(State::Open, |s| s.state)
     }
 
-    pub(crate) fn update_state(&mut self, state: State, comment: &str) {
-        self.props.push(make_event(
+    pub(crate) fn update_state(&mut self, state: State, comment: &str) -> Event {
+        let event = make_event(
             state.kind(),
             comment,
             &[Tag::event(self.event.id)],
-        ))
+        );
+        self.props.push(event.clone());
+        event
     }
 
     fn default_state(&self) -> TaskState {

@@ -178,24 +178,24 @@ impl Tasks {
         }
     }
 
-    pub(crate) fn update_state_for<F>(&mut self, id: &EventId, comment: &str, f: F)
+    pub(crate) fn update_state_for<F>(&mut self, id: &EventId, comment: &str, f: F) -> Option<Event>
     where
         F: FnOnce(&Task) -> Option<State>,
     {
-        self.tasks.get_mut(id).map(|t| {
+        self.tasks.get_mut(id).and_then(|t| {
             f(t).map(|s| {
-                t.update_state(s, comment);
+                t.update_state(s, comment)
             })
-        });
+        })
     }
 
-    pub(crate) fn update_state<F>(&mut self, comment: &str, f: F)
+    pub(crate) fn update_state<F>(&mut self, comment: &str, f: F) -> Option<Event>
     where
         F: FnOnce(&Task) -> Option<State>,
     {
-        self.position.inspect(|id| {
-            self.update_state_for(id, comment, f);
-        });
+        self.position.and_then(|id| {
+            self.update_state_for(&id, comment, f)
+        })
     }
 }
 
