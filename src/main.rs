@@ -104,7 +104,12 @@ async fn main() {
 
                     Some(':') => match input[1..2].parse::<usize>() {
                         Ok(index) => {
-                            tasks.properties.insert(index, input[2..].to_string());
+                            let value = input[2..].to_string();
+                            if tasks.properties.get(index) == Some(&value) {
+                                tasks.properties.remove(index);
+                            } else {
+                                tasks.properties.insert(index, value);
+                            }
                         }
                         Err(_) => {
                             let prop = &input[1..];
