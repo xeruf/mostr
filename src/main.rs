@@ -169,6 +169,10 @@ async fn main() {
 
                     Some(':') => match input[1..2].parse::<usize>() {
                         Ok(index) => {
+                            if input.len() == 2 {
+                                tasks.properties.remove(index);
+                                continue;
+                            }
                             let value = input[2..].to_string();
                             if tasks.properties.get(index) == Some(&value) {
                                 tasks.properties.remove(index);
