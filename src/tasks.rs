@@ -66,7 +66,7 @@ impl Tasks {
     }
 
     pub(crate) fn print_current_tasks(&self) {
-        println!("{}", self.properties.join(" "));
+        println!("{}", self.properties.join("\t"));
         for task in self.current_tasks() {
             println!(
                 "{}",
@@ -78,7 +78,7 @@ impl Tasks {
                         prop => task.get(prop).unwrap_or(String::new()),
                     })
                     .collect::<Vec<String>>()
-                    .join(" ")
+                    .join("\t")
             );
         }
         println!();

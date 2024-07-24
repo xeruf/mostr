@@ -100,6 +100,7 @@ impl Task {
             "state" => self.state().map(|s| s.to_string()),
             "name" => Some(self.event.content.clone()),
             "time" => Some(self.time_tracked().to_string()), // TODO: format properly
+            "props" => Some(format!("{:?}", self.props.iter().map(|e| format!("{} kind {} '{}'", e.created_at, e.kind, e.content)).collect::<Vec<String>>())),
             "desc" | "description" => self.descriptions().fold(None, |total, s| {
                 Some(match total {
                     None => s,
