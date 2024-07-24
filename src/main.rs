@@ -25,15 +25,51 @@ mod tasks;
    31922 (GANTT, only Date)
    31923 (Calendar, with Time)
 */
+static TASK_KIND: u64 = 1621;
 
-static MY_KEYS: Lazy<Keys> = Lazy::new(|| Keys::generate());
+static MY_KEYS: Lazy<Keys> = Lazy::new(|| {
+    match fs::read_to_string("keys") {
+        Ok(key) => {
+            Keys::from_str(&key).unwrap()
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            let keys = Keys::generate();
+            fs::write("keys", keys.secret_key().unwrap().to_string());
+            keys
+        },
+    }
+});
+
+struct EventSender {
+    tx: Sender<Event>,
+    keys: Keys,
+}
+impl EventSender {
+    fn submit(&self, event_builder: EventBuilder) -> Option<Event> {
+        or_print(event_builder.to_event(MY_KEYS.deref())).inspect(|event| {
+            or_print(self.tx.send(event.clone()));
+        })
+    }
+}
+
+fn or_print<T, U: Display>(result: Result<T, U>) -> Option<T> {
+    match result {
+        Ok(value) => Some(value),
+        Err(error) => {
+            eprintln!("{}", error);
+            None
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() {
     let proxy = Some(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 9050)));
 
-    let client = Client::new(MY_KEYS.borrow().deref());
+    let client = Client::new(MY_KEYS.deref());
     client.add_relay("ws://localhost:4736").await;
+    println!("My key: {}", MY_KEYS.public_key());
     //client.add_relay("wss://relay.damus.io").await;
     //client
     //    .add_relay_with_opts(
