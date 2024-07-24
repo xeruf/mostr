@@ -158,7 +158,7 @@ async fn main() {
         }
         tasks.print_current_tasks();
 
-        print!(" {}> ", tasks.taskpath(tasks.get_position()));
+        print!(" {}) ", tasks.taskpath(tasks.get_position()));
         stdout().flush().unwrap();
         match stdin().lines().next() {
             Some(Ok(input)) => {

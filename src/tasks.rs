@@ -112,6 +112,7 @@ impl Tasks {
                     .iter()
                     .map(|p| match p.as_str() {
                         "path" => self.taskpath(Some(task.event.id)),
+                        "rpath" => join_tasks(self.traverse_up_from(Some(task.event.id)).take_while(|t| Some(t.event.id) != self.position)),
                         "ttime" => self.total_time_tracked(&task.event.id).to_string(),
                         prop => task.get(prop).unwrap_or(String::new()),
                     })
@@ -213,9 +214,7 @@ impl Tasks {
     }
 
     pub(crate) fn taskpath(&self, id: Option<EventId>) -> String {
-        self.traverse_up_from(id)
-            .map(|t| t.event.content.clone())
-            .fold(String::new(), |acc, val| format!("{} {}", val, acc))
+        join_tasks(self.traverse_up_from(id))
     }
 
     pub(crate) fn traverse_up_from(&self, id: Option<EventId>) -> ParentIterator {
@@ -252,6 +251,14 @@ impl Tasks {
         })
     }
 }
+
+pub(crate) fn join_tasks<'a>(iter: impl IntoIterator<Item=&'a Task>) -> String{
+    iter.into_iter()
+        .map(|t| t.event.content.clone())
+        .fold(None, |acc, val| Some(acc.map_or_else(|| val.clone(), |cur| format!("{}>{}", val, cur))))
+        .unwrap_or(String::new())
+}
+
 
 struct ParentIterator<'a> {
     tasks: &'a TaskMap,
