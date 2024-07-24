@@ -1,9 +1,13 @@
 use std::borrow::Borrow;
 use std::env::args;
-use std::io::{stdin, stdout, Write};
+use std::fmt::Display;
+use std::fs;
+use std::io::{Read, stdin, stdout, Write};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::ops::Deref;
-use std::time::Duration;
+use std::str::FromStr;
+use std::sync::mpsc;
+use std::sync::mpsc::Sender;
 
 use nostr_sdk::async_utility::futures_util::TryFutureExt;
 use nostr_sdk::prelude::*;
@@ -98,20 +102,23 @@ async fn main() {
 
     client.connect().await;
 
-    let mut tasks: Tasks = Default::default();
-    for argument in args().skip(1) {
-        tasks.add_task(make_task(&argument, &[Tag::Hashtag("arg".to_string())]));
-    }
+    let (tx, rx) = mpsc::channel::<Event>();
+    let mut tasks: Tasks = Tasks::from(EventSender {
+        keys: MY_KEYS.clone(),
+        tx,
+    });
 
     let sub_id: SubscriptionId = client.subscribe(vec![Filter::new()], None).await;
+    eprintln!("Subscribed with {}", sub_id);
     let mut notifications = client.notifications();
 
-    println!("Finding existing events");
-    let res = client
-        .get_events_of(vec![Filter::new()], None)
+    /*println!("Finding existing events");
+    let _ = client
+        .get_events_of(vec![Filter::new()], Some(Duration::from_secs(5)))
         .map_ok(|res| {
             println!("Found {} events", res.len());
-            let (mut task_events, props): (Vec<Event>, Vec<Event>) = res.into_iter().partition(|e| e.kind.as_u32() == 1621);
+            let (mut task_events, props): (Vec<Event>, Vec<Event>) =
+                res.into_iter().partition(|e| e.kind.as_u32() == 1621);
             task_events.sort_unstable();
             for event in task_events {
                 print_event(&event);
@@ -122,13 +129,35 @@ async fn main() {
                 tasks.add_prop(&event);
             }
         })
-        .await;
+        .await;*/
 
+    let sender = tokio::spawn(async move {
+        while let Ok(e) = rx.recv() {
+            //eprintln!("Sending {}", e.id);
+            let _ = client.send_event(e).await;
+        }
+        println!("Stopping listeners...");
+        client.unsubscribe_all().await;
+    });
+    for argument in args().skip(1) {
+        tasks.make_task(&argument);
+    }
 
     println!();
-    tasks.print_current_tasks();
-
     loop {
+        while let Ok(notification) = notifications.try_recv() {
+            if let RelayPoolNotification::Event {
+                subscription_id,
+                event,
+                ..
+            } = notification
+            {
+                print_event(&event);
+                tasks.add(*event);
+            }
+        }
+        tasks.print_current_tasks();
+
         print!(" {}> ", tasks.taskpath(tasks.get_position()));
         stdout().flush().unwrap();
         match stdin().lines().next() {
@@ -183,17 +212,19 @@ async fn main() {
                         if !slice.is_empty() {
                             pos = EventId::parse(slice).ok().or_else(|| {
                                 tasks.move_to(pos);
-                                let filtered: Vec<EventId> = tasks.current_tasks().iter().filter(|t| t.event.content.starts_with(slice)).map(|t| t.event.id).collect();
+                                let filtered: Vec<EventId> = tasks
+                                    .current_tasks()
+                                    .iter()
+                                    .filter(|t| t.event.content.starts_with(slice))
+                                    .map(|t| t.event.id)
+                                    .collect();
                                 match filtered.len() {
                                     0 => {
                                         // No match, new task
-                                        let task = tasks.make_task(slice);
-                                        let ret = Some(task.id);
-                                        tasks.add_task(task);
-                                        ret
+                                        tasks.make_task(slice)
                                     }
                                     1 => {
-                                        // One match, select
+                                        // One match, activate
                                         Some(filtered.first().unwrap().clone())
                                     }
                                     _ => {
@@ -212,59 +243,31 @@ async fn main() {
                     }
 
                     _ => {
-                        tasks.add_task(tasks.make_task(&input));
+                        tasks.make_task(&input);
                     }
                 }
             }
             Some(Err(e)) => eprintln!("{}", e),
             None => break,
         }
-        
-        while let Ok(notification) = notifications.try_recv() {
-            if let RelayPoolNotification::Event {
-                subscription_id,
-                event,
-                ..
-            } = notification
-            {
-                print_event(&event);
-                tasks.add(*event);
-            }
-        }
-
-        tasks.print_current_tasks();
     }
 
-    tasks.update_state("", |t| if t.pure_state() == State::Active { Some(State::Open) } else { None });
+    tasks.update_state("", |t| {
+        if t.pure_state() == State::Active {
+            Some(State::Open)
+        } else {
+            None
+        }
+    });
+    drop(tasks);
 
-    println!();
-    println!("Submitting events");
-    // TODO send via message passing
-    let _ = client
-        .batch_event(
-            tasks
-                .tasks
-                .into_values()
-                .flat_map(|t| {
-                    let mut ev = t.props;
-                    ev.push(t.event);
-                    ev
-                })
-                .collect(),
-            RelaySendOptions::new().skip_send_confirmation(true),
-        )
-        .await;
-}
-
-fn make_task(text: &str, tags: &[Tag]) -> Event {
-    make_event(Kind::from(1621), text, tags)
-}
-fn make_event(kind: Kind, text: &str, tags: &[Tag]) -> Event {
-    EventBuilder::new(kind, text, tags.to_vec())
-        .to_event(&MY_KEYS)
-        .unwrap()
+    eprintln!("Waiting for sync to relay...");
+    or_print(sender.await);
 }
 
 fn print_event(event: &Event) {
-    println!("At {} found {} kind {} '{}' {:?}", event.created_at, event.id, event.kind, event.content, event.tags);
+    eprintln!(
+        "At {} found {} kind {} '{}' {:?}",
+        event.created_at, event.id, event.kind, event.content, event.tags
+    );
 }

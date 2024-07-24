@@ -1,18 +1,19 @@
-use crate::make_event;
-use nostr_sdk::{Event, EventId, Kind, Tag, Timestamp};
+use std::collections::{BTreeSet, HashSet};
 use std::fmt;
+
+use nostr_sdk::{Event, EventId, Kind, Tag, Timestamp};
 
 pub(crate) struct Task {
     pub(crate) event: Event,
-    pub(crate) children: Vec<EventId>,
-    pub(crate) props: Vec<Event>,
+    pub(crate) children: HashSet<EventId>,
+    pub(crate) props: BTreeSet<Event>,
 }
 impl Task {
     pub(crate) fn new(event: Event) -> Task {
         Task {
             event,
-            children: Vec::new(),
-            props: Vec::new(),
+            children: Default::default(),
+            props: Default::default(),
         }
     }
 
@@ -63,16 +64,6 @@ impl Task {
 
     pub(crate) fn pure_state(&self) -> State {
         self.state().map_or(State::Open, |s| s.state)
-    }
-
-    pub(crate) fn update_state(&mut self, state: State, comment: &str) -> Event {
-        let event = make_event(
-            state.kind(),
-            comment,
-            &[Tag::event(self.event.id)],
-        );
-        self.props.push(event.clone());
-        event
     }
 
     fn default_state(&self) -> TaskState {
@@ -149,7 +140,7 @@ pub(crate) enum State {
     Done,
 }
 impl State {
-    fn kind(&self) -> Kind {
+    pub(crate) fn kind(&self) -> Kind {
         match self {
             State::Open => Kind::from(1630),
             State::Done => Kind::from(1631),

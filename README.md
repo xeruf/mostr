@@ -14,6 +14,4 @@ nostril --envelope --content "realtime message" --kind 90002 | websocat ws://loc
 
 ## Plans
 
-- TUI
-- Send messages asynchronously
-- How to clear terminal?
+- TUI - Clear terminal?

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use nostr_sdk::{Event, EventId, Tag};
+use nostr_sdk::{Event, EventBuilder, EventId, Kind, Tag};
 
-use crate::make_task;
+use crate::{EventSender, TASK_KIND};
 use crate::task::{State, Task};
 
 type TaskMap = HashMap<EventId, Task>;
@@ -15,15 +15,17 @@ pub(crate) struct Tasks {
     position: Option<EventId>,
     /// A filtered view of the current tasks
     view: Vec<EventId>,
+    sender: EventSender
 }
 
-impl Default for Tasks {
-    fn default() -> Self {
+impl Tasks {
+    pub(crate) fn from(sender: EventSender) -> Self {
         Tasks {
             tasks: Default::default(),
-            properties: vec!["id".into(), "name".into(), "state".into()],
+            properties: vec!["id".into(), "name".into(), "state".into(), "ttime".into()],
             position: None,
             view: Default::default(),
+            sender
         }
     }
 }
@@ -31,10 +33,6 @@ impl Default for Tasks {
 impl Tasks {
     pub(crate) fn get_position(&self) -> Option<EventId> {
         self.position
-    }
-
-    fn collect_tasks(&self, tasks: &Vec<EventId>) -> Vec<&Task> {
-        tasks.iter().filter_map(|id| self.tasks.get(id)).collect()
     }
 
     /// Total time this task and its subtasks have been active
@@ -53,7 +51,7 @@ impl Tasks {
     }
 
     pub(crate) fn current_tasks(&self) -> Vec<&Task> {
-        let res = self.collect_tasks(&self.view);
+        let res: Vec<&Task> = self.view.iter().filter_map(|id| self.tasks.get(id)).collect();
         if res.len() > 0 {
             return res;
         }
@@ -62,7 +60,7 @@ impl Tasks {
             |p| {
                 self.tasks
                     .get(&p)
-                    .map_or(Vec::new(), |t| self.collect_tasks(&t.children))
+                    .map_or(Vec::new(), |t| t.children.iter().filter_map(|id| self.tasks.get(id)).collect())
             },
         )
     }
@@ -86,11 +84,19 @@ impl Tasks {
         println!();
     }
 
-    pub(crate) fn make_task(&self, input: &str) -> Event {
+    pub(crate) fn make_task(&mut self, input: &str) -> Option<EventId> {
+        self.sender.submit(self.build_task(input)).map(|e| {
+            let id = e.id;
+            self.add_task(e);
+            id
+        })
+    }
+
+    pub(crate) fn build_task(&self, input: &str) -> EventBuilder {
         let mut tags: Vec<Tag> = Vec::new();
         self.position.inspect(|p| tags.push(Tag::event(*p)));
         return match input.split_once(": ") {
-            None => make_task(&input, &tags),
+            None => EventBuilder::new(Kind::from(TASK_KIND), input, tags),
             Some(s) => {
                 tags.append(
                     &mut s
@@ -99,7 +105,7 @@ impl Tasks {
                         .map(|t| Tag::Hashtag(t.to_string()))
                         .collect(),
                 );
-                make_task(s.0, &tags)
+                EventBuilder::new(Kind::from(TASK_KIND), s.0, tags)
             }
         };
     }
@@ -121,12 +127,16 @@ impl Tasks {
     }
 
     pub(crate) fn add_task(&mut self, event: Event) {
-        self.referenced_tasks(&event, |t| t.children.push(event.id));
-        self.tasks.insert(event.id, Task::new(event));
+        self.referenced_tasks(&event, |t| { t.children.insert(event.id); });
+        if self.tasks.contains_key(&event.id) {
+            //eprintln!("Did not insert duplicate event {}", event.id);
+        } else {
+            self.tasks.insert(event.id, Task::new(event));
+        }
     }
     
     pub(crate) fn add_prop(&mut self, event: &Event) {
-        self.referenced_tasks(&event, |t| t.props.push(event.clone()));
+        self.referenced_tasks(&event, |t| { t.props.insert(event.clone()); });
     }
 
     pub(crate) fn move_up(&mut self) {
@@ -182,9 +192,15 @@ impl Tasks {
     where
         F: FnOnce(&Task) -> Option<State>,
     {
-        self.tasks.get_mut(id).and_then(|t| {
-            f(t).map(|s| {
-                t.update_state(s, comment)
+        self.tasks.get_mut(id).and_then(|task| {
+            f(task).and_then(|state| {
+                self.sender.submit(EventBuilder::new(
+                    state.kind(),
+                    comment,
+                    vec![Tag::event(task.event.id)],
+                ))
+            }).inspect(|e| {
+                task.props.insert(e.clone());
             })
         })
     }
