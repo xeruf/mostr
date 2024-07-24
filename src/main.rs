@@ -251,6 +251,7 @@ async fn main() {
             None => break,
         }
     }
+    println!();
 
     tasks.update_state("", |t| {
         if t.pure_state() == State::Active {
@@ -261,7 +262,7 @@ async fn main() {
     });
     drop(tasks);
 
-    eprintln!("Waiting for sync to relay...");
+    eprintln!("Submitting pending changes...");
     or_print(sender.await);
 }
 
