@@ -177,6 +177,10 @@ async fn main() {
                             }
                         }
                         Err(_) => {
+                            if input.chars().nth(1) == Some(':') {
+                                tasks.recursive = !tasks.recursive;
+                                continue
+                            }
                             let prop = &input[1..];
                             let pos = tasks.properties.iter().position(|s| s == &prop);
                             match pos {
@@ -211,6 +215,8 @@ async fn main() {
                         let slice = &input[dots..];
                         if !slice.is_empty() {
                             pos = EventId::parse(slice).ok().or_else(|| {
+                                // TODO check what is more intuitive:
+                                // currently resets filters before filtering again, maybe keep them
                                 tasks.move_to(pos);
                                 let filtered: Vec<EventId> = tasks
                                     .current_tasks()

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::iter::once;
 
 use nostr_sdk::{Event, EventBuilder, EventId, Kind, Tag};
 
@@ -8,13 +9,17 @@ use crate::task::{State, Task};
 type TaskMap = HashMap<EventId, Task>;
 pub(crate) struct Tasks {
     /// The Tasks
-    pub(crate) tasks: TaskMap,
+    tasks: TaskMap,
     /// The task properties currently visible
     pub(crate) properties: Vec<String>,
+    // TODO: plain, recursive, only leafs
+    pub(crate) recursive: bool,
+
     /// The task currently selected.
     position: Option<EventId>,
     /// A filtered view of the current tasks
     view: Vec<EventId>,
+
     sender: EventSender
 }
 
@@ -25,6 +30,7 @@ impl Tasks {
             properties: vec!["id".into(), "name".into(), "state".into(), "ttime".into()],
             position: None,
             view: Default::default(),
+            recursive: false,
             sender
         }
     }
@@ -50,18 +56,30 @@ impl Tasks {
         self.view = view
     }
 
+    fn resolve_tasks<'a>(&self, iter: impl IntoIterator<Item=&'a EventId>) -> Vec<&Task> {
+        iter.into_iter().filter_map(|id| self.tasks.get(&id)).flat_map(|task| {
+            if self.recursive {
+                self.resolve_tasks(task.children.iter()).into_iter().chain(once(task)).collect()
+            } else {
+                vec![task]
+            }
+        }).collect()
+    }
+    
     pub(crate) fn current_tasks(&self) -> Vec<&Task> {
-        let res: Vec<&Task> = self.view.iter().filter_map(|id| self.tasks.get(id)).collect();
+        let res: Vec<&Task> = self.resolve_tasks(self.view.iter());
         if res.len() > 0 {
             return res;
         }
         self.position.map_or_else(
-            || self.tasks.values().collect(),
-            |p| {
-                self.tasks
-                    .get(&p)
-                    .map_or(Vec::new(), |t| t.children.iter().filter_map(|id| self.tasks.get(id)).collect())
+            || {
+                if self.recursive {
+                    self.tasks.values().collect()
+                } else {
+                    self.tasks.values().filter(|t| t.parent_id() == None).collect()
+                }
             },
+            |p| self.tasks.get(&p).map_or(Vec::new(), |t| self.resolve_tasks(t.children.iter())),
         )
     }
 
