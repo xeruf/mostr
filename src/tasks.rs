@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::iter::once;
+use std::sync::mpsc;
 
-use nostr_sdk::{Event, EventBuilder, EventId, Kind, Tag};
+use nostr_sdk::{Event, EventBuilder, EventId, Keys, Kind, Tag};
 
 use crate::{EventSender, TASK_KIND};
 use crate::task::{State, Task};
@@ -12,8 +13,10 @@ pub(crate) struct Tasks {
     tasks: TaskMap,
     /// The task properties currently visible
     pub(crate) properties: Vec<String>,
-    // TODO: plain, recursive, only leafs
-    pub(crate) recursive: bool,
+    /// Negative: Only Leaf nodes
+    /// Zero: Only Active node
+    /// Positive: Go down the respective level
+    pub(crate) depth: i8,
 
     /// The task currently selected.
     position: Option<EventId>,
@@ -30,7 +33,7 @@ impl Tasks {
             properties: vec!["id".into(), "name".into(), "state".into(), "ttime".into()],
             position: None,
             view: Default::default(),
-            recursive: false,
+            depth: 1,
             sender
         }
     }
@@ -55,28 +58,45 @@ impl Tasks {
     pub(crate) fn set_filter(&mut self, view: Vec<EventId>) {
         self.view = view
     }
-
+    
     fn resolve_tasks<'a>(&self, iter: impl IntoIterator<Item=&'a EventId>) -> Vec<&Task> {
+        self.resolve_tasks_rec(iter, self.depth)
+    }
+
+    fn resolve_tasks_rec<'a>(&self, iter: impl IntoIterator<Item=&'a EventId>, depth: i8) -> Vec<&Task> {
         iter.into_iter().filter_map(|id| self.tasks.get(&id)).flat_map(|task| {
-            if self.recursive {
-                self.resolve_tasks(task.children.iter()).into_iter().chain(once(task)).collect()
+            let new_depth = depth - 1;
+            if new_depth < 0 {
+                let tasks = self.resolve_tasks_rec(task.children.iter(), new_depth).into_iter().collect::<Vec<&Task>>();
+                if tasks.is_empty() {
+                    vec![task]
+                } else {
+                    tasks
+                }
+            } else if new_depth > 0 {
+                self.resolve_tasks_rec(task.children.iter(), new_depth).into_iter().chain(once(task)).collect()
             } else {
                 vec![task]
             }
         }).collect()
     }
-    
+
     pub(crate) fn current_tasks(&self) -> Vec<&Task> {
+        if self.depth == 0 {
+            return self.position.and_then(|id| self.tasks.get(&id)).into_iter().collect();
+        }
         let res: Vec<&Task> = self.resolve_tasks(self.view.iter());
         if res.len() > 0 {
             return res;
         }
         self.position.map_or_else(
             || {
-                if self.recursive {
+                if self.depth > 8 {
                     self.tasks.values().collect()
-                } else {
+                } else if self.depth == 1 {
                     self.tasks.values().filter(|t| t.parent_id() == None).collect()
+                } else {
+                    self.resolve_tasks(self.tasks.values().filter(|t| t.parent_id() == None).map(|t| &t.event.id))
                 }
             },
             |p| self.tasks.get(&p).map_or(Vec::new(), |t| self.resolve_tasks(t.children.iter())),
@@ -250,4 +270,63 @@ impl<'a> Iterator for ParentIterator<'a> {
             t
         })
     }
+}
+
+#[test]
+fn test_depth() {
+    let (tx, rx) = mpsc::channel();
+    let mut tasks = Tasks::from(EventSender {
+        tx,
+        keys: Keys::generate(),
+    });
+    let t1 = tasks.make_task("t1");
+    assert_eq!(tasks.depth, 1);
+    assert_eq!(tasks.current_tasks().len(), 1);
+    tasks.depth = 0;
+    assert_eq!(tasks.current_tasks().len(), 0);
+    
+    tasks.move_to(t1);
+    tasks.depth = 2;
+    assert_eq!(tasks.current_tasks().len(), 0);
+    let t2 = tasks.make_task("t2");
+    assert_eq!(tasks.current_tasks().len(), 1);
+    let t3 = tasks.make_task("t3");
+    assert_eq!(tasks.current_tasks().len(), 2);
+    
+    tasks.move_to(t2);
+    assert_eq!(tasks.current_tasks().len(), 0);
+    let t4 = tasks.make_task("t4");
+    assert_eq!(tasks.current_tasks().len(), 1);
+    tasks.depth = 2;
+    assert_eq!(tasks.current_tasks().len(), 1);
+    tasks.depth = -1;
+    assert_eq!(tasks.current_tasks().len(), 1);
+
+    tasks.move_to(t1);
+    assert_eq!(tasks.current_tasks().len(), 2);
+    tasks.depth = 2;
+    assert_eq!(tasks.current_tasks().len(), 3);
+    tasks.set_filter(vec![t2.unwrap()]);
+    assert_eq!(tasks.current_tasks().len(), 2);
+    tasks.depth = 1;
+    assert_eq!(tasks.current_tasks().len(), 1);
+    tasks.depth = -1;
+    assert_eq!(tasks.current_tasks().len(), 1);
+    tasks.set_filter(vec![t2.unwrap(), t3.unwrap()]);
+    assert_eq!(tasks.current_tasks().len(), 2);
+    tasks.depth = 2;
+    assert_eq!(tasks.current_tasks().len(), 3);
+    tasks.depth = 1;
+    assert_eq!(tasks.current_tasks().len(), 2);
+
+    tasks.move_to(None);
+    assert_eq!(tasks.current_tasks().len(), 1);
+    tasks.depth = 2;
+    assert_eq!(tasks.current_tasks().len(), 3);
+    tasks.depth = 3;
+    assert_eq!(tasks.current_tasks().len(), 4);
+    tasks.depth = 9;
+    assert_eq!(tasks.current_tasks().len(), 4);
+    tasks.depth = -1;
+    assert_eq!(tasks.current_tasks().len(), 2);
 }

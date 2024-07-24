@@ -181,10 +181,6 @@ async fn main() {
                             }
                         }
                         Err(_) => {
-                            if input.chars().nth(1) == Some(':') {
-                                tasks.recursive = !tasks.recursive;
-                                continue
-                            }
                             let prop = &input[1..];
                             let pos = tasks.properties.iter().position(|s| s == &prop);
                             match pos {
@@ -217,37 +213,42 @@ async fn main() {
                             pos = tasks.parent(pos);
                         }
                         let slice = &input[dots..];
-                        if !slice.is_empty() {
-                            pos = EventId::parse(slice).ok().or_else(|| {
-                                // TODO check what is more intuitive:
-                                // currently resets filters before filtering again, maybe keep them
-                                tasks.move_to(pos);
-                                let filtered: Vec<EventId> = tasks
-                                    .current_tasks()
-                                    .iter()
-                                    .filter(|t| t.event.content.starts_with(slice))
-                                    .map(|t| t.event.id)
-                                    .collect();
-                                match filtered.len() {
-                                    0 => {
-                                        // No match, new task
-                                        tasks.make_task(slice)
-                                    }
-                                    1 => {
-                                        // One match, activate
-                                        Some(filtered.first().unwrap().clone())
-                                    }
-                                    _ => {
-                                        // Multiple match, filter
-                                        tasks.set_filter(filtered);
-                                        None
-                                    }
+                        if slice.is_empty() {
+                            tasks.move_to(pos);
+                            continue;
+                        }
+                        if let Ok(depth) = slice.parse::<i8>() {
+                            tasks.move_to(pos);
+                            tasks.depth = depth;
+                            continue;
+                        }
+                        pos = EventId::parse(slice).ok().or_else(|| {
+                            // TODO check what is more intuitive:
+                            // currently resets filters before filtering again, maybe keep them
+                            tasks.move_to(pos);
+                            let filtered: Vec<EventId> = tasks
+                                .current_tasks()
+                                .into_iter()
+                                .filter(|t| t.event.content.starts_with(slice))
+                                .map(|t| t.event.id)
+                                .collect();
+                            match filtered.len() {
+                                0 => {
+                                    // No match, new task
+                                    tasks.make_task(slice)
                                 }
-                            });
-                            if pos != None {
-                                tasks.move_to(pos);
+                                1 => {
+                                    // One match, activate
+                                    Some(filtered.first().unwrap().clone())
+                                }
+                                _ => {
+                                    // Multiple match, filter
+                                    tasks.set_filter(filtered);
+                                    None
+                                }
                             }
-                        } else {
+                        });
+                        if pos != None {
                             tasks.move_to(pos);
                         }
                     }
