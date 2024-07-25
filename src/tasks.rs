@@ -172,8 +172,10 @@ impl Tasks {
             tasks
                 .into_iter()
                 .filter(|t| {
-                    let mut iter = t.tags.iter();
-                    self.tags.iter().all(|tag| iter.any(|t| t == tag))
+                    t.tags.as_ref().map_or(false, |tags| {
+                        let mut iter = tags.iter();
+                        self.tags.iter().all(|tag| iter.any(|t| t == tag))
+                    })
                 })
                 .collect()
         }

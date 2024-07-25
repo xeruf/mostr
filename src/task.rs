@@ -8,14 +8,14 @@ pub(crate) struct Task {
     pub(crate) children: HashSet<EventId>,
     pub(crate) props: BTreeSet<Event>,
     /// Cached sorted tags of the event
-    pub(crate) tags: BTreeSet<Tag>,
+    pub(crate) tags: Option<BTreeSet<Tag>>,
 }
 impl Task {
     pub(crate) fn new(event: Event) -> Task {
         Task {
             children: Default::default(),
             props: Default::default(),
-            tags: event.tags.iter().cloned().collect(),
+            tags: if event.tags.is_empty() { None } else { Some(event.tags.iter().cloned().collect()) },
             event,
         }
     }
@@ -103,6 +103,12 @@ impl Task {
             "state" => self.state().map(|s| s.to_string()),
             "name" => Some(self.event.content.clone()),
             "time" => Some(self.time_tracked().to_string()), // TODO: format properly
+            "tags" => self.tags.as_ref().map(|tags| {
+                    tags.iter()
+                        .map(|t| format!("{}", t.content().unwrap()))
+                        .collect::<Vec<String>>()
+                        .join(" ")
+                }),
             "props" => Some(format!(
                 "{:?}",
                 self.props
