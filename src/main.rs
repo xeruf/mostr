@@ -1,15 +1,13 @@
-use std::borrow::Borrow;
 use std::env::args;
 use std::fmt::Display;
 use std::fs;
-use std::io::{Read, stdin, stdout, Write};
+use std::io::{stdin, stdout, Write};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::mpsc::Sender;
 
-use nostr_sdk::async_utility::futures_util::TryFutureExt;
 use nostr_sdk::prelude::*;
 use once_cell::sync::Lazy;
 
@@ -31,17 +29,13 @@ mod tasks;
 */
 static TASK_KIND: u64 = 1621;
 
-static MY_KEYS: Lazy<Keys> = Lazy::new(|| {
-    match fs::read_to_string("keys") {
-        Ok(key) => {
-            Keys::from_str(&key).unwrap()
-        }
-        Err(e) => {
-            eprintln!("{}", e);
-            let keys = Keys::generate();
-            fs::write("keys", keys.secret_key().unwrap().to_string());
-            keys
-        },
+static MY_KEYS: Lazy<Keys> = Lazy::new(|| match fs::read_to_string("keys") {
+    Ok(key) => Keys::from_str(&key).unwrap(),
+    Err(e) => {
+        eprintln!("{}", e);
+        let keys = Keys::generate();
+        fs::write("keys", keys.secret_key().unwrap().to_string());
+        keys
     }
 });
 
@@ -73,7 +67,7 @@ async fn main() {
 
     let client = Client::new(MY_KEYS.deref());
     client.add_relay("ws://localhost:4736").await;
-    println!("My key: {}", MY_KEYS.public_key());
+    println!("My public key: {}", MY_KEYS.public_key());
     //client.add_relay("wss://relay.damus.io").await;
     //client
     //    .add_relay_with_opts(
@@ -193,10 +187,8 @@ async fn main() {
                             }
                         }
                     },
-                    
-                    Some('-') => {
-                        tasks.add_note(&input[1..])
-                    }
+
+                    Some('-') => tasks.add_note(&input[1..]),
 
                     Some('>') | Some('<') => {
                         tasks.update_state(&input[1..], |_| {

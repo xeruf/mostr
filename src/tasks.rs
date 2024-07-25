@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::iter::once;
-use std::sync::mpsc;
 
 use nostr_sdk::{Event, EventBuilder, EventId, Keys, Kind, Tag};
 
@@ -23,7 +22,7 @@ pub(crate) struct Tasks {
     /// A filtered view of the current tasks
     view: Vec<EventId>,
 
-    sender: EventSender
+    sender: EventSender,
 }
 
 impl Tasks {
@@ -34,7 +33,7 @@ impl Tasks {
             position: None,
             view: Default::default(),
             depth: 1,
-            sender
+            sender,
         }
     }
 }
@@ -58,32 +57,49 @@ impl Tasks {
     pub(crate) fn set_filter(&mut self, view: Vec<EventId>) {
         self.view = view
     }
-    
+
     fn resolve_tasks<'a>(&self, iter: impl IntoIterator<Item=&'a EventId>) -> Vec<&Task> {
         self.resolve_tasks_rec(iter, self.depth)
     }
 
-    fn resolve_tasks_rec<'a>(&self, iter: impl IntoIterator<Item=&'a EventId>, depth: i8) -> Vec<&Task> {
-        iter.into_iter().filter_map(|id| self.tasks.get(&id)).flat_map(|task| {
-            let new_depth = depth - 1;
-            if new_depth < 0 {
-                let tasks = self.resolve_tasks_rec(task.children.iter(), new_depth).into_iter().collect::<Vec<&Task>>();
-                if tasks.is_empty() {
-                    vec![task]
+    fn resolve_tasks_rec<'a>(
+        &self,
+        iter: impl IntoIterator<Item=&'a EventId>,
+        depth: i8,
+    ) -> Vec<&Task> {
+        iter.into_iter()
+            .filter_map(|id| self.tasks.get(&id))
+            .flat_map(|task| {
+                let new_depth = depth - 1;
+                if new_depth < 0 {
+                    let tasks = self
+                        .resolve_tasks_rec(task.children.iter(), new_depth)
+                        .into_iter()
+                        .collect::<Vec<&Task>>();
+                    if tasks.is_empty() {
+                        vec![task]
+                    } else {
+                        tasks
+                    }
+                } else if new_depth > 0 {
+                    self.resolve_tasks_rec(task.children.iter(), new_depth)
+                        .into_iter()
+                        .chain(once(task))
+                        .collect()
                 } else {
-                    tasks
+                    vec![task]
                 }
-            } else if new_depth > 0 {
-                self.resolve_tasks_rec(task.children.iter(), new_depth).into_iter().chain(once(task)).collect()
-            } else {
-                vec![task]
-            }
-        }).collect()
+            })
+            .collect()
     }
 
     pub(crate) fn current_tasks(&self) -> Vec<&Task> {
         if self.depth == 0 {
-            return self.position.and_then(|id| self.tasks.get(&id)).into_iter().collect();
+            return self
+                .position
+                .and_then(|id| self.tasks.get(&id))
+                .into_iter()
+                .collect();
         }
         let res: Vec<&Task> = self.resolve_tasks(self.view.iter());
         if res.len() > 0 {
@@ -94,12 +110,24 @@ impl Tasks {
                 if self.depth > 8 {
                     self.tasks.values().collect()
                 } else if self.depth == 1 {
-                    self.tasks.values().filter(|t| t.parent_id() == None).collect()
+                    self.tasks
+                        .values()
+                        .filter(|t| t.parent_id() == None)
+                        .collect()
                 } else {
-                    self.resolve_tasks(self.tasks.values().filter(|t| t.parent_id() == None).map(|t| &t.event.id))
+                    self.resolve_tasks(
+                        self.tasks
+                            .values()
+                            .filter(|t| t.parent_id() == None)
+                            .map(|t| &t.event.id),
+                    )
                 }
             },
-            |p| self.tasks.get(&p).map_or(Vec::new(), |t| self.resolve_tasks(t.children.iter())),
+            |p| {
+                self.tasks
+                    .get(&p)
+                    .map_or(Vec::new(), |t| self.resolve_tasks(t.children.iter()))
+            },
         )
     }
 
@@ -112,7 +140,10 @@ impl Tasks {
                     .iter()
                     .map(|p| match p.as_str() {
                         "path" => self.taskpath(Some(task.event.id)),
-                        "rpath" => join_tasks(self.traverse_up_from(Some(task.event.id)).take_while(|t| Some(t.event.id) != self.position)),
+                        "rpath" => join_tasks(
+                            self.traverse_up_from(Some(task.event.id))
+                                .take_while(|t| Some(t.event.id) != self.position)
+                        ),
                         "ttime" => self.total_time_tracked(&task.event.id).to_string(),
                         prop => task.get(prop).unwrap_or(String::new()),
                     })
@@ -166,16 +197,20 @@ impl Tasks {
     }
 
     pub(crate) fn add_task(&mut self, event: Event) {
-        self.referenced_tasks(&event, |t| { t.children.insert(event.id); });
+        self.referenced_tasks(&event, |t| {
+            t.children.insert(event.id);
+        });
         if self.tasks.contains_key(&event.id) {
             //eprintln!("Did not insert duplicate event {}", event.id);
         } else {
             self.tasks.insert(event.id, Task::new(event));
         }
     }
-    
+
     pub(crate) fn add_prop(&mut self, event: &Event) {
-        self.referenced_tasks(&event, |t| { t.props.insert(event.clone()); });
+        self.referenced_tasks(&event, |t| {
+            t.props.insert(event.clone());
+        });
     }
 
     pub(crate) fn move_up(&mut self) {
@@ -230,15 +265,17 @@ impl Tasks {
         F: FnOnce(&Task) -> Option<State>,
     {
         self.tasks.get_mut(id).and_then(|task| {
-            f(task).and_then(|state| {
-                self.sender.submit(EventBuilder::new(
-                    state.kind(),
-                    comment,
-                    vec![Tag::event(task.event.id)],
-                ))
-            }).inspect(|e| {
-                task.props.insert(e.clone());
-            })
+            f(task)
+                .and_then(|state| {
+                    self.sender.submit(EventBuilder::new(
+                        state.kind(),
+                        comment,
+                        vec![Tag::event(task.event.id)],
+                    ))
+                })
+                .inspect(|e| {
+                    task.props.insert(e.clone());
+                })
         })
     }
 
@@ -266,13 +303,14 @@ impl Tasks {
     }
 }
 
-pub(crate) fn join_tasks<'a>(iter: impl IntoIterator<Item=&'a Task>) -> String{
+pub(crate) fn join_tasks<'a>(iter: impl IntoIterator<Item = &'a Task>) -> String {
     iter.into_iter()
         .map(|t| t.event.content.clone())
-        .fold(None, |acc, val| Some(acc.map_or_else(|| val.clone(), |cur| format!("{}>{}", val, cur))))
+        .fold(None, |acc, val| {
+            Some(acc.map_or_else(|| val.clone(), |cur| format!("{}>{}", val, cur)))
+        })
         .unwrap_or(String::new())
 }
-
 
 struct ParentIterator<'a> {
     tasks: &'a TaskMap,
@@ -295,6 +333,8 @@ impl<'a> Iterator for ParentIterator<'a> {
 
 #[test]
 fn test_depth() {
+    use std::sync::mpsc;
+
     let (tx, rx) = mpsc::channel();
     let mut tasks = Tasks::from(EventSender {
         tx,
@@ -305,7 +345,7 @@ fn test_depth() {
     assert_eq!(tasks.current_tasks().len(), 1);
     tasks.depth = 0;
     assert_eq!(tasks.current_tasks().len(), 0);
-    
+
     tasks.move_to(t1);
     tasks.depth = 2;
     assert_eq!(tasks.current_tasks().len(), 0);
@@ -313,7 +353,7 @@ fn test_depth() {
     assert_eq!(tasks.current_tasks().len(), 1);
     let t3 = tasks.make_task("t3");
     assert_eq!(tasks.current_tasks().len(), 2);
-    
+
     tasks.move_to(t2);
     assert_eq!(tasks.current_tasks().len(), 0);
     let t4 = tasks.make_task("t4");
