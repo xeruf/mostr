@@ -41,23 +41,25 @@ Dots can be repeated to move to parent tasks
 
 State descriptions can be used for example for Kanban columns.
 
-### Columns
+### Available Columns
 
 - `id`
 - `parentid`
 - `name`
 - `state`
+- `tags`
 - `desc` - accumulated notes of the task
 - `path` - name including parent tasks
 - `rpath` - name including parent tasks up to active task
 - `time` - time tracked
 - `ttime` - time tracked including subtasks
 - TBI: `progress` - how many subtasks are complete
+- TBI: `progressp` - subtask completion in percent
 
 For debugging: `props` - Task Property Events
 
 ## Plans
 
 - Expiry (no need to fetch potential years of history)
-- Web Interface, Messenger bots
+- Web Interface, Messenger integrations
 - TUI - Clear terminal?
