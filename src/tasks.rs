@@ -246,9 +246,23 @@ impl Tasks {
     where
         F: FnOnce(&Task) -> Option<State>,
     {
-        self.position.and_then(|id| {
-            self.update_state_for(&id, comment, f)
-        })
+        self.position
+            .and_then(|id| self.update_state_for(&id, comment, f))
+    }
+
+    pub(crate) fn add_note(&mut self, note: &str) {
+        match self.position {
+            None => eprintln!("Cannot add note '{}' without active task", note),
+            Some(id) => {
+                self.sender
+                    .submit(EventBuilder::text_note(note, vec![]))
+                    .map(|e| {
+                        self.tasks.get_mut(&id).map(|t| {
+                            t.props.insert(e.clone());
+                        });
+                    });
+            }
+        }
     }
 }
 

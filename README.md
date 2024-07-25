@@ -32,9 +32,11 @@ TASK add syntax: `NAME: TAG1 TAG2`
 Dots can be repeated to move to parent tasks
 
 - `:[IND][COL]` - add / remove property column COL to IND or end
-- `>` - Complete active task and move to parent
-- `<` - Close active task and move to parent
-- TBI: `-TEXT` - add text note (comment / description)
+- `>[TEXT]` - Complete active task and move to parent, with optional state description
+- `<[TEXT]` - Close active task and move to parent, with optional state description
+- `-TEXT` - add text note (comment / description)
+
+State descriptions can be used for example for Kanban columns.
 
 ### Columns
 

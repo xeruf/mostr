@@ -193,6 +193,10 @@ async fn main() {
                             }
                         }
                     },
+                    
+                    Some('-') => {
+                        tasks.add_note(&input[1..])
+                    }
 
                     Some('>') | Some('<') => {
                         tasks.update_state(&input[1..], |_| {
