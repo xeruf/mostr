@@ -7,13 +7,16 @@ pub(crate) struct Task {
     pub(crate) event: Event,
     pub(crate) children: HashSet<EventId>,
     pub(crate) props: BTreeSet<Event>,
+    /// Cached sorted tags of the event
+    pub(crate) tags: BTreeSet<Tag>,
 }
 impl Task {
     pub(crate) fn new(event: Event) -> Task {
         Task {
-            event,
             children: Default::default(),
             props: Default::default(),
+            tags: event.tags.iter().cloned().collect(),
+            event,
         }
     }
 

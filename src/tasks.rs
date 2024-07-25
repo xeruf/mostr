@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::iter::once;
 
 use nostr_sdk::{Event, EventBuilder, EventId, Keys, Kind, Tag};
+use nostr_sdk::Tag::Hashtag;
 
 use crate::{EventSender, TASK_KIND};
 use crate::task::{State, Task};
@@ -17,8 +18,10 @@ pub(crate) struct Tasks {
     /// Positive: Go down the respective level
     pub(crate) depth: i8,
 
-    /// The task currently selected.
+    /// Currently active task
     position: Option<EventId>,
+    /// Currently active tags
+    tags: BTreeSet<Tag>,
     /// A filtered view of the current tasks
     view: Vec<EventId>,
 
@@ -32,6 +35,7 @@ impl Tasks {
             properties: vec!["id".into(), "name".into(), "state".into(), "ttime".into()],
             position: None,
             view: Default::default(),
+            tags: Default::default(),
             depth: 1,
             sender,
         }
@@ -65,6 +69,12 @@ impl Tasks {
 
     pub(crate) fn taskpath(&self, id: Option<EventId>) -> String {
         join_tasks(self.traverse_up_from(id))
+            + &self
+                .tags
+                .iter()
+                .map(|t| format!(" #{}", t.content().unwrap()))
+                .collect::<Vec<String>>()
+                .join("")
     }
 
     pub(crate) fn traverse_up_from(&self, id: Option<EventId>) -> ParentIterator {
@@ -132,7 +142,7 @@ impl Tasks {
         if res.len() > 0 {
             return res;
         }
-        self.position.map_or_else(
+        let tasks = self.position.map_or_else(
             || {
                 if self.depth > 8 {
                     self.tasks.values().collect()
@@ -155,7 +165,18 @@ impl Tasks {
                     .get(&p)
                     .map_or(Vec::new(), |t| self.resolve_tasks(t.children.iter()))
             },
-        )
+        );
+        if self.tags.is_empty() {
+            tasks
+        } else {
+            tasks
+                .into_iter()
+                .filter(|t| {
+                    let mut iter = t.tags.iter();
+                    self.tags.iter().all(|tag| iter.any(|t| t == tag))
+                })
+                .collect()
+        }
     }
 
     pub(crate) fn print_current_tasks(&self) {
@@ -187,6 +208,11 @@ impl Tasks {
         self.view = view
     }
 
+    pub(crate) fn add_tag(&mut self, tag: String) {
+        self.view.clear();
+        self.tags.insert(Hashtag(tag));
+    }
+
     pub(crate) fn move_up(&mut self) {
         self.move_to(
             self.position
@@ -197,6 +223,7 @@ impl Tasks {
 
     pub(crate) fn move_to(&mut self, id: Option<EventId>) {
         self.view.clear();
+        self.tags.clear();
         if id == self.position {
             return;
         }
@@ -220,18 +247,12 @@ impl Tasks {
     // Updates
 
     pub(crate) fn build_task(&self, input: &str) -> EventBuilder {
-        let mut tags: Vec<Tag> = Vec::new();
+        let mut tags: Vec<Tag> = self.tags.iter().cloned().collect();
         self.position.inspect(|p| tags.push(Tag::event(*p)));
         return match input.split_once(": ") {
             None => EventBuilder::new(Kind::from(TASK_KIND), input, tags),
             Some(s) => {
-                tags.append(
-                    &mut s
-                        .1
-                        .split(" ")
-                        .map(|t| Tag::Hashtag(t.to_string()))
-                        .collect(),
-                );
+                tags.append(&mut s.1.split(" ").map(|t| Hashtag(t.to_string())).collect());
                 EventBuilder::new(Kind::from(TASK_KIND), s.0, tags)
             }
         };

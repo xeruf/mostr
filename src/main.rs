@@ -200,6 +200,10 @@ async fn main() {
                         });
                         tasks.move_up()
                     }
+                    
+                    Some('#') => {
+                        tasks.add_tag(input[1..].to_string());
+                    }
 
                     Some('.') => {
                         let mut dots = 1;

@@ -22,7 +22,9 @@ Recommendation: Flat hierarchy, using tags for filtering (TBI)
 
 ## Reference
 
-TASK add syntax: `NAME: TAG1 TAG2`
+### Command Syntax
+
+TASK add syntax: `NAME: TAG1 TAG2 ...`
 
 - `TASK` - create task
 - `.` - clear filters and reload
@@ -35,6 +37,7 @@ Dots can be repeated to move to parent tasks
 - `>[TEXT]` - Complete active task and move to parent, with optional state description
 - `<[TEXT]` - Close active task and move to parent, with optional state description
 - `-TEXT` - add text note (comment / description)
+- `#TAG` - filter by tag
 
 State descriptions can be used for example for Kanban columns.
 
