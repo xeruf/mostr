@@ -5,6 +5,7 @@ use nostr_sdk::{Event, EventBuilder, EventId, Kind, Tag, Timestamp};
 
 use crate::EventSender;
 
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Task {
     pub(crate) event: Event,
     pub(crate) children: HashSet<EventId>,
@@ -152,8 +153,8 @@ impl Task {
 }
 
 pub(crate) struct TaskState {
-    name: Option<String>,
     state: State,
+    name: Option<String>,
     time: Timestamp,
 }
 impl TaskState {

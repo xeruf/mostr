@@ -8,6 +8,7 @@ use crate::{EventSender, TASK_KIND};
 use crate::task::{State, Task};
 
 type TaskMap = HashMap<EventId, Task>;
+#[derive(Debug, Clone)]
 pub(crate) struct Tasks {
     /// The Tasks
     tasks: TaskMap,
@@ -22,6 +23,8 @@ pub(crate) struct Tasks {
     position: Option<EventId>,
     /// Currently active tags
     tags: BTreeSet<Tag>,
+    /// Current active state
+    state: Option<String>,
     /// A filtered view of the current tasks
     view: Vec<EventId>,
 
@@ -36,6 +39,7 @@ impl Tasks {
             position: None,
             view: Default::default(),
             tags: Default::default(),
+            state: Some(State::Open.to_string()),
             depth: 1,
             sender,
         }
@@ -44,6 +48,10 @@ impl Tasks {
 
 impl Tasks {
     // Accessors
+
+    pub(crate) fn get_by_id(&self, id: &EventId) -> Option<&Task> {
+        self.tasks.get(id)
+    }
 
     pub(crate) fn get_position(&self) -> Option<EventId> {
         self.position
@@ -62,19 +70,22 @@ impl Tasks {
 
     // Parents
 
-    pub(crate) fn parent(&self, id: Option<EventId>) -> Option<EventId> {
+    pub(crate) fn get_parent(&self, id: Option<EventId>) -> Option<EventId> {
         id.and_then(|id| self.tasks.get(&id))
             .and_then(|t| t.parent_id())
     }
 
-    pub(crate) fn taskpath(&self, id: Option<EventId>) -> String {
+    pub(crate) fn get_prompt_suffix(&self) -> String {
+        self.tags
+            .iter()
+            .map(|t| format!(" #{}", t.content().unwrap()))
+            .chain(self.state.as_ref().map(|s| format!(" ?{s}")).into_iter())
+            .collect::<Vec<String>>()
+            .join("")
+    }
+
+    pub(crate) fn get_task_path(&self, id: Option<EventId>) -> String {
         join_tasks(self.traverse_up_from(id))
-            + &self
-                .tags
-                .iter()
-                .map(|t| format!(" #{}", t.content().unwrap()))
-                .collect::<Vec<String>>()
-                .join("")
     }
 
     pub(crate) fn traverse_up_from(&self, id: Option<EventId>) -> ParentIterator {
@@ -140,48 +151,29 @@ impl Tasks {
         }
         let res: Vec<&Task> = self.resolve_tasks(self.view.iter());
         if res.len() > 0 {
+            // Currently ignores filter when it matches nothing
             return res;
         }
-        let tasks = self.position.map_or_else(
-            || {
-                if self.depth > 8 {
-                    self.tasks.values().collect()
-                } else if self.depth == 1 {
-                    self.tasks
-                        .values()
-                        .filter(|t| t.parent_id() == None)
-                        .collect()
-                } else {
-                    self.resolve_tasks(
-                        self.tasks
-                            .values()
-                            .filter(|t| t.parent_id() == None)
-                            .map(|t| &t.event.id),
-                    )
-                }
-            },
-            |p| {
-                self.tasks
-                    .get(&p)
-                    .map_or(Vec::new(), |t| self.resolve_tasks(t.children.iter()))
-            },
-        );
-        if self.tags.is_empty() {
-            tasks
-        } else {
-            tasks
-                .into_iter()
-                .filter(|t| {
-                    t.tags.as_ref().map_or(false, |tags| {
-                        let mut iter = tags.iter();
-                        self.tags.iter().all(|tag| iter.any(|t| t == tag))
-                    })
-                })
-                .collect()
-        }
+        self.resolve_tasks(
+            self.tasks
+                .values()
+                .filter(|t| t.parent_id() == self.position)
+                .map(|t| t.get_id()),
+        )
+        .into_iter()
+        .filter(|t| {
+            self.state.as_ref().map_or(true, |state| {
+                t.state().is_some_and(|t| t.matches_label(state))
+            }) && (self.tags.is_empty()
+                || t.tags.as_ref().map_or(false, |tags| {
+                    let mut iter = tags.iter();
+                    self.tags.iter().all(|tag| iter.any(|t| t == tag))
+                }))
+        })
+        .collect()
     }
 
-    pub(crate) fn print_current_tasks(&self) {
+    pub(crate) fn print_tasks(&self) {
         println!("{}", self.properties.join("\t"));
         for task in self.current_tasks() {
             println!(
@@ -189,7 +181,7 @@ impl Tasks {
                 self.properties
                     .iter()
                     .map(|p| match p.as_str() {
-                        "path" => self.taskpath(Some(task.event.id)),
+                        "path" => self.get_task_path(Some(task.event.id)),
                         "rpath" => join_tasks(
                             self.traverse_up_from(Some(task.event.id))
                                 .take_while(|t| Some(t.event.id) != self.position)
@@ -207,12 +199,17 @@ impl Tasks {
     // Movement and Selection
 
     pub(crate) fn set_filter(&mut self, view: Vec<EventId>) {
-        self.view = view
+        self.view = view;
     }
 
     pub(crate) fn add_tag(&mut self, tag: String) {
         self.view.clear();
         self.tags.insert(Hashtag(tag));
+    }
+
+    pub(crate) fn set_state_filter(&mut self, state: Option<String>) {
+        self.view.clear();
+        self.state = state;
     }
 
     pub(crate) fn move_up(&mut self) {
@@ -229,6 +226,7 @@ impl Tasks {
         if id == self.position {
             return;
         }
+        // TODO: erases previous state comment - do not track active via state
         self.update_state("", |s| {
             if s.pure_state() == State::Active {
                 Some(State::Open)
@@ -264,6 +262,8 @@ impl Tasks {
         self.sender.submit(self.build_task(input)).map(|e| {
             let id = e.id;
             self.add_task(e);
+            let state = self.state.clone().unwrap_or("Open".to_string());
+            self.set_state_for(&id, &state);
             id
         })
     }
@@ -293,23 +293,28 @@ impl Tasks {
         });
     }
 
+    fn set_state_for(&mut self, id: &EventId, comment: &str) -> Option<Event> {
+        let t = self.tasks.get_mut(id);
+        t.and_then(|task| {
+            task.set_state(
+                &self.sender,
+                match comment {
+                    "Closed" => State::Closed,
+                    "Done" => State::Done,
+                    _ => State::Open,
+                },
+                comment,
+            )
+        })
+    }
+
     pub(crate) fn update_state_for<F>(&mut self, id: &EventId, comment: &str, f: F) -> Option<Event>
     where
         F: FnOnce(&Task) -> Option<State>,
     {
-        self.tasks.get_mut(id).and_then(|task| {
-            f(task)
-                .and_then(|state| {
-                    self.sender.submit(EventBuilder::new(
-                        state.kind(),
-                        comment,
-                        vec![Tag::event(task.event.id)],
-                    ))
-                })
-                .inspect(|e| {
-                    task.props.insert(e.clone());
-                })
-        })
+        self.tasks
+            .get_mut(id)
+            .and_then(|task| f(task).and_then(|state| task.set_state(&self.sender, state, comment)))
     }
 
     pub(crate) fn update_state<F>(&mut self, comment: &str, f: F) -> Option<Event>
@@ -368,13 +373,16 @@ impl<'a> Iterator for ParentIterator<'a> {
 fn test_depth() {
     use std::sync::mpsc;
 
-    let (tx, rx) = mpsc::channel();
+    let (tx, _rx) = mpsc::channel();
     let mut tasks = Tasks::from(EventSender {
         tx,
         keys: Keys::generate(),
     });
     let t1 = tasks.make_task("t1");
+    let task1 = tasks.get_by_id(&t1.unwrap()).unwrap();
     assert_eq!(tasks.depth, 1);
+    assert_eq!(task1.state().unwrap().get_label(), "Open");
+    //eprintln!("{:?}", tasks);
     assert_eq!(tasks.current_tasks().len(), 1);
     tasks.depth = 0;
     assert_eq!(tasks.current_tasks().len(), 0);

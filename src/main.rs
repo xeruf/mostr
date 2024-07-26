@@ -40,6 +40,7 @@ static MY_KEYS: Lazy<Keys> = Lazy::new(|| match fs::read_to_string("keys") {
     }
 });
 
+#[derive(Debug, Clone)]
 struct EventSender {
     tx: Sender<Event>,
     keys: Keys,
@@ -155,12 +156,13 @@ async fn main() {
     }
 
     println!();
+    let mut lines = stdin().lines();
     loop {
-        tasks.print_current_tasks();
+        tasks.print_tasks();
 
-        print!(" {}) ", tasks.taskpath(tasks.get_position()));
+        print!(" {}{}) ", tasks.get_task_path(tasks.get_position()), tasks.get_prompt_suffix());
         stdout().flush().unwrap();
-        match stdin().lines().next() {
+        match lines.next() {
             Some(Ok(input)) => {
                 while let Ok(notification) = notifications.try_recv() {
                     if let RelayPoolNotification::Event {
@@ -208,21 +210,7 @@ async fn main() {
 
                     Some('?') => {
                         let arg = &input[1..];
-                        tasks.move_to(tasks.get_position());
-                        tasks.set_filter(
-                            tasks
-                                .current_tasks()
-                                .into_iter()
-                                .filter(|t| {
-                                    if arg.is_empty() {
-                                        t.pure_state() == State::Open
-                                    } else {
-                                        t.state().is_some_and(|s| s.get_label() == arg)
-                                    }
-                                })
-                                .map(|t| t.event.id)
-                                .collect(),
-                        );
+                        tasks.set_state_filter(Some(arg.to_string()).filter(|s| !s.is_empty()));
                     }
 
                     Some('-') => tasks.add_note(&input[1..]),
@@ -247,7 +235,7 @@ async fn main() {
                         let mut pos = tasks.get_position();
                         for _ in iter.take_while(|c| c == &'.') {
                             dots += 1;
-                            pos = tasks.parent(pos);
+                            pos = tasks.get_parent(pos);
                         }
                         let slice = &input[dots..];
                         if slice.is_empty() {
