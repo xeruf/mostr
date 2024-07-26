@@ -139,23 +139,24 @@ async fn main() {
 
     println!();
     loop {
-        while let Ok(notification) = notifications.try_recv() {
-            if let RelayPoolNotification::Event {
-                subscription_id,
-                event,
-                ..
-            } = notification
-            {
-                print_event(&event);
-                tasks.add(*event);
-            }
-        }
         tasks.print_current_tasks();
 
         print!(" {}) ", tasks.taskpath(tasks.get_position()));
         stdout().flush().unwrap();
         match stdin().lines().next() {
             Some(Ok(input)) => {
+                while let Ok(notification) = notifications.try_recv() {
+                    if let RelayPoolNotification::Event {
+                        subscription_id,
+                        event,
+                        ..
+                    } = notification
+                    {
+                        print_event(&event);
+                        tasks.add(*event);
+                    }
+                }
+
                 let mut iter = input.chars();
                 let op = iter.next();
                 match op {
@@ -188,6 +189,25 @@ async fn main() {
                         }
                     },
 
+                    Some('?') => {
+                        let arg = &input[1..];
+                        tasks.move_to(tasks.get_position());
+                        tasks.set_filter(
+                            tasks
+                                .current_tasks()
+                                .into_iter()
+                                .filter(|t| {
+                                    if arg.is_empty() {
+                                        t.pure_state() == State::Open
+                                    } else {
+                                        t.state().is_some_and(|s| s.get_label() == arg)
+                                    }
+                                })
+                                .map(|t| t.event.id)
+                                .collect(),
+                        );
+                    }
+
                     Some('-') => tasks.add_note(&input[1..]),
 
                     Some('>') | Some('<') => {
@@ -200,7 +220,7 @@ async fn main() {
                         });
                         tasks.move_up()
                     }
-                    
+
                     Some('#') => {
                         tasks.add_tag(input[1..].to_string());
                     }

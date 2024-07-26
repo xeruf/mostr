@@ -36,10 +36,12 @@ Dots can be repeated to move to parent tasks
 - `:[IND][COL]` - add / remove property column COL to IND or end
 - `>[TEXT]` - Complete active task and move to parent, with optional state description
 - `<[TEXT]` - Close active task and move to parent, with optional state description
-- `-TEXT` - add text note (comment / description)
 - `#TAG` - filter by tag
+- `?TAG` - filter by state (type or description)
+- `-TEXT` - add text note (comment / description)
 
 State descriptions can be used for example for Kanban columns.
+An active tag or state filter will also create new tasks with those corresponding attributes.
 
 ### Available Columns
 

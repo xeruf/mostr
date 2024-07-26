@@ -42,14 +42,7 @@ impl Task {
 
     fn states(&self) -> impl Iterator<Item = TaskState> + '_ {
         self.props.iter().filter_map(|event| {
-            match event.kind.as_u32() {
-                1630 => Some(State::Open),
-                1631 => Some(State::Done),
-                1632 => Some(State::Closed),
-                1633 => Some(State::Active),
-                _ => None,
-            }
-            .map(|s| TaskState {
+            event.kind.try_into().ok().map(|s| TaskState {
                 name: if event.content.is_empty() {
                     None
                 } else {
@@ -61,7 +54,7 @@ impl Task {
         })
     }
 
-    fn state(&self) -> Option<TaskState> {
+    pub(crate) fn state(&self) -> Option<TaskState> {
         self.states().max_by_key(|t| t.time)
     }
 
@@ -130,10 +123,15 @@ impl Task {
     }
 }
 
-struct TaskState {
+pub(crate) struct TaskState {
     name: Option<String>,
     state: State,
     time: Timestamp,
+}
+impl TaskState {
+    pub(crate) fn get_label(&self) -> String {
+        self.name.clone().unwrap_or_else(|| self.state.to_string())
+    }
 }
 impl fmt::Display for TaskState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -154,6 +152,19 @@ pub(crate) enum State {
     Open,
     Active,
     Done,
+}
+impl TryFrom<Kind> for State {
+    type Error = ();
+
+    fn try_from(value: Kind) -> Result<Self, Self::Error> {
+        match value.as_u32() {
+            1630 => Ok(State::Open),
+            1631 => Ok(State::Done),
+            1632 => Ok(State::Closed),
+            1633 => Ok(State::Active),
+            _ => Err(()),
+        }
+    }
 }
 impl State {
     pub(crate) fn kind(&self) -> Kind {
