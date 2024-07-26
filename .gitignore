@@ -1,5 +1,6 @@
 /target
 
+relays
 keys
 *.html
 /src/bin

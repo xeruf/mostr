@@ -1,7 +1,8 @@
 use std::env::args;
 use std::fmt::Display;
 use std::fs;
-use std::io::{stdin, stdout, Write};
+use std::fs::File;
+use std::io::{BufRead, BufReader, stdin, stdout, Write};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::ops::Deref;
 use std::str::FromStr;
@@ -66,9 +67,25 @@ async fn main() {
     let proxy = Some(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 9050)));
 
     let client = Client::new(MY_KEYS.deref());
-    client.add_relay("ws://localhost:4736").await;
     println!("My public key: {}", MY_KEYS.public_key());
-    //client.add_relay("wss://relay.damus.io").await;
+    match File::open("relays").map(|f| BufReader::new(f).lines().flatten()) {
+        Ok(lines) => {
+            for line in lines {
+                or_print(client.add_relay(line).await);
+            }
+        }
+        Err(e) => {
+            eprintln!("Could not read relays file: {}", e);
+            print!("Relay? ");
+            stdout().flush().unwrap();
+            match stdin().lines().next() {
+                Some(Ok(line)) => {
+                    or_print(client.add_relay(if line.contains("://") { line } else { "wss://".to_string() + &line }).await);
+                }
+                _ => {}
+            };
+        }
+    }
     //client
     //    .add_relay_with_opts(
     //        "wss://relay.nostr.info",
