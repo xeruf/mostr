@@ -1,7 +1,13 @@
 [package]
 name = "mostr"
+description = "A nested task chat, powered by nostr."
+repository  = "https://forge.ftt.gmbh/janek/mostr"
+readme = "README.md"
+license = "GPL 3.0"
+authors = ["melonion"]
 version = "0.1.0"
 edition = "2021"
+default-run = "mostr"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
