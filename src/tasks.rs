@@ -35,7 +35,13 @@ impl Tasks {
     pub(crate) fn from(sender: EventSender) -> Self {
         Tasks {
             tasks: Default::default(),
-            properties: vec!["id".into(), "name".into(), "state".into(), "ttime".into()],
+            properties: vec![
+                "state".into(),
+                "ttime".into(),
+                "rpath".into(),
+                "tags".into(),
+                "desc".into(),
+            ],
             position: None,
             view: Default::default(),
             tags: Default::default(),
