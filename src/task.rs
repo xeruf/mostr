@@ -15,7 +15,11 @@ impl Task {
         Task {
             children: Default::default(),
             props: Default::default(),
-            tags: if event.tags.is_empty() { None } else { Some(event.tags.iter().cloned().collect()) },
+            tags: if event.tags.is_empty() {
+                None
+            } else {
+                Some(event.tags.iter().cloned().collect())
+            },
             event,
         }
     }
@@ -30,10 +34,10 @@ impl Task {
         None
     }
 
-    fn descriptions(&self) -> impl Iterator<Item = String> + '_ {
+    fn descriptions(&self) -> impl Iterator<Item = &String> + '_ {
         self.props.iter().filter_map(|event| {
             if event.kind == Kind::TextNote {
-                Some(event.content.clone())
+                Some(&event.content)
             } else {
                 None
             }
@@ -97,11 +101,11 @@ impl Task {
             "name" => Some(self.event.content.clone()),
             "time" => Some(self.time_tracked().to_string()), // TODO: format properly
             "tags" => self.tags.as_ref().map(|tags| {
-                    tags.iter()
-                        .map(|t| format!("{}", t.content().unwrap()))
-                        .collect::<Vec<String>>()
-                        .join(" ")
-                }),
+                tags.iter()
+                    .map(|t| format!("{}", t.content().unwrap()))
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            }),
             "props" => Some(format!(
                 "{:?}",
                 self.props
@@ -111,8 +115,8 @@ impl Task {
             )),
             "desc" | "description" => self.descriptions().fold(None, |total, s| {
                 Some(match total {
-                    None => s,
-                    Some(i) => i + " " + &s,
+                    None => s.clone(),
+                    Some(i) => i + " " + s,
                 })
             }),
             _ => {
