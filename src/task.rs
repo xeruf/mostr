@@ -1,7 +1,9 @@
 use std::collections::{BTreeSet, HashSet};
 use std::fmt;
 
-use nostr_sdk::{Event, EventId, Kind, Tag, Timestamp};
+use nostr_sdk::{Event, EventBuilder, EventId, Kind, Tag, Timestamp};
+
+use crate::EventSender;
 
 pub(crate) struct Task {
     pub(crate) event: Event,
@@ -10,6 +12,7 @@ pub(crate) struct Task {
     /// Cached sorted tags of the event
     pub(crate) tags: Option<BTreeSet<Tag>>,
 }
+
 impl Task {
     pub(crate) fn new(event: Event) -> Task {
         Task {
@@ -22,6 +25,10 @@ impl Task {
             },
             event,
         }
+    }
+
+    pub(crate) fn get_id(&self) -> &EventId {
+        &self.event.id
     }
 
     pub(crate) fn parent_id(&self) -> Option<EventId> {
@@ -64,6 +71,23 @@ impl Task {
 
     pub(crate) fn pure_state(&self) -> State {
         self.state().map_or(State::Open, |s| s.state)
+    }
+
+    pub(crate) fn set_state(
+        &mut self,
+        sender: &EventSender,
+        state: State,
+        comment: &str,
+    ) -> Option<Event> {
+        sender
+            .submit(EventBuilder::new(
+                state.kind(),
+                comment,
+                vec![Tag::event(self.event.id)],
+            ))
+            .inspect(|e| {
+                self.props.insert(e.clone());
+            })
     }
 
     fn default_state(&self) -> TaskState {
@@ -135,6 +159,11 @@ pub(crate) struct TaskState {
 impl TaskState {
     pub(crate) fn get_label(&self) -> String {
         self.name.clone().unwrap_or_else(|| self.state.to_string())
+    }
+    pub(crate) fn matches_label(&self, label: &str) -> bool {
+        self.state == State::Active
+            || self.name.as_ref().is_some_and(|n| n == label)
+            || self.state.to_string() == label
     }
 }
 impl fmt::Display for TaskState {
