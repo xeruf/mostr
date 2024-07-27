@@ -1,4 +1,4 @@
-use std::env::args;
+use std::env::{args, var};
 use std::fmt::Display;
 use std::fs;
 use std::fs::File;
@@ -84,26 +84,33 @@ async fn main() {
 
     let client = Client::new(&keys);
     println!("My public key: {}", keys.public_key());
-    match File::open(&relayfile).map(|f| BufReader::new(f).lines().flatten()) {
-        Ok(lines) => {
-            for line in lines {
-                or_print(client.add_relay(line).await);
-            }
+    match var("MOSTR_RELAY") {
+        Ok(relay) => {
+            or_print(client.add_relay(relay).await);
         }
-        Err(e) => {
-            eprintln!("Could not read relays file: {}", e);
-            if let Some(line) = prompt("Relay?") {
-                let url = if line.contains("://") { line } else { "wss://".to_string() + &line };
-                or_print(
-                    client
-                        .add_relay(url.clone())
-                        .await,
-                ).map(|bool| {
-                    if bool { 
-                        or_print(fs::write(&relayfile, url));
+        _ => {
+            match File::open(&relayfile).map(|f| BufReader::new(f).lines().flatten()) {
+                Ok(lines) => {
+                    for line in lines {
+                        or_print(client.add_relay(line).await);
                     }
-                });
-            };
+                }
+                Err(e) => {
+                    eprintln!("Could not read relays file: {}", e);
+                    if let Some(line) = prompt("Relay?") {
+                        let url = if line.contains("://") { line } else { "wss://".to_string() + &line };
+                        or_print(
+                            client
+                                .add_relay(url.clone())
+                                .await,
+                        ).map(|bool| {
+                            if bool {
+                                or_print(fs::write(&relayfile, url));
+                            }
+                        });
+                    };
+                }
+            }
         }
     }
 
