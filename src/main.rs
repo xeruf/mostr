@@ -3,14 +3,14 @@ use std::fmt::Display;
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, stdin, stdout, Write};
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::ops::Deref;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::mpsc::Sender;
 
 use nostr_sdk::prelude::*;
-use once_cell::sync::Lazy;
+use xdg::BaseDirectories;
 
 use crate::task::State;
 use crate::tasks::Tasks;
@@ -30,16 +30,6 @@ mod tasks;
 */
 static TASK_KIND: u64 = 1621;
 
-static MY_KEYS: Lazy<Keys> = Lazy::new(|| match fs::read_to_string("keys") {
-    Ok(key) => Keys::from_str(&key).unwrap(),
-    Err(e) => {
-        eprintln!("{}", e);
-        let keys = Keys::generate();
-        fs::write("keys", keys.secret_key().unwrap().to_string());
-        keys
-    }
-});
-
 #[derive(Debug, Clone)]
 struct EventSender {
     tx: Sender<Event>,
@@ -47,7 +37,7 @@ struct EventSender {
 }
 impl EventSender {
     fn submit(&self, event_builder: EventBuilder) -> Option<Event> {
-        or_print(event_builder.to_event(MY_KEYS.deref())).inspect(|event| {
+        or_print(event_builder.to_event(&self.keys)).inspect(|event| {
             or_print(self.tx.send(event.clone()));
         })
     }
@@ -63,13 +53,38 @@ fn or_print<T, U: Display>(result: Result<T, U>) -> Option<T> {
     }
 }
 
+fn prompt(prompt: &str) -> Option<String> {
+    print!("{} ", prompt);
+    stdout().flush().unwrap();
+    match stdin().lines().next() {
+        Some(Ok(line)) => Some(line),
+        _ => None,
+    }
+}
+
 #[tokio::main]
 async fn main() {
-    let proxy = Some(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 9050)));
+    let config_dir = or_print(BaseDirectories::new())
+        .and_then(|d| or_print(d.create_config_directory("mostr")))
+        .unwrap_or(PathBuf::new());
+    let keysfile = config_dir.join("key");
+    let relayfile = config_dir.join("relays");
 
-    let client = Client::new(MY_KEYS.deref());
-    println!("My public key: {}", MY_KEYS.public_key());
-    match File::open("relays").map(|f| BufReader::new(f).lines().flatten()) {
+    let keys = match fs::read_to_string(&keysfile).map(|s| Keys::from_str(&s)) {
+        Ok(Ok(key)) => key,
+        _ => {
+            eprintln!("Could not read keys from {}", keysfile.to_string_lossy());
+            let keys = prompt("Secret Key?")
+                .and_then(|s| or_print(Keys::from_str(&s)))
+                .unwrap_or_else(|| Keys::generate());
+            or_print(fs::write(&keysfile, keys.secret_key().unwrap().to_string()));
+            keys
+        }
+    };
+
+    let client = Client::new(&keys);
+    println!("My public key: {}", keys.public_key());
+    match File::open(&relayfile).map(|f| BufReader::new(f).lines().flatten()) {
         Ok(lines) => {
             for line in lines {
                 or_print(client.add_relay(line).await);
@@ -77,16 +92,22 @@ async fn main() {
         }
         Err(e) => {
             eprintln!("Could not read relays file: {}", e);
-            print!("Relay? ");
-            stdout().flush().unwrap();
-            match stdin().lines().next() {
-                Some(Ok(line)) => {
-                    or_print(client.add_relay(if line.contains("://") { line } else { "wss://".to_string() + &line }).await);
-                }
-                _ => {}
+            if let Some(line) = prompt("Relay?") {
+                let url = if line.contains("://") { line } else { "wss://".to_string() + &line };
+                or_print(
+                    client
+                        .add_relay(url.clone())
+                        .await,
+                ).map(|bool| {
+                    if bool { 
+                        or_print(fs::write(&relayfile, url));
+                    }
+                });
             };
         }
     }
+
+    //let proxy = Some(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 9050)));
     //client
     //    .add_relay_with_opts(
     //        "wss://relay.nostr.info",
@@ -116,7 +137,7 @@ async fn main() {
 
     let (tx, rx) = mpsc::channel::<Event>();
     let mut tasks: Tasks = Tasks::from(EventSender {
-        keys: MY_KEYS.clone(),
+        keys: keys.clone(),
         tx,
     });
 
