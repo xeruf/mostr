@@ -54,7 +54,7 @@ An active tag or state filter will also create new tasks with those correspondin
 - `path` - name including parent tasks
 - `rpath` - name including parent tasks up to active task
 - `time` - time tracked
-- `ttime` - time tracked including subtasks
+- `rtime` - time tracked including subtasks
 - TBI: `progress` - how many subtasks are complete
 - TBI: `progressp` - subtask completion in percent
 

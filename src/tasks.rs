@@ -37,7 +37,7 @@ impl Tasks {
             tasks: Default::default(),
             properties: vec![
                 "state".into(),
-                "ttime".into(),
+                "rtime".into(),
                 "rpath".into(),
                 "tags".into(),
                 "desc".into(),
@@ -192,7 +192,10 @@ impl Tasks {
                             self.traverse_up_from(Some(task.event.id))
                                 .take_while(|t| Some(t.event.id) != self.position)
                         ),
-                        "ttime" => self.total_time_tracked(&task.event.id).to_string(),
+                        "rtime" => {
+                            let time = self.total_time_tracked(&task.event.id);
+                            format!("{:02}:{:02}", time / 3600, time / 60 % 60)
+                        },
                         prop => task.get(prop).unwrap_or(String::new()),
                     })
                     .collect::<Vec<String>>()

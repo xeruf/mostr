@@ -1,5 +1,6 @@
 use std::collections::{BTreeSet, HashSet};
 use std::fmt;
+use std::ops::Div;
 
 use nostr_sdk::{Event, EventBuilder, EventId, Kind, Tag, Timestamp};
 
@@ -124,7 +125,7 @@ impl Task {
             "parentid" => self.parent_id().map(|i| i.to_string()),
             "state" => self.state().map(|s| s.to_string()),
             "name" => Some(self.event.content.clone()),
-            "time" => Some(self.time_tracked().to_string()), // TODO: format properly
+            "time" => Some(format!("{}m", self.time_tracked().div(60))),
             "tags" => self.tags.as_ref().map(|tags| {
                 tags.iter()
                     .map(|t| format!("{}", t.content().unwrap()))
