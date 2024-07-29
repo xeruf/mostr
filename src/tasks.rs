@@ -1,6 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::iter::once;
 
+use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Event, EventBuilder, EventId, Keys, Kind, Tag};
 use nostr_sdk::Tag::Hashtag;
 
@@ -296,7 +297,7 @@ impl Tasks {
             t.children.insert(event.id);
         });
         if self.tasks.contains_key(&event.id) {
-            //eprintln!("Did not insert duplicate event {}", event.id);
+            debug!("Did not insert duplicate event {}", event.id);
         } else {
             self.tasks.insert(event.id, Task::new(event));
         }
@@ -342,7 +343,7 @@ impl Tasks {
 
     pub(crate) fn add_note(&mut self, note: &str) {
         match self.position {
-            None => eprintln!("Cannot add note '{}' without active task", note),
+            None => warn!("Cannot add note '{}' without active task", note),
             Some(id) => {
                 self.sender
                     .submit(EventBuilder::text_note(note, vec![]))
@@ -406,7 +407,7 @@ fn test_depth() {
     let task1 = tasks.get_by_id(&t1.unwrap()).unwrap();
     assert_eq!(tasks.depth, 1);
     assert_eq!(task1.state().unwrap().get_label(), "Open");
-    //eprintln!("{:?}", tasks);
+    debug!("{:?}", tasks);
     assert_eq!(tasks.current_tasks().len(), 1);
     tasks.depth = 0;
     assert_eq!(tasks.current_tasks().len(), 0);

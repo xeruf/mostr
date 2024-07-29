@@ -8,6 +8,7 @@ use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::mpsc::Sender;
 
+use log::{debug, error, info, trace, warn};
 use nostr_sdk::prelude::*;
 use xdg::BaseDirectories;
 
@@ -46,7 +47,7 @@ fn or_print<T, U: Display>(result: Result<T, U>) -> Option<T> {
     match result {
         Ok(value) => Some(value),
         Err(error) => {
-            eprintln!("{}", error);
+            warn!("{}", error);
             None
         }
     }
@@ -63,6 +64,8 @@ fn prompt(prompt: &str) -> Option<String> {
 
 #[tokio::main]
 async fn main() {
+    colog::init();
+
     let config_dir = or_print(BaseDirectories::new())
         .and_then(|d| or_print(d.create_config_directory("mostr")))
         .unwrap_or(PathBuf::new());
@@ -72,7 +75,7 @@ async fn main() {
     let keys = match fs::read_to_string(&keysfile).map(|s| Keys::from_str(&s)) {
         Ok(Ok(key)) => key,
         _ => {
-            eprintln!("Could not read keys from {}", keysfile.to_string_lossy());
+            warn!("Could not read keys from {}", keysfile.to_string_lossy());
             let keys = prompt("Secret Key?")
                 .and_then(|s| or_print(Keys::from_str(&s)))
                 .unwrap_or_else(|| Keys::generate());
@@ -82,7 +85,7 @@ async fn main() {
     };
 
     let client = Client::new(&keys);
-    println!("My public key: {}", keys.public_key());
+    info!("My public key: {}", keys.public_key());
     match var("MOSTR_RELAY") {
         Ok(relay) => {
             or_print(client.add_relay(relay).await);
@@ -94,7 +97,7 @@ async fn main() {
                 }
             }
             Err(e) => {
-                eprintln!("Could not read relays file: {}", e);
+                warn!("Could not read relays file: {}", e);
                 if let Some(line) = prompt("Relay?") {
                     let url = if line.contains("://") {
                         line
@@ -146,7 +149,7 @@ async fn main() {
     });
 
     let sub_id: SubscriptionId = client.subscribe(vec![Filter::new()], None).await;
-    eprintln!("Subscribed with {}", sub_id);
+    info!("Subscribed with {}", sub_id);
     let mut notifications = client.notifications();
 
     /*println!("Finding existing events");
@@ -170,10 +173,11 @@ async fn main() {
 
     let sender = tokio::spawn(async move {
         while let Ok(e) = rx.recv() {
-            //eprintln!("Sending {}", e.id);
+            trace!("Sending {}", e.id);
+            // TODO send in batches
             let _ = client.send_event(e).await;
         }
-        println!("Stopping listeners...");
+        info!("Stopping listeners...");
         client.unsubscribe_all().await;
     });
     for argument in args().skip(1) {
@@ -193,6 +197,7 @@ async fn main() {
         stdout().flush().unwrap();
         match lines.next() {
             Some(Ok(input)) => {
+                let mut count = 0;
                 while let Ok(notification) = notifications.try_recv() {
                     if let RelayPoolNotification::Event {
                         subscription_id,
@@ -202,7 +207,11 @@ async fn main() {
                     {
                         print_event(&event);
                         tasks.add(*event);
+                        count += 1;
                     }
+                }
+                if count > 0 { 
+                    info!("Received {count} updates");
                 }
 
                 let mut iter = input.chars();
@@ -261,7 +270,7 @@ async fn main() {
 
                     Some('|') | Some('/') => match tasks.get_position() {
                         None => {
-                            println!("First select a task to set its state!");
+                            warn!("First select a task to set its state!");
                         }
                         Some(id) => {
                             tasks.set_state_for(&id, arg);
@@ -337,7 +346,7 @@ async fn main() {
                     }
                 }
             }
-            Some(Err(e)) => eprintln!("{}", e),
+            Some(Err(e)) => warn!("{}", e),
             None => break,
         }
     }
@@ -352,12 +361,12 @@ async fn main() {
     });
     drop(tasks);
 
-    eprintln!("Submitting pending changes...");
+    info!("Submitting pending changes...");
     or_print(sender.await);
 }
 
 fn print_event(event: &Event) {
-    eprintln!(
+    debug!(
         "At {} found {} kind {} '{}' {:?}",
         event.created_at, event.id, event.kind, event.content, event.tags
     );

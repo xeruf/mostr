@@ -4,6 +4,7 @@ use std::ops::Div;
 
 use itertools::Either::{Left, Right};
 use itertools::Itertools;
+use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, Kind, Tag, Timestamp};
 
 use crate::EventSender;
@@ -159,7 +160,7 @@ impl Task {
             "descriptions" => Some(format!("{:?}", self.descriptions().collect::<Vec<&String>>())),
             "desc" | "description" => self.descriptions().last().cloned(),
             _ => {
-                eprintln!("Unknown task property {}", property);
+                warn!("Unknown task property {}", property);
                 None
             }
         }
