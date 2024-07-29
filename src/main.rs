@@ -206,6 +206,7 @@ async fn main() {
 
                 let mut iter = input.chars();
                 let op = iter.next();
+                let arg = input[1..].trim();
                 match op {
                     None => {}
 
@@ -215,7 +216,7 @@ async fn main() {
                                 tasks.properties.remove(index);
                                 continue;
                             }
-                            let value = input[2..].to_string();
+                            let value = input[2..].trim().to_string();
                             if tasks.properties.get(index) == Some(&value) {
                                 tasks.properties.remove(index);
                             } else {
@@ -223,11 +224,10 @@ async fn main() {
                             }
                         }
                         Err(_) => {
-                            let prop = &input[1..];
-                            let pos = tasks.properties.iter().position(|s| s == &prop);
+                            let pos = tasks.properties.iter().position(|s| s == arg);
                             match pos {
                                 None => {
-                                    tasks.properties.push(prop.to_string());
+                                    tasks.properties.push(arg.to_string());
                                 }
                                 Some(i) => {
                                     tasks.properties.remove(i);
@@ -237,14 +237,13 @@ async fn main() {
                     },
 
                     Some('?') => {
-                        let arg = &input[1..];
                         tasks.set_state_filter(Some(arg.to_string()).filter(|s| !s.is_empty()));
                     }
 
-                    Some('-') => tasks.add_note(&input[1..]),
+                    Some('-') => tasks.add_note(arg),
 
                     Some('>') | Some('<') => {
-                        tasks.update_state(&input[1..], |_| {
+                        tasks.update_state(arg, |_| {
                             Some(if op.unwrap() == '<' {
                                 State::Closed
                             } else {
@@ -255,7 +254,7 @@ async fn main() {
                     }
 
                     Some('#') => {
-                        tasks.add_tag(input[1..].to_string());
+                        tasks.add_tag(arg.to_string());
                     }
 
                     Some('.') => {
