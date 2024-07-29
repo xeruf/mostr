@@ -249,16 +249,25 @@ async fn main() {
 
                     Some('-') => tasks.add_note(arg),
 
-                    Some('>') | Some('<') => {
-                        tasks.update_state(arg, |_| {
-                            Some(if op.unwrap() == '<' {
-                                State::Closed
-                            } else {
-                                State::Done
-                            })
-                        });
-                        tasks.move_up()
+                    Some('>') => {
+                        tasks.update_state(arg, |_| Some(State::Done));
+                        tasks.move_up();
                     }
+
+                    Some('<') => {
+                        tasks.update_state(arg, |_| Some(State::Closed));
+                        tasks.move_up();
+                    }
+
+                    Some('|') | Some('/') => match tasks.get_position() {
+                        None => {
+                            println!("First select a task to set its state!");
+                        }
+                        Some(id) => {
+                            tasks.set_state_for(&id, arg);
+                            tasks.move_to(tasks.get_position());
+                        }
+                    },
 
                     Some('#') => {
                         tasks.add_tag(arg.to_string());

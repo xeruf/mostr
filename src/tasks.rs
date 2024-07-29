@@ -302,7 +302,7 @@ impl Tasks {
         });
     }
 
-    fn set_state_for(&mut self, id: &EventId, comment: &str) -> Option<Event> {
+    pub(crate) fn set_state_for(&mut self, id: &EventId, comment: &str) -> Option<Event> {
         let t = self.tasks.get_mut(id);
         t.and_then(|task| {
             task.set_state(

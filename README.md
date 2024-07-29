@@ -36,9 +36,13 @@ Dots can be repeated to move to parent tasks
 - `:[IND][COL]` - add / remove property column COL to IND or end
 - `>[TEXT]` - Complete active task and move to parent, with optional state description
 - `<[TEXT]` - Close active task and move to parent, with optional state description
-- `#TAG` - filter by tag
-- `?TAG` - filter by state (type or description)
+- `|TEXT` - Set state for current task from text (also aliased to `/` for now)
 - `-TEXT` - add text note (comment / description)
+
+Property Filters:
+
+- `#TAG` - filter by tag
+- `?TAG` - filter by state (type or description) - plain `?` to reset
 
 State descriptions can be used for example for Kanban columns.
 An active tag or state filter will also create new tasks with those corresponding attributes.
