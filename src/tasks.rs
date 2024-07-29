@@ -92,6 +92,9 @@ impl Tasks {
 
     pub(crate) fn get_task_path(&self, id: Option<EventId>) -> String {
         join_tasks(self.traverse_up_from(id))
+            .filter(|s| !s.is_empty())
+            .or_else(|| id.map(|id| id.to_string()))
+            .unwrap_or(String::new())
     }
 
     pub(crate) fn traverse_up_from(&self, id: Option<EventId>) -> ParentIterator {
@@ -191,11 +194,11 @@ impl Tasks {
                         "rpath" => join_tasks(
                             self.traverse_up_from(Some(task.event.id))
                                 .take_while(|t| Some(t.event.id) != self.position)
-                        ),
+                        ).unwrap_or(task.event.id.to_string()),
                         "rtime" => {
                             let time = self.total_time_tracked(&task.event.id);
                             format!("{:02}:{:02}", time / 3600, time / 60 % 60)
-                        },
+                        }
                         prop => task.get(prop).unwrap_or(String::new()),
                     })
                     .collect::<Vec<String>>()
@@ -350,13 +353,21 @@ impl Tasks {
     }
 }
 
-pub(crate) fn join_tasks<'a>(iter: impl IntoIterator<Item = &'a Task>) -> String {
-    iter.into_iter()
-        .map(|t| t.event.content.clone())
+pub(crate) fn join_tasks<'a>(iter: impl Iterator<Item = &'a Task>) -> Option<String> {
+    let tasks: Vec<&Task> = iter.collect();
+    tasks
+        .iter()
+        .map(|t| t.get_title())
+        .chain(
+            tasks
+                .last()
+                .and_then(|t| t.parent_id())
+                .map(|id| id.to_string())
+                .into_iter(),
+        )
         .fold(None, |acc, val| {
             Some(acc.map_or_else(|| val.clone(), |cur| format!("{}>{}", val, cur)))
         })
-        .unwrap_or(String::new())
 }
 
 struct ParentIterator<'a> {
@@ -387,6 +398,7 @@ fn test_depth() {
         tx,
         keys: Keys::generate(),
     });
+
     let t1 = tasks.make_task("t1");
     let task1 = tasks.get_by_id(&t1.unwrap()).unwrap();
     assert_eq!(tasks.depth, 1);
@@ -440,4 +452,13 @@ fn test_depth() {
     assert_eq!(tasks.current_tasks().len(), 4);
     tasks.depth = -1;
     assert_eq!(tasks.current_tasks().len(), 2);
+
+    let empty = tasks.make_task("");
+    let empty_task = tasks.get_by_id(&empty.unwrap()).unwrap();
+    let empty_id = empty_task.event.id.to_string();
+    assert_eq!(empty_task.get_title(), empty_id);
+    assert_eq!(tasks.get_task_path(empty), empty_id);
+    
+    let zero = EventId::all_zeros();
+    assert_eq!(tasks.get_task_path(Some(zero)), zero.to_string());
 }

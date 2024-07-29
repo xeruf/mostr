@@ -43,6 +43,12 @@ impl Task {
         None
     }
 
+    pub(crate) fn get_title(&self) -> String {
+        Some(self.event.content.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| self.get_id().to_string())
+    }
+
     fn descriptions(&self) -> impl Iterator<Item = &String> + '_ {
         self.props.iter().filter_map(|event| {
             if event.kind == Kind::TextNote {
