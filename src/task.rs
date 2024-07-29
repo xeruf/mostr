@@ -185,13 +185,15 @@ impl TaskState {
 }
 impl fmt::Display for TaskState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let state_str = self.state.to_string();
         write!(
             f,
-            "{}{}",
-            self.state,
+            "{}",
             self.name
                 .as_ref()
-                .map_or(String::new(), |s| format!(": {}", s))
+                .map(|s| s.trim())
+                .filter(|s| !s.eq_ignore_ascii_case(&state_str))
+                .map_or(state_str, |s| format!("{}: {}", self.state, s))
         )
     }
 }
