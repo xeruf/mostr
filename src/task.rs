@@ -122,6 +122,9 @@ impl Task {
                 }
             }
         }
+        if let Some(start) = start {
+            total += (Timestamp::now() - start).as_u64();
+        }
         total
     }
 
