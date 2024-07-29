@@ -294,12 +294,23 @@ async fn main() {
                             // TODO check what is more intuitive:
                             // currently resets filters before filtering again, maybe keep them
                             tasks.move_to(pos);
-                            let filtered: Vec<EventId> = tasks
+                            let mut filtered: Vec<EventId> = tasks
                                 .current_tasks()
                                 .into_iter()
                                 .filter(|t| t.event.content.starts_with(slice))
                                 .map(|t| t.event.id)
                                 .collect();
+                            if filtered.is_empty() {
+                                let lowercase = slice.to_ascii_lowercase();
+                                filtered = tasks
+                                    .current_tasks()
+                                    .into_iter()
+                                    .filter(|t| {
+                                        t.event.content.to_ascii_lowercase().starts_with(&lowercase)
+                                    })
+                                    .map(|t| t.event.id)
+                                    .collect();
+                            }
                             match filtered.len() {
                                 0 => {
                                     // No match, new task

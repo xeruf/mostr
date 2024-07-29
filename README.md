@@ -24,12 +24,15 @@ Recommendation: Flat hierarchy, using tags for filtering (TBI)
 
 ### Command Syntax
 
-TASK add syntax: `NAME: TAG1 TAG2 ...`
+`TASK` creation syntax: `NAME: TAG1 TAG2 ...`
 
 - `TASK` - create task
 - `.` - clear filters and reload
-- `.TASK` - filter / activate (by id or name) / create & activate task
-- `.NUM` - set view depth - how many subtask levels to show
+- `.TASK`
+  + select task by id
+  + match by task name prefix: if one or more tasks match, filter / activate (tries case-sensitive then case-insensitive)
+  + no match: create & activate task
+- `.2` - set view depth to `2`, which can be substituted for any number (how many subtask levels to show, default 1)
 
 Dots can be repeated to move to parent tasks
 
