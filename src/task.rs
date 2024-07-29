@@ -2,6 +2,8 @@ use std::collections::{BTreeSet, HashSet};
 use std::fmt;
 use std::ops::Div;
 
+use itertools::Either::{Left, Right};
+use itertools::Itertools;
 use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, Kind, Tag, Timestamp};
 
 use crate::EventSender;
@@ -13,18 +15,22 @@ pub(crate) struct Task {
     pub(crate) props: BTreeSet<Event>,
     /// Cached sorted tags of the event
     pub(crate) tags: Option<BTreeSet<Tag>>,
+    parents: Vec<EventId>,
 }
 
 impl Task {
     pub(crate) fn new(event: Event) -> Task {
+        let (parents, tags) = event.tags.iter().partition_map(|tag| {
+            match tag {
+                Tag::Event { event_id, .. } => return Left(event_id),
+                _ => Right(tag.clone())
+            }
+        });
         Task {
             children: Default::default(),
             props: Default::default(),
-            tags: if event.tags.is_empty() {
-                None
-            } else {
-                Some(event.tags.iter().cloned().collect())
-            },
+            tags: Some(tags).filter(|t: &BTreeSet<Tag>| !t.is_empty()),
+            parents,
             event,
         }
     }
@@ -34,13 +40,7 @@ impl Task {
     }
 
     pub(crate) fn parent_id(&self) -> Option<EventId> {
-        for tag in self.event.tags.iter() {
-            match tag {
-                Tag::Event { event_id, .. } => return Some(*event_id),
-                _ => {}
-            }
-        }
-        None
+        self.parents.first().cloned()
     }
 
     pub(crate) fn get_title(&self) -> String {
@@ -127,8 +127,8 @@ impl Task {
         }
         total
     }
-    
-    fn filter_tags<P>(&self, predicate: P) -> Option<String> 
+
+    fn filter_tags<P>(&self, predicate: P) -> Option<String>
     where P: FnMut(&&Tag) -> bool{
         self.tags.as_ref().map(|tags| {
             tags.into_iter()
@@ -147,7 +147,8 @@ impl Task {
             "name" => Some(self.event.content.clone()),
             "time" => Some(format!("{}m", self.time_tracked().div(60))),
             "hashtags" => self.filter_tags(|tag| tag.single_letter_tag().is_some_and(|sltag| sltag.character == Alphabet::T)),
-            "tags" => self.filter_tags(|tag| !tag.single_letter_tag().is_some_and(|sltag| sltag.character == Alphabet::E)),
+            "tags" => self.filter_tags(|_| true),
+            "alltags" => Some(format!("{:?}", self.tags)),
             "props" => Some(format!(
                 "{:?}",
                 self.props
