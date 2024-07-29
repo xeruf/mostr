@@ -164,8 +164,11 @@ impl TaskState {
     }
     pub(crate) fn matches_label(&self, label: &str) -> bool {
         self.state == State::Active
-            || self.name.as_ref().is_some_and(|n| n == label)
-            || self.state.to_string() == label
+            || self
+                .name
+                .as_ref()
+                .is_some_and(|n| n.eq_ignore_ascii_case(label))
+            || self.state.to_string().eq_ignore_ascii_case(label)
     }
 }
 impl fmt::Display for TaskState {
