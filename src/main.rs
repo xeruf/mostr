@@ -352,6 +352,7 @@ async fn main() {
     }
     println!();
 
+    // TODO optionally continue
     tasks.update_state("", |t| {
         if t.pure_state() == State::Active {
             Some(State::Open)

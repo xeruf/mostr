@@ -6,11 +6,18 @@ A nested task chat, powered by nostr!
 
 First, start a nostr relay, such as
 - https://github.com/coracle-social/bucket for local development
-- rnostr for production use
+- https://github.com/rnostr/rnostr for production use
+
+Run development build with:
 
     cargo run
 
-Creating a test task: nostril --envelope --content "test task" --kind 1630 | websocat ws://localhost:4736 
+Creating a test task: 
+`nostril --envelope --content "test task" --kind 1621 | websocat ws://localhost:4736`
+
+Install latest build:
+
+    cargo install --path . --offline
 
 ## Principles
 
@@ -66,7 +73,7 @@ An active tag or state filter will also set that attribute for newly created tas
 - TBI: `progress` - how many subtasks are complete
 - TBI: `progressp` - subtask completion in percent
 
-For debugging: `props` - Task Property Events
+For debugging: `props`, `alltags`
 
 ## Plans
 
@@ -76,7 +83,8 @@ For debugging: `props` - Task Property Events
 - Unified Filter object
   -> include sub
 - Time tracking: Active not as task state, ability to postpone task and add planned timestamps (calendar entry)
-- Web Interface, Messenger integrations
 - TUI - Clear terminal?
 - Expiry (no need to fetch potential years of history)
+- Offline caching
+- Web Interface, Messenger integrations
 - Relay: filter out task state updates within few seconds, also on client side
