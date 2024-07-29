@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashSet};
 use std::fmt;
 use std::ops::Div;
 
-use nostr_sdk::{Event, EventBuilder, EventId, Kind, Tag, Timestamp};
+use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, Kind, Tag, Timestamp};
 
 use crate::EventSender;
 
@@ -127,6 +127,17 @@ impl Task {
         }
         total
     }
+    
+    fn filter_tags<P>(&self, predicate: P) -> Option<String> 
+    where P: FnMut(&&Tag) -> bool{
+        self.tags.as_ref().map(|tags| {
+            tags.into_iter()
+                .filter(predicate)
+                .map(|t| format!("{}", t.content().unwrap()))
+                .collect::<Vec<String>>()
+                .join(" ")
+        })
+    }
 
     pub(crate) fn get(&self, property: &str) -> Option<String> {
         match property {
@@ -135,12 +146,8 @@ impl Task {
             "state" => self.state().map(|s| s.to_string()),
             "name" => Some(self.event.content.clone()),
             "time" => Some(format!("{}m", self.time_tracked().div(60))),
-            "tags" => self.tags.as_ref().map(|tags| {
-                tags.iter()
-                    .map(|t| format!("{}", t.content().unwrap()))
-                    .collect::<Vec<String>>()
-                    .join(" ")
-            }),
+            "hashtags" => self.filter_tags(|tag| tag.single_letter_tag().is_some_and(|sltag| sltag.character == Alphabet::T)),
+            "tags" => self.filter_tags(|tag| !tag.single_letter_tag().is_some_and(|sltag| sltag.character == Alphabet::E)),
             "props" => Some(format!(
                 "{:?}",
                 self.props
@@ -148,14 +155,10 @@ impl Task {
                     .map(|e| format!("{} kind {} '{}'", e.created_at, e.kind, e.content))
                     .collect::<Vec<String>>()
             )),
-            "desc" | "description" => self.descriptions().fold(None, |total, s| {
-                Some(match total {
-                    None => s.clone(),
-                    Some(i) => i + " " + s,
-                })
-            }),
+            "descriptions" => Some(format!("{:?}", self.descriptions().collect::<Vec<&String>>())),
+            "desc" | "description" => self.descriptions().last().cloned(),
             _ => {
-                eprintln!("Unknown column {}", property);
+                eprintln!("Unknown task property {}", property);
                 None
             }
         }
