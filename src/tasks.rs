@@ -92,7 +92,7 @@ impl Tasks {
     }
 
     pub(crate) fn get_task_path(&self, id: Option<EventId>) -> String {
-        join_tasks(self.traverse_up_from(id))
+        join_tasks(self.traverse_up_from(id), true)
             .filter(|s| !s.is_empty())
             .or_else(|| id.map(|id| id.to_string()))
             .unwrap_or(String::new())
@@ -104,6 +104,14 @@ impl Tasks {
             current: id,
             prev: None,
         }
+    }
+
+    fn relative_path(&self, id: EventId) -> String {
+        join_tasks(
+            self.traverse_up_from(Some(id))
+                .take_while(|t| Some(t.event.id) != self.position),
+            false,
+        ).unwrap_or(id.to_string())
     }
 
     // Helpers
@@ -192,11 +200,7 @@ impl Tasks {
                     .iter()
                     .map(|p| match p.as_str() {
                         "path" => self.get_task_path(Some(task.event.id)),
-                        "rpath" => join_tasks(
-                            self.traverse_up_from(Some(task.event.id))
-                                .take_while(|t| Some(t.event.id) != self.position)
-                        )
-                        .unwrap_or(task.event.id.to_string()),
+                        "rpath" => self.relative_path(task.event.id),
                         "rtime" => {
                             let time = self.total_time_tracked(&task.event.id);
                             format!("{:02}:{:02}", time / 3600, time / 60 % 60)
@@ -357,17 +361,21 @@ impl Tasks {
     }
 }
 
-pub(crate) fn join_tasks<'a>(iter: impl Iterator<Item = &'a Task>) -> Option<String> {
+pub(crate) fn join_tasks<'a>(iter: impl Iterator<Item = &'a Task>, include_last_id: bool) -> Option<String> {
     let tasks: Vec<&Task> = iter.collect();
     tasks
         .iter()
         .map(|t| t.get_title())
         .chain(
-            tasks
-                .last()
-                .and_then(|t| t.parent_id())
-                .map(|id| id.to_string())
-                .into_iter(),
+            if include_last_id {
+                tasks
+                    .last()
+                    .and_then(|t| t.parent_id())
+                    .map(|id| id.to_string())
+                    .into_iter()
+            } else {
+                None.into_iter()
+            }
         )
         .fold(None, |acc, val| {
             Some(acc.map_or_else(|| val.clone(), |cur| format!("{}>{}", val, cur)))
@@ -417,6 +425,8 @@ fn test_depth() {
     assert_eq!(tasks.current_tasks().len(), 0);
     let t2 = tasks.make_task("t2");
     assert_eq!(tasks.current_tasks().len(), 1);
+    assert_eq!(tasks.get_task_path(t2), "t1>t2");
+    assert_eq!(tasks.relative_path(t2.unwrap()), "t2");
     let t3 = tasks.make_task("t3");
     assert_eq!(tasks.current_tasks().len(), 2);
 
@@ -424,12 +434,15 @@ fn test_depth() {
     assert_eq!(tasks.current_tasks().len(), 0);
     let t4 = tasks.make_task("t4");
     assert_eq!(tasks.current_tasks().len(), 1);
+    assert_eq!(tasks.get_task_path(t4), "t1>t2>t4");
+    assert_eq!(tasks.relative_path(t4.unwrap()), "t4");
     tasks.depth = 2;
     assert_eq!(tasks.current_tasks().len(), 1);
     tasks.depth = -1;
     assert_eq!(tasks.current_tasks().len(), 1);
 
     tasks.move_to(t1);
+    assert_eq!(tasks.relative_path(t4.unwrap()), "t2>t4");
     assert_eq!(tasks.current_tasks().len(), 2);
     tasks.depth = 2;
     assert_eq!(tasks.current_tasks().len(), 3);
@@ -465,6 +478,10 @@ fn test_depth() {
 
     let zero = EventId::all_zeros();
     assert_eq!(tasks.get_task_path(Some(zero)), zero.to_string());
+    tasks.move_to(Some(zero));
+    let dangling = tasks.make_task("test");
+    assert_eq!(tasks.get_task_path(dangling), "0000000000000000000000000000000000000000000000000000000000000000>test");
+    assert_eq!(tasks.relative_path(dangling.unwrap()), "test");
 
     use itertools::Itertools;
     assert_eq!("test  toast".split(' ').collect_vec().len(), 3);
