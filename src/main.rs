@@ -3,7 +3,6 @@ use std::fmt::Display;
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, stdin, stdout, Write};
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::mpsc;
@@ -88,30 +87,28 @@ async fn main() {
         Ok(relay) => {
             or_print(client.add_relay(relay).await);
         }
-        _ => {
-            match File::open(&relayfile).map(|f| BufReader::new(f).lines().flatten()) {
-                Ok(lines) => {
-                    for line in lines {
-                        or_print(client.add_relay(line).await);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Could not read relays file: {}", e);
-                    if let Some(line) = prompt("Relay?") {
-                        let url = if line.contains("://") { line } else { "wss://".to_string() + &line };
-                        or_print(
-                            client
-                                .add_relay(url.clone())
-                                .await,
-                        ).map(|bool| {
-                            if bool {
-                                or_print(fs::write(&relayfile, url));
-                            }
-                        });
-                    };
+        _ => match File::open(&relayfile).map(|f| BufReader::new(f).lines().flatten()) {
+            Ok(lines) => {
+                for line in lines {
+                    or_print(client.add_relay(line).await);
                 }
             }
-        }
+            Err(e) => {
+                eprintln!("Could not read relays file: {}", e);
+                if let Some(line) = prompt("Relay?") {
+                    let url = if line.contains("://") {
+                        line
+                    } else {
+                        "wss://".to_string() + &line
+                    };
+                    or_print(client.add_relay(url.clone()).await).map(|bool| {
+                        if bool {
+                            or_print(fs::write(&relayfile, url));
+                        }
+                    });
+                };
+            }
+        },
     }
 
     //let proxy = Some(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 9050)));
@@ -188,7 +185,11 @@ async fn main() {
     loop {
         tasks.print_tasks();
 
-        print!(" {}{}) ", tasks.get_task_path(tasks.get_position()), tasks.get_prompt_suffix());
+        print!(
+            " {}{}) ",
+            tasks.get_task_path(tasks.get_position()),
+            tasks.get_prompt_suffix()
+        );
         stdout().flush().unwrap();
         match lines.next() {
             Some(Ok(input)) => {
@@ -206,13 +207,19 @@ async fn main() {
 
                 let mut iter = input.chars();
                 let op = iter.next();
-                let arg = input[1..].trim();
+                let arg = if input.len() > 1 {
+                    input[1..].trim()
+                } else {
+                    ""
+                };
                 match op {
                     None => {}
 
-                    Some(':') => match input[1..2].parse::<usize>() {
-                        Ok(index) => {
-                            if input.len() == 2 {
+                    Some(':') => match iter.next().and_then(|s| s.to_digit(10)) {
+                        Some(digit) => {
+                            let index = digit as usize;
+                            let remaining = iter.collect::<String>().trim().to_string();
+                            if remaining.is_empty() {
                                 tasks.properties.remove(index);
                                 continue;
                             }
@@ -223,7 +230,7 @@ async fn main() {
                                 tasks.properties.insert(index, value);
                             }
                         }
-                        Err(_) => {
+                        None => {
                             let pos = tasks.properties.iter().position(|s| s == arg);
                             match pos {
                                 None => {
