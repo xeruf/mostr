@@ -194,7 +194,8 @@ impl Tasks {
                         "rpath" => join_tasks(
                             self.traverse_up_from(Some(task.event.id))
                                 .take_while(|t| Some(t.event.id) != self.position)
-                        ).unwrap_or(task.event.id.to_string()),
+                        )
+                        .unwrap_or(task.event.id.to_string()),
                         "rtime" => {
                             let time = self.total_time_tracked(&task.event.id);
                             format!("{:02}:{:02}", time / 3600, time / 60 % 60)
@@ -202,7 +203,7 @@ impl Tasks {
                         prop => task.get(prop).unwrap_or(String::new()),
                     })
                     .collect::<Vec<String>>()
-                    .join("\t")
+                    .join(" \t")
             );
         }
         println!();
@@ -258,20 +259,22 @@ impl Tasks {
 
     // Updates
 
+    /// Expects sanitized input
     pub(crate) fn build_task(&self, input: &str) -> EventBuilder {
         let mut tags: Vec<Tag> = self.tags.iter().cloned().collect();
         self.position.inspect(|p| tags.push(Tag::event(*p)));
         return match input.split_once(": ") {
             None => EventBuilder::new(Kind::from(TASK_KIND), input, tags),
             Some(s) => {
-                tags.append(&mut s.1.split(" ").map(|t| Hashtag(t.to_string())).collect());
+                tags.append(&mut s.1.split_ascii_whitespace().map(|t| Hashtag(t.to_string())).collect());
                 EventBuilder::new(Kind::from(TASK_KIND), s.0, tags)
             }
         };
     }
 
+    /// Sanitizes input
     pub(crate) fn make_task(&mut self, input: &str) -> Option<EventId> {
-        self.sender.submit(self.build_task(input)).map(|e| {
+        self.sender.submit(self.build_task(input.trim())).map(|e| {
             let id = e.id;
             self.add_task(e);
             let state = self.state.clone().unwrap_or("Open".to_string());
@@ -458,7 +461,11 @@ fn test_depth() {
     let empty_id = empty_task.event.id.to_string();
     assert_eq!(empty_task.get_title(), empty_id);
     assert_eq!(tasks.get_task_path(empty), empty_id);
-    
+
     let zero = EventId::all_zeros();
     assert_eq!(tasks.get_task_path(Some(zero)), zero.to_string());
+
+    use itertools::Itertools;
+    assert_eq!("test  toast".split(' ').collect_vec().len(), 3);
+    assert_eq!("test  toast".split_ascii_whitespace().collect_vec().len(), 2);
 }
