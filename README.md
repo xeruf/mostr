@@ -4,13 +4,13 @@ A nested task chat, powered by nostr!
 
 ## Quickstart
 
-First, start a nostr dev-relay like
-https://github.com/coracle-social/bucket
+First, start a nostr relay, such as
+- https://github.com/coracle-social/bucket for local development
+- rnostr for production use
 
-```sh
-cargo run # Listen to events
-nostril --envelope --content "realtime message" --kind 90002 | websocat ws://localhost:4736 # Send a test event
-```
+    cargo run
+
+Creating a test task: nostril --envelope --content "test task" --kind 1630 | websocat ws://localhost:4736 
 
 ## Principles
 
@@ -45,10 +45,10 @@ Dots can be repeated to move to parent tasks
 Property Filters:
 
 - `#TAG` - filter by tag
-- `?TAG` - filter by state (type or description) - plain `?` to reset
+- `?STATE` - filter by state (type or description) - plain `?` to reset
 
 State descriptions can be used for example for Kanban columns.
-An active tag or state filter will also create new tasks with those corresponding attributes.
+An active tag or state filter will also set that attribute for newly created tasks.
 
 ### Available Columns
 
@@ -57,6 +57,7 @@ An active tag or state filter will also create new tasks with those correspondin
 - `name`
 - `state`
 - `tags`
+- `hashtags`
 - `desc` - accumulated notes of the task
 - `path` - name including parent tasks
 - `rpath` - name including parent tasks up to active task
@@ -69,6 +70,13 @@ For debugging: `props` - Task Property Events
 
 ## Plans
 
-- Expiry (no need to fetch potential years of history)
+- Relay Selection, fetch most recent tasks first
+- parse Hashtag tags from task name
+- Personal time tracking
+- Unified Filter object
+  -> include sub
+- Time tracking: Active not as task state, ability to postpone task and add planned timestamps (calendar entry)
 - Web Interface, Messenger integrations
 - TUI - Clear terminal?
+- Expiry (no need to fetch potential years of history)
+- Relay: filter out task state updates within few seconds, also on client side
