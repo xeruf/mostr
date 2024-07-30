@@ -1,3 +1,4 @@
+use fmt::Display;
 use std::collections::{BTreeSet, HashSet};
 use std::fmt;
 use std::ops::Div;
@@ -142,7 +143,9 @@ impl Task {
             "parentid" => self.parent_id().map(|i| i.to_string()),
             "state" => self.state().map(|s| s.to_string()),
             "name" => Some(self.event.content.clone()),
-            "time" => Some(self.time_tracked().div(60)).filter(|t| t>&0).map(|t| format!("{}m", t)),
+            "time" => Some(self.time_tracked().div(60))
+                .filter(|t| t > &0)
+                .map(|t| format!("{}m", t)),
             "desc" => self.descriptions().last().cloned(),
             "description" => Some(self.descriptions().join(" ")),
             "hashtags" => self.filter_tags(|tag| {
@@ -188,7 +191,7 @@ impl TaskState {
             || self.state.to_string().eq_ignore_ascii_case(label)
     }
 }
-impl fmt::Display for TaskState {
+impl Display for TaskState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let state_str = self.state.to_string();
         write!(
@@ -240,7 +243,7 @@ impl State {
         }
     }
 }
-impl fmt::Display for State {
+impl Display for State {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(self, f)
     }

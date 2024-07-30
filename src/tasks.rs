@@ -64,17 +64,19 @@ impl Tasks {
 impl Tasks {
     // Accessors
 
+    #[inline]
     pub(crate) fn get_by_id(&self, id: &EventId) -> Option<&Task> {
         self.tasks.get(id)
     }
 
+    #[inline]
     pub(crate) fn get_position(&self) -> Option<EventId> {
         self.position
     }
 
     /// Total time this task and its subtasks have been active
-    fn total_time_tracked(&self, task: &EventId) -> u64 {
-        self.tasks.get(task).map_or(0, |t| {
+    fn total_time_tracked(&self, id: &EventId) -> u64 {
+        self.get_by_id(id).map_or(0, |t| {
             t.time_tracked()
                 + t.children
                     .iter()
@@ -84,7 +86,7 @@ impl Tasks {
     }
 
     fn total_progress(&self, id: &EventId) -> Option<f32> {
-        self.tasks.get(id).and_then(|t| match t.pure_state() {
+        self.get_by_id(id).and_then(|t| match t.pure_state() {
             State::Closed => None,
             State::Done => Some(1.0),
             _ => {
@@ -102,7 +104,7 @@ impl Tasks {
     // Parents
 
     pub(crate) fn get_parent(&self, id: Option<EventId>) -> Option<EventId> {
-        id.and_then(|id| self.tasks.get(&id))
+        id.and_then(|id| self.get_by_id(&id))
             .and_then(|t| t.parent_id())
     }
 
@@ -151,7 +153,7 @@ impl Tasks {
         depth: i8,
     ) -> Vec<&Task> {
         iter.into_iter()
-            .filter_map(|id| self.tasks.get(&id))
+            .filter_map(|id| self.get_by_id(&id))
             .flat_map(|task| {
                 let new_depth = depth - 1;
                 if new_depth < 0 {
@@ -184,8 +186,9 @@ impl Tasks {
         }
     }
 
+    #[inline]
     fn current_task(&self) -> Option<&Task> {
-        self.position.and_then(|id| self.tasks.get(&id))
+        self.position.and_then(|id| self.get_by_id(&id))
     }
 
     pub(crate) fn current_tasks(&self) -> Vec<&Task> {
@@ -279,7 +282,7 @@ impl Tasks {
                             let time = self.total_time_tracked(&task.event.id);
                             if time > 60 {
                                 format!("{:02}:{:02}", time / 3600, time / 60 % 60)
-                            } else { 
+                            } else {
                                 String::new()
                             }
                         }
