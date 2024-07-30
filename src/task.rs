@@ -224,6 +224,13 @@ impl TryFrom<Kind> for State {
     }
 }
 impl State {
+    pub(crate) fn is_open(&self) -> bool {
+        match self {
+            State::Open | State::Active => true,
+            _ => false,
+        }
+    }
+
     pub(crate) fn kind(&self) -> Kind {
         match self {
             State::Open => Kind::from(1630),

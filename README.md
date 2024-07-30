@@ -69,14 +69,16 @@ An active tag or state filter will also set that attribute for newly created tas
 - `description` - accumulated notes on the task
 - `path` - name including parent tasks
 - `rpath` - name including parent tasks up to active task
-- `time` - time tracked
-- `rtime` - time tracked including subtasks
-- TBI: `progress` - how many subtasks are complete
-- TBI: `progressp` - subtask completion in percent
+- `time` - time tracked on this task
+- `rtime` - time tracked on this tasks and all recursive subtasks
+- `progress` - recursive subtask completion in percent
+- `subtasks` - how many direct subtasks are complete
 
 For debugging: `props`, `alltags`, `descriptions`
 
-TODO: Combined formatting and recursion specifiers
+TBI: Combined formatting and recursion specifiers -
+for example progress count/percentage and recursive or not.
+Subtask progress immediate/all/leafs.
 
 ## Plans
 

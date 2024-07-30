@@ -1,6 +1,8 @@
 use std::collections::{BTreeSet, HashMap};
+use std::fmt::{Display, Formatter, write};
 use std::io::{Error, stdout, Write};
-use std::iter::once;
+use std::iter::{once, Sum};
+use std::ops::Add;
 
 use chrono::{Local, TimeZone};
 use chrono::LocalResult::Single;
@@ -43,6 +45,7 @@ impl Tasks {
             tasks: Default::default(),
             properties: vec![
                 "state".into(),
+                "progress".into(),
                 "rtime".into(),
                 "hashtags".into(),
                 "rpath".into(),
@@ -77,6 +80,22 @@ impl Tasks {
                     .iter()
                     .map(|e| self.total_time_tracked(e))
                     .sum::<u64>()
+        })
+    }
+
+    fn total_progress(&self, id: &EventId) -> Option<f32> {
+        self.tasks.get(id).and_then(|t| match t.pure_state() {
+            State::Closed => None,
+            State::Done => Some(1.0),
+            _ => {
+                let count = t.children.len() as f32;
+                Some(
+                    t.children
+                        .iter()
+                        .filter_map(|e| self.total_progress(e).map(|p| p / count))
+                        .sum(),
+                )
+            }
         })
     }
 
@@ -236,6 +255,24 @@ impl Tasks {
                 self.properties
                     .iter()
                     .map(|p| match p.as_str() {
+                        "subtasks" => {
+                            let mut total = 0;
+                            let mut done = 0;
+                            for subtask in task.children.iter().filter_map(|id| self.get_by_id(id))
+                            {
+                                let state = subtask.pure_state();
+                                total += &(state != State::Closed).into();
+                                done += &(state == State::Done).into();
+                            }
+                            if total > 0 {
+                                format!("{done}/{total}")
+                            } else {
+                                "".to_string()
+                            }
+                        }
+                        "progress" => self
+                            .total_progress(&task.event.id)
+                            .map_or(String::new(), |p| format!("{:2}%", p * 100.0)),
                         "path" => self.get_task_path(Some(task.event.id)),
                         "rpath" => self.relative_path(task.event.id),
                         "rtime" => {
