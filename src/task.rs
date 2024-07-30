@@ -143,6 +143,8 @@ impl Task {
             "state" => self.state().map(|s| s.to_string()),
             "name" => Some(self.event.content.clone()),
             "time" => Some(format!("{}m", self.time_tracked().div(60))),
+            "desc" => self.descriptions().last().cloned(),
+            "description" => Some(self.descriptions().join(" ")),
             "hashtags" => self.filter_tags(|tag| {
                 tag.single_letter_tag()
                     .is_some_and(|sltag| sltag.character == Alphabet::T)
@@ -160,7 +162,6 @@ impl Task {
                 "{:?}",
                 self.descriptions().collect::<Vec<&String>>()
             )),
-            "desc" | "description" => self.descriptions().last().cloned(),
             _ => {
                 warn!("Unknown task property {}", property);
                 None

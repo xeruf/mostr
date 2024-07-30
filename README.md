@@ -63,9 +63,10 @@ An active tag or state filter will also set that attribute for newly created tas
 - `parentid`
 - `name`
 - `state`
-- `tags`
 - `hashtags`
-- `desc` - accumulated notes of the task
+- `tags` - values of all nostr tags associated with the event, except event tags
+- `desc` - last note on the task
+- `description` - accumulated notes on the task
 - `path` - name including parent tasks
 - `rpath` - name including parent tasks up to active task
 - `time` - time tracked
@@ -73,7 +74,9 @@ An active tag or state filter will also set that attribute for newly created tas
 - TBI: `progress` - how many subtasks are complete
 - TBI: `progressp` - subtask completion in percent
 
-For debugging: `props`, `alltags`
+For debugging: `props`, `alltags`, `descriptions`
+
+TODO: Combined formatting and recursion specifiers
 
 ## Plans
 
