@@ -85,7 +85,7 @@ impl Task {
     ) -> Option<Event> {
         sender
             .submit(EventBuilder::new(
-                state.kind(),
+                state.into(),
                 comment,
                 vec![Tag::event(self.event.id)],
             ))
@@ -234,13 +234,18 @@ impl State {
         }
     }
 
-    pub(crate) fn kind(&self) -> Kind {
+    pub(crate) fn kind(&self) -> u64 {
         match self {
-            State::Open => Kind::from(1630),
-            State::Done => Kind::from(1631),
-            State::Closed => Kind::from(1632),
-            State::Active => Kind::from(1633),
+            State::Open => 1630,
+            State::Done => 1631,
+            State::Closed => 1632,
+            State::Active => 1633,
         }
+    }
+}
+impl From<State> for Kind {
+    fn from(value: State) -> Self {
+        Kind::from(value.kind())
     }
 }
 impl Display for State {
