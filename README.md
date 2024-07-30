@@ -1,6 +1,6 @@
 # mostr
 
-A nested task chat, powered by nostr!
+An immutable nested collaborative task manager, powered by nostr!
 
 ## Quickstart
 
@@ -12,20 +12,75 @@ Run development build with:
 
     cargo run
 
-Creating a test task: 
-`nostril --envelope --content "test task" --kind 1621 | websocat ws://localhost:4736`
+A `relay` list and private `key` can be placed in config files
+under `${XDG_CONFIG_HOME:-$HOME/.config}/mostr/`.
+Currently, all relays are fetched and synced to,
+separation is planned -
+ideally for any project with different collaborators,
+an own relay will be used.
+If not saved, mostr will ask for a relay url
+(entering none is fine too, but your data will not be persisted between sessions)
+and a private key, alternatively generating one on the fly.
+Both are currently saved in plain text to the above files.
 
 Install latest build:
 
-    cargo install --path . --offline
+    cargo install --path .
 
-## Principles
+Creating a test task externally:
+`nostril --envelope --content "test task" --kind 1621 | websocat ws://localhost:4736`
 
-- active task is tracked automatically
-- progress through subdivision rather than guessing
-- TBI: show/hide closed/done tasks
+To exit the application, press `Ctrl-D`.
 
-Recommendation: Flat hierarchy, using tags for filtering (TBI)
+## Basic Usage
+
+### Navigation and Nesting
+
+Create tasks and navigate using the shortcuts below.
+Whichever task is selected / "active"
+will be the parent task for newly created tasks
+and automatically has time-tracking running.
+To track task progress,
+simply subdivide the task -
+checking off tasks will automatically update the progress
+for all parent tasks.
+Generally a flat hierarchy is recommended
+with tags for filtering,
+since hierarchies cannot be changed.
+Filtering by a tag is just as easy
+as selecting a task and more flexible.
+
+Using subtasks has two main advantages:
+- ability to accumulate time tracked
+- swiftly navigate between related tasks
+
+Thus subtasks can be very useful for specific contexts,
+for example a project or a specific place.
+On the other hand, related tasks like chores
+should be grouped with a tag instead.
+
+### Collaboration
+
+Since everything in mostr is inherently immutable,
+live collaboration is easily possible.
+After every command,
+mostr checks if new updates arrived from the relay
+and updates its display accordingly.
+
+If a relay has a lot of events,
+initial population of data can take a bit -
+but you can already start creating events without issues,
+updates will be fetched in the background.
+For that reason,
+it is recommended to leave mostr running
+as you work.
+
+### Time-Tracking
+
+The currently active task is automatically time-tracked.
+To stop time-tracking completely, simply move to the root of all tasks.
+Time-tracking is currently also stopped
+when the application is terminated regularly.
 
 ## Reference
 
@@ -41,7 +96,7 @@ Recommendation: Flat hierarchy, using tags for filtering (TBI)
   + no match: create & activate task
 - `.2` - set view depth to `2`, which can be substituted for any number (how many subtask levels to show, default 1)
 
-Dots can be repeated to move to parent tasks
+Dots can be repeated to move to parent tasks.
 
 - `:[IND][COL]` - add / remove property column COL to IND or end
 - `>[TEXT]` - Complete active task and move to parent, with optional state description
@@ -54,7 +109,7 @@ Property Filters:
 - `#TAG` - filter by tag
 - `?STATE` - filter by state (type or description) - plain `?` to reset
 
-State descriptions can be used for example for Kanban columns.
+State descriptions can be used for example for Kanban columns or review flows.
 An active tag or state filter will also set that attribute for newly created tasks.
 
 ### Available Columns
@@ -76,20 +131,49 @@ An active tag or state filter will also set that attribute for newly created tas
 
 For debugging: `props`, `alltags`, `descriptions`
 
-TBI: Combined formatting and recursion specifiers -
-for example progress count/percentage and recursive or not.
-Subtask progress immediate/all/leafs.
+## Nostr reference
+
+Mostr mainly uses the following NIPs:
+- NIP01 for task descriptions
+- Issue Tracking: https://github.com/nostr-protocol/nips/blob/master/34.md
+  + Tasks have Kind 1621 (originally: git issue - currently no native markdown support)
+  + Kind 1622 may be used for task comments or replace Kind 1 for descriptions
+  + Kind 1630-1633: Task Status (Open, Done, Closed, Pending)
+- Implementing proprietary Kind 1650 for time-tracking
+
+Considering to use Calendar: https://github.com/nostr-protocol/nips/blob/master/52.md
+- Kind 31922 for GANTT, since it has only Date
+- Kind 31923 for Calendar, since it has a time
 
 ## Plans
 
-- Relay Selection, fetch most recent tasks first
-- parse Hashtag tags from task name
-- Personal time tracking
-- Unified Filter object
-  -> include sub
+- Task markdown support?
 - Time tracking: Active not as task state, ability to postpone task and add planned timestamps (calendar entry)
-- TUI - Clear terminal?
-- Expiry (no need to fetch potential years of history)
-- Offline caching
+  + Personal time tracking
+  + Postponing Tasks
+- Parse Hashtag tags from task name
+- Unified Filter object
+  -> include subtasks of matched tasks
+- Relay Switching
+- Speedup: Offline caching & Expiry (no need to fetch potential years of history)
+  + Fetch most recent tasks first
+  + Relay: compress tracked time for old tasks, filter closed tasks
+  + Relay: filter out task state updates within few seconds, also on client side
+  
+### Conceptual
+
+The following features are not ready to be implemented
+because they need conceptualization.
+Suggestions welcome!
+
+- Task Ownership
+- Combined formatting and recursion specifiers
+  + progress count/percentage and recursive or not
+  + Subtask progress immediate/all/leafs
+  + path full / leaf / top
+
+### Interfaces
+
+- TUI: Clear terminal? Refresh on empty prompt after timeout?
+- Kanban, GANTT, Calendar
 - Web Interface, Messenger integrations
-- Relay: filter out task state updates within few seconds, also on client side

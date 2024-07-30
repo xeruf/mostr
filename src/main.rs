@@ -19,17 +19,8 @@ use crate::tasks::Tasks;
 mod task;
 mod tasks;
 
-/*
-      1: Task Description
-   Issue Tracking: https://github.com/nostr-protocol/nips/blob/master/34.md
-   1621: MD Issue
-   1622: MD Reply
-   1630-1633: Status (Time-tracking, Kanban)
-   Calendar: https://github.com/nostr-protocol/nips/blob/master/52.md
-   31922 (GANTT, only Date)
-   31923 (Calendar, with Time)
-*/
 static TASK_KIND: u64 = 1621;
+static TRACKING_KIND: u64 = 1650;
 
 #[derive(Debug, Clone)]
 struct EventSender {
