@@ -1,6 +1,8 @@
 use std::collections::{BTreeSet, HashMap};
+use std::io::{Error, stdout, Write};
 use std::iter::once;
 
+use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Event, EventBuilder, EventId, Keys, Kind, Tag};
 use nostr_sdk::Tag::Hashtag;
@@ -159,13 +161,13 @@ impl Tasks {
         }
     }
 
+    fn current_task(&self) -> Option<&Task> {
+        self.position.and_then(|id| self.tasks.get(&id))
+    }
+
     pub(crate) fn current_tasks(&self) -> Vec<&Task> {
         if self.depth == 0 {
-            return self
-                .position
-                .and_then(|id| self.tasks.get(&id))
-                .into_iter()
-                .collect();
+            return self.current_task().into_iter().collect();
         }
         let res: Vec<&Task> = self.resolve_tasks(self.view.iter());
         if res.len() > 0 {
@@ -191,10 +193,24 @@ impl Tasks {
         .collect()
     }
 
-    pub(crate) fn print_tasks(&self) {
-        println!("{}", self.properties.join("\t"));
+    pub(crate) fn print_tasks(&self) -> Result<(), Error> {
+        let mut lock = stdout().lock();
+        if let Some(t) = self.current_task() {
+            if let Some(state) = t.state() {
+                writeln!(
+                    lock,
+                    "{} since {} (total time {}m)",
+                    state.get_label(),
+                    state.time.to_human_datetime(),
+                    t.time_tracked() / 60
+                )?;
+            }
+            writeln!(lock, "{}", t.descriptions().join("\n"))?;
+        }
+        writeln!(lock, "{}", self.properties.join("\t"))?; // TODO proper columns
         for task in self.current_tasks() {
-            println!(
+            writeln!(
+                lock,
                 "{}",
                 self.properties
                     .iter()
@@ -209,9 +225,10 @@ impl Tasks {
                     })
                     .collect::<Vec<String>>()
                     .join(" \t")
-            );
+            )?;
         }
-        println!();
+        writeln!(lock)?;
+        Ok(())
     }
 
     // Movement and Selection
@@ -231,11 +248,7 @@ impl Tasks {
     }
 
     pub(crate) fn move_up(&mut self) {
-        self.move_to(
-            self.position
-                .and_then(|id| self.tasks.get(&id))
-                .and_then(|t| t.parent_id()),
-        )
+        self.move_to(self.current_task().and_then(|t| t.parent_id()))
     }
 
     pub(crate) fn move_to(&mut self, id: Option<EventId>) {

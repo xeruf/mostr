@@ -50,7 +50,7 @@ impl Task {
             .unwrap_or_else(|| self.get_id().to_string())
     }
 
-    fn descriptions(&self) -> impl Iterator<Item = &String> + '_ {
+    pub(crate) fn descriptions(&self) -> impl Iterator<Item = &String> + '_ {
         self.props.iter().filter_map(|event| {
             if event.kind == Kind::TextNote {
                 Some(&event.content)
@@ -170,7 +170,7 @@ impl Task {
 pub(crate) struct TaskState {
     state: State,
     name: Option<String>,
-    time: Timestamp,
+    pub(crate) time: Timestamp,
 }
 impl TaskState {
     pub(crate) fn get_label(&self) -> String {
