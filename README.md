@@ -98,7 +98,7 @@ when the application is terminated regularly.
 
 Dots can be repeated to move to parent tasks.
 
-- `:[IND][COL]` - add / remove property column COL to IND or end
+- `:[IND][COL]` - add property column COL at IND or end, if it already exists remove property column COL or IND
 - `>[TEXT]` - Complete active task and move to parent, with optional state description
 - `<[TEXT]` - Close active task and move to parent, with optional state description
 - `|TEXT` - Set state for current task from text (also aliased to `/` for now)

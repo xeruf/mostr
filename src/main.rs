@@ -236,6 +236,24 @@ async fn main() {
                             }
                         }
                         None => {
+                            if arg.is_empty() { 
+                                println!("Available properties:
+- `id`
+- `parentid`
+- `name`
+- `state`
+- `hashtags`
+- `tags` - values of all nostr tags associated with the event, except event tags
+- `desc` - last note on the task
+- `description` - accumulated notes on the task
+- `path` - name including parent tasks
+- `rpath` - name including parent tasks up to active task
+- `time` - time tracked on this task
+- `rtime` - time tracked on this tasks and all recursive subtasks
+- `progress` - recursive subtask completion in percent
+- `subtasks` - how many direct subtasks are complete");
+                                continue;
+                            }
                             let pos = tasks.properties.iter().position(|s| s == arg);
                             match pos {
                                 None => {
