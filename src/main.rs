@@ -188,15 +188,16 @@ async fn main() {
     println!();
     let mut lines = stdin().lines();
     loop {
-        tasks.print_tasks();
+        or_print(tasks.print_tasks());
 
         print!(
             "{}",
             format!(
-            " {}{}) ",
-            tasks.get_task_path(tasks.get_position()),
-            tasks.get_prompt_suffix()
-            ).italic()
+                " {}{}) ",
+                tasks.get_task_path(tasks.get_position()),
+                tasks.get_prompt_suffix()
+            )
+            .italic()
         );
         stdout().flush().unwrap();
         match lines.next() {
@@ -214,7 +215,7 @@ async fn main() {
                         count += 1;
                     }
                 }
-                if count > 0 { 
+                if count > 0 {
                     info!("Received {count} updates");
                 }
 

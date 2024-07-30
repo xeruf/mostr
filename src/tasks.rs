@@ -2,8 +2,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::io::{Error, stdout, Write};
 use std::iter::once;
 
-use chrono::{Datelike, DateTime, Local, LocalResult, MappedLocalTime, NaiveDate, TimeZone, Utc};
-use chrono::format::DelayedFormat;
+use chrono::{Local, TimeZone};
 use chrono::LocalResult::Single;
 use colored::Colorize;
 use itertools::Itertools;
@@ -117,7 +116,8 @@ impl Tasks {
             self.traverse_up_from(Some(id))
                 .take_while(|t| Some(t.event.id) != self.position),
             false,
-        ).unwrap_or(id.to_string())
+        )
+        .unwrap_or(id.to_string())
     }
 
     // Helpers
@@ -208,7 +208,11 @@ impl Tasks {
                     match Local.timestamp_opt(state.time.as_i64(), 0) {
                         Single(time) => {
                             let date = time.date_naive();
-                            let prefix = match Local::now().date_naive().signed_duration_since(date).num_days() {
+                            let prefix = match Local::now()
+                                .date_naive()
+                                .signed_duration_since(date)
+                                .num_days()
+                            {
                                 0 => "".into(),
                                 1 => "yesterday ".into(),
                                 2..=6 => date.format("%a ").to_string(),
@@ -301,7 +305,13 @@ impl Tasks {
         return match input.split_once(": ") {
             None => EventBuilder::new(Kind::from(TASK_KIND), input, tags),
             Some(s) => {
-                tags.append(&mut s.1.split_ascii_whitespace().map(|t| Hashtag(t.to_string())).collect());
+                tags.append(
+                    &mut s
+                        .1
+                        .split_ascii_whitespace()
+                        .map(|t| Hashtag(t.to_string()))
+                        .collect(),
+                );
                 EventBuilder::new(Kind::from(TASK_KIND), s.0, tags)
             }
         };
@@ -391,22 +401,23 @@ impl Tasks {
     }
 }
 
-pub(crate) fn join_tasks<'a>(iter: impl Iterator<Item = &'a Task>, include_last_id: bool) -> Option<String> {
+pub(crate) fn join_tasks<'a>(
+    iter: impl Iterator<Item = &'a Task>,
+    include_last_id: bool,
+) -> Option<String> {
     let tasks: Vec<&Task> = iter.collect();
     tasks
         .iter()
         .map(|t| t.get_title())
-        .chain(
-            if include_last_id {
-                tasks
-                    .last()
-                    .and_then(|t| t.parent_id())
-                    .map(|id| id.to_string())
-                    .into_iter()
-            } else {
-                None.into_iter()
-            }
-        )
+        .chain(if include_last_id {
+            tasks
+                .last()
+                .and_then(|t| t.parent_id())
+                .map(|id| id.to_string())
+                .into_iter()
+        } else {
+            None.into_iter()
+        })
         .fold(None, |acc, val| {
             Some(acc.map_or_else(|| val.clone(), |cur| format!("{}>{}", val, cur)))
         })
@@ -510,10 +521,16 @@ fn test_depth() {
     assert_eq!(tasks.get_task_path(Some(zero)), zero.to_string());
     tasks.move_to(Some(zero));
     let dangling = tasks.make_task("test");
-    assert_eq!(tasks.get_task_path(dangling), "0000000000000000000000000000000000000000000000000000000000000000>test");
+    assert_eq!(
+        tasks.get_task_path(dangling),
+        "0000000000000000000000000000000000000000000000000000000000000000>test"
+    );
     assert_eq!(tasks.relative_path(dangling.unwrap()), "test");
 
     use itertools::Itertools;
     assert_eq!("test  toast".split(' ').collect_vec().len(), 3);
-    assert_eq!("test  toast".split_ascii_whitespace().collect_vec().len(), 2);
+    assert_eq!(
+        "test  toast".split_ascii_whitespace().collect_vec().len(),
+        2
+    );
 }

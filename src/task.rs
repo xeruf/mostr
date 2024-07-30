@@ -21,11 +21,9 @@ pub(crate) struct Task {
 
 impl Task {
     pub(crate) fn new(event: Event) -> Task {
-        let (parents, tags) = event.tags.iter().partition_map(|tag| {
-            match tag {
-                Tag::Event { event_id, .. } => return Left(event_id),
-                _ => Right(tag.clone())
-            }
+        let (parents, tags) = event.tags.iter().partition_map(|tag| match tag {
+            Tag::Event { event_id, .. } => return Left(event_id),
+            _ => Right(tag.clone()),
         });
         Task {
             children: Default::default(),
@@ -63,11 +61,7 @@ impl Task {
     fn states(&self) -> impl Iterator<Item = TaskState> + '_ {
         self.props.iter().filter_map(|event| {
             event.kind.try_into().ok().map(|s| TaskState {
-                name: if event.content.is_empty() {
-                    None
-                } else {
-                    Some(event.content.clone())
-                },
+                name: Some(event.content.clone()).filter(|c| !c.is_empty()),
                 state: s,
                 time: event.created_at.clone(),
             })
@@ -130,7 +124,9 @@ impl Task {
     }
 
     fn filter_tags<P>(&self, predicate: P) -> Option<String>
-    where P: FnMut(&&Tag) -> bool{
+    where
+        P: FnMut(&&Tag) -> bool,
+    {
         self.tags.as_ref().map(|tags| {
             tags.into_iter()
                 .filter(predicate)
@@ -147,7 +143,10 @@ impl Task {
             "state" => self.state().map(|s| s.to_string()),
             "name" => Some(self.event.content.clone()),
             "time" => Some(format!("{}m", self.time_tracked().div(60))),
-            "hashtags" => self.filter_tags(|tag| tag.single_letter_tag().is_some_and(|sltag| sltag.character == Alphabet::T)),
+            "hashtags" => self.filter_tags(|tag| {
+                tag.single_letter_tag()
+                    .is_some_and(|sltag| sltag.character == Alphabet::T)
+            }),
             "tags" => self.filter_tags(|_| true),
             "alltags" => Some(format!("{:?}", self.tags)),
             "props" => Some(format!(
@@ -157,7 +156,10 @@ impl Task {
                     .map(|e| format!("{} kind {} '{}'", e.created_at, e.kind, e.content))
                     .collect::<Vec<String>>()
             )),
-            "descriptions" => Some(format!("{:?}", self.descriptions().collect::<Vec<&String>>())),
+            "descriptions" => Some(format!(
+                "{:?}",
+                self.descriptions().collect::<Vec<&String>>()
+            )),
             "desc" | "description" => self.descriptions().last().cloned(),
             _ => {
                 warn!("Unknown task property {}", property);
