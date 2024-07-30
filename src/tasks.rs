@@ -2,6 +2,10 @@ use std::collections::{BTreeSet, HashMap};
 use std::io::{Error, stdout, Write};
 use std::iter::once;
 
+use chrono::{Datelike, DateTime, Local, LocalResult, MappedLocalTime, NaiveDate, TimeZone, Utc};
+use chrono::format::DelayedFormat;
+use chrono::LocalResult::Single;
+use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Event, EventBuilder, EventId, Keys, Kind, Tag};
@@ -199,15 +203,28 @@ impl Tasks {
             if let Some(state) = t.state() {
                 writeln!(
                     lock,
-                    "{} since {} (total time {}m)",
+                    "{} since {} (total tracked time {}m)",
                     state.get_label(),
-                    state.time.to_human_datetime(),
+                    match Local.timestamp_opt(state.time.as_i64(), 0) {
+                        Single(time) => {
+                            let date = time.date_naive();
+                            let prefix = match Local::now().date_naive().signed_duration_since(date).num_days() {
+                                0 => "".into(),
+                                1 => "yesterday ".into(),
+                                2..=6 => date.format("%a ").to_string(),
+                                _ => date.format("%y-%m-%d ").to_string(),
+                            };
+                            format!("{}{}", prefix, time.format("%H:%M"))
+                        }
+                        _ => state.time.to_human_datetime(),
+                    },
                     t.time_tracked() / 60
                 )?;
             }
             writeln!(lock, "{}", t.descriptions().join("\n"))?;
         }
-        writeln!(lock, "{}", self.properties.join("\t"))?; // TODO proper columns
+        // TODO proper columns
+        writeln!(lock, "{}", self.properties.join("\t").bold())?;
         for task in self.current_tasks() {
             writeln!(
                 lock,

@@ -8,6 +8,7 @@ use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::mpsc::Sender;
 
+use colored::Colorize;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::prelude::*;
 use xdg::BaseDirectories;
@@ -190,9 +191,12 @@ async fn main() {
         tasks.print_tasks();
 
         print!(
+            "{}",
+            format!(
             " {}{}) ",
             tasks.get_task_path(tasks.get_position()),
             tasks.get_prompt_suffix()
+            ).italic()
         );
         stdout().flush().unwrap();
         match lines.next() {
