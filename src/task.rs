@@ -142,7 +142,7 @@ impl Task {
             "parentid" => self.parent_id().map(|i| i.to_string()),
             "state" => self.state().map(|s| s.to_string()),
             "name" => Some(self.event.content.clone()),
-            "time" => Some(format!("{}m", self.time_tracked().div(60))),
+            "time" => Some(self.time_tracked().div(60)).filter(|t| t>&0).map(|t| format!("{}m", t)),
             "desc" => self.descriptions().last().cloned(),
             "description" => Some(self.descriptions().join(" ")),
             "hashtags" => self.filter_tags(|tag| {

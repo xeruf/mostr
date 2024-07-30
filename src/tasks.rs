@@ -44,8 +44,8 @@ impl Tasks {
             properties: vec![
                 "state".into(),
                 "rtime".into(),
+                "hashtags".into(),
                 "rpath".into(),
-                "tags".into(),
                 "desc".into(),
             ],
             position: None,
@@ -240,7 +240,11 @@ impl Tasks {
                         "rpath" => self.relative_path(task.event.id),
                         "rtime" => {
                             let time = self.total_time_tracked(&task.event.id);
-                            format!("{:02}:{:02}", time / 3600, time / 60 % 60)
+                            if time > 60 {
+                                format!("{:02}:{:02}", time / 3600, time / 60 % 60)
+                            } else { 
+                                String::new()
+                            }
                         }
                         prop => task.get(prop).unwrap_or(String::new()),
                     })
