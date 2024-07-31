@@ -102,28 +102,6 @@ impl Task {
         }
     }
 
-    /// Total time this task has been active.
-    /// TODO: Consider caching
-    pub(crate) fn time_tracked(&self) -> u64 {
-        let mut total = 0;
-        let mut start: Option<Timestamp> = None;
-        for state in self.states() {
-            match state.state {
-                State::Active => start = start.or(Some(state.time)),
-                _ => {
-                    if let Some(stamp) = start {
-                        total += (state.time - stamp).as_u64();
-                        start = None;
-                    }
-                }
-            }
-        }
-        if let Some(start) = start {
-            total += (Timestamp::now() - start).as_u64();
-        }
-        total
-    }
-
     fn filter_tags<P>(&self, predicate: P) -> Option<String>
     where
         P: FnMut(&&Tag) -> bool,
@@ -143,9 +121,6 @@ impl Task {
             "parentid" => self.parent_id().map(|i| i.to_string()),
             "state" => self.state().map(|s| s.to_string()),
             "name" => Some(self.event.content.clone()),
-            "time" => Some(self.time_tracked().div(60))
-                .filter(|t| t > &0)
-                .map(|t| format!("{}m", t)),
             "desc" => self.descriptions().last().cloned(),
             "description" => Some(self.descriptions().join(" ")),
             "hashtags" => self.filter_tags(|tag| {

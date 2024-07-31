@@ -19,8 +19,8 @@ use crate::tasks::Tasks;
 mod task;
 mod tasks;
 
-static TASK_KIND: u64 = 1621;
-static TRACKING_KIND: u64 = 1650;
+const TASK_KIND: u64 = 1621;
+const TRACKING_KIND: u64 = 1650;
 
 #[derive(Debug, Clone)]
 struct EventSender {
@@ -32,6 +32,9 @@ impl EventSender {
         or_print(event_builder.to_event(&self.keys)).inspect(|event| {
             or_print(self.tx.send(event.clone()));
         })
+    }
+    pub(crate) fn pubkey(&self) -> PublicKey {
+        self.keys.public_key()
     }
 }
 
@@ -366,14 +369,7 @@ async fn main() {
     }
     println!();
 
-    // TODO optionally continue
-    tasks.update_state("", |t| {
-        if t.pure_state() == State::Active {
-            Some(State::Open)
-        } else {
-            None
-        }
-    });
+    tasks.move_to(None);
     drop(tasks);
 
     info!("Submitting pending changes...");

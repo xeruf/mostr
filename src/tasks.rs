@@ -1,18 +1,17 @@
 use std::collections::{BTreeSet, HashMap};
-use std::fmt::{Display, Formatter, write};
 use std::io::{Error, stdout, Write};
-use std::iter::{once, Sum};
-use std::ops::Add;
+use std::iter::once;
+use std::ops::{Div, Rem};
 
 use chrono::{Local, TimeZone};
 use chrono::LocalResult::Single;
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use nostr_sdk::{Event, EventBuilder, EventId, Keys, Kind, Tag};
+use nostr_sdk::{Event, EventBuilder, EventId, Kind, PublicKey, Tag, Timestamp};
 use nostr_sdk::Tag::Hashtag;
 
-use crate::{EventSender, TASK_KIND};
+use crate::{EventSender, TASK_KIND, TRACKING_KIND};
 use crate::task::{State, Task};
 
 type TaskMap = HashMap<EventId, Task>;
@@ -20,6 +19,8 @@ type TaskMap = HashMap<EventId, Task>;
 pub(crate) struct Tasks {
     /// The Tasks
     tasks: TaskMap,
+    /// History of active tasks by PubKey
+    history: HashMap<PublicKey, BTreeSet<Event>>,
     /// The task properties currently visible
     pub(crate) properties: Vec<String>,
     /// Negative: Only Leaf nodes
@@ -43,6 +44,7 @@ impl Tasks {
     pub(crate) fn from(sender: EventSender) -> Self {
         Tasks {
             tasks: Default::default(),
+            history: Default::default(),
             properties: vec![
                 "state".into(),
                 "progress".into(),
@@ -74,15 +76,74 @@ impl Tasks {
         self.position
     }
 
-    /// Total time this task and its subtasks have been active
-    fn total_time_tracked(&self, id: &EventId) -> u64 {
-        self.get_by_id(id).map_or(0, |t| {
-            t.time_tracked()
-                + t.children
-                    .iter()
-                    .map(|e| self.total_time_tracked(e))
-                    .sum::<u64>()
-        })
+    /// Ids of all subtasks found for id, including itself
+    fn get_subtasks(&self, id: EventId) -> Vec<EventId> {
+        let mut children = Vec::with_capacity(32);
+        let mut index = 0;
+
+        children.push(id);
+        while index < children.len() {
+            self.tasks.get(&children[index]).map(|t| {
+                children.reserve(t.children.len());
+                for child in t.children.iter() {
+                    children.push(child.clone());
+                }
+            });
+            index += 1;
+        }
+
+        children
+    }
+
+    /// Total time tracked on this task by the current user.
+    pub(crate) fn time_tracked(&self, id: &EventId) -> u64 {
+        let mut total = 0;
+        let mut start: Option<Timestamp> = None;
+        for event in self.history.get(&self.sender.pubkey()).into_iter().flatten() {
+            match event.tags.first() {
+                Some(Tag::Event {
+                         event_id,
+                         ..
+                     }) if event_id == id => {
+                    start = start.or(Some(event.created_at))
+                }
+                _ => if let Some(stamp) = start {
+                    total += (event.created_at - stamp).as_u64();
+                }
+            }
+        }
+        if let Some(start) = start {
+            total += (Timestamp::now() - start).as_u64();
+        }
+        total
+    }
+
+    /// Total time tracked on this task and its subtasks by all users.
+    /// TODO needs testing!
+    fn total_time_tracked(&self, id: EventId) -> u64 {
+        let mut total = 0;
+
+        let children = self.get_subtasks(id);
+        for user in self.history.values() {
+            let mut start: Option<Timestamp> = None;
+            for event in user {
+                match event.tags.first() {
+                    Some(Tag::Event {
+                             event_id,
+                             ..
+                         }) if children.contains(event_id) => {
+                        start = start.or(Some(event.created_at))
+                    }
+                    _ => if let Some(stamp) = start {
+                        total += (event.created_at - stamp).as_u64();
+                    }
+                }
+            }
+            if let Some(start) = start {
+                total += (Timestamp::now() - start).as_u64();
+            }
+        }
+        total
     }
 
     fn total_progress(&self, id: &EventId) -> Option<f32> {
@@ -244,7 +305,7 @@ impl Tasks {
                         }
                         _ => state.time.to_human_datetime(),
                     },
-                    t.time_tracked() / 60
+                    self.time_tracked(t.get_id()) / 60
                 )?;
             }
             writeln!(lock, "{}", t.descriptions().join("\n"))?;
@@ -278,14 +339,8 @@ impl Tasks {
                             .map_or(String::new(), |p| format!("{:2}%", p * 100.0)),
                         "path" => self.get_task_path(Some(task.event.id)),
                         "rpath" => self.relative_path(task.event.id),
-                        "rtime" => {
-                            let time = self.total_time_tracked(&task.event.id);
-                            if time > 60 {
-                                format!("{:02}:{:02}", time / 3600, time / 60 % 60)
-                            } else {
-                                String::new()
-                            }
-                        }
+                        "time" => display_time("MMMm", self.time_tracked(task.get_id())),
+                        "rtime" => display_time("HH:MMm", self.total_time_tracked(*task.get_id())),
                         prop => task.get(prop).unwrap_or(String::new()),
                     })
                     .collect::<Vec<String>>()
@@ -322,21 +377,15 @@ impl Tasks {
         if id == self.position {
             return;
         }
-        // TODO: erases previous state comment - do not track active via state
-        self.update_state("", |s| {
-            if s.pure_state() == State::Active {
-                Some(State::Open)
-            } else {
-                None
-            }
-        });
         self.position = id;
-        self.update_state("", |s| {
-            if s.pure_state() == State::Open {
-                Some(State::Active)
-            } else {
-                None
-            }
+        self.sender.submit(
+            EventBuilder::new(
+                Kind::from(TRACKING_KIND),
+                "",
+                id.iter().map(|id| Tag::event(id.clone())),
+            )
+        ).map(|e| {
+            self.add(e);
         });
     }
 
@@ -373,10 +422,14 @@ impl Tasks {
     }
 
     pub(crate) fn add(&mut self, event: Event) {
-        if event.kind.as_u64() == 1621 {
-            self.add_task(event)
-        } else {
-            self.add_prop(&event)
+        match event.kind.as_u64() {
+            TASK_KIND => self.add_task(event),
+            TRACKING_KIND =>
+                match self.history.get_mut(&event.pubkey) {
+                    Some(c) => { c.insert(event); }
+                    None => { self.history.insert(event.pubkey, BTreeSet::from([event])); }
+                },
+            _ => self.add_prop(&event),
         }
     }
 
@@ -391,7 +444,7 @@ impl Tasks {
         }
     }
 
-    pub(crate) fn add_prop(&mut self, event: &Event) {
+    fn add_prop(&mut self, event: &Event) {
         self.referenced_tasks(&event, |t| {
             t.props.insert(event.clone());
         });
@@ -445,8 +498,18 @@ impl Tasks {
     }
 }
 
+fn display_time(format: &str, secs: u64) -> String {
+    Some(secs / 60)
+        .filter(|t| t > &0)
+        .map_or(String::new(), |mins| format
+            .replace("HH", &format!("{:02}", mins.div(60)))
+            .replace("MM", &format!("{:02}", mins.rem(60)))
+            .replace("MMM", &format!("{:3}", mins)),
+        )
+}
+
 pub(crate) fn join_tasks<'a>(
-    iter: impl Iterator<Item = &'a Task>,
+    iter: impl Iterator<Item=&'a Task>,
     include_last_id: bool,
 ) -> Option<String> {
     let tasks: Vec<&Task> = iter.collect();
@@ -489,6 +552,7 @@ impl<'a> Iterator for ParentIterator<'a> {
 #[test]
 fn test_depth() {
     use std::sync::mpsc;
+    use nostr_sdk::Keys;
 
     let (tx, _rx) = mpsc::channel();
     let mut tasks = Tasks::from(EventSender {
