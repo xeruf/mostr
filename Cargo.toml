@@ -5,7 +5,7 @@ repository  = "https://forge.ftt.gmbh/janek/mostr"
 readme = "README.md"
 license = "GPL 3.0"
 authors = ["melonion"]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 default-run = "mostr"
 
