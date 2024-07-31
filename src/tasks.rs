@@ -335,8 +335,8 @@ impl Tasks {
                             }
                         }
                         "progress" => self
-                            .total_progress(&task.event.id)
-                            .map_or(String::new(), |p| format!("{:2}%", p * 100.0)),
+                            .total_progress(task.get_id())
+                            .map_or(String::new(), |p| format!("{:2.0}%", p * 100.0)),
                         "path" => self.get_task_path(Some(task.event.id)),
                         "rpath" => self.relative_path(task.event.id),
                         "time" => display_time("MMMm", self.time_tracked(task.get_id())),
