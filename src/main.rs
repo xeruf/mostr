@@ -190,8 +190,7 @@ async fn main() {
                 " {}{}) ",
                 tasks.get_task_path(tasks.get_position()),
                 tasks.get_prompt_suffix()
-            )
-            .italic()
+            ).italic()
         );
         stdout().flush().unwrap();
         match lines.next() {
@@ -239,7 +238,7 @@ async fn main() {
                             }
                         }
                         None => {
-                            if arg.is_empty() { 
+                            if arg.is_empty() {
                                 println!("Available properties:
 - `id`
 - `parentid`

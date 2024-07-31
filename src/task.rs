@@ -49,7 +49,7 @@ impl Task {
             .unwrap_or_else(|| self.get_id().to_string())
     }
 
-    pub(crate) fn descriptions(&self) -> impl Iterator<Item = &String> + '_ {
+    pub(crate) fn descriptions(&self) -> impl Iterator<Item=&String> + '_ {
         self.props.iter().filter_map(|event| {
             if event.kind == Kind::TextNote {
                 Some(&event.content)
@@ -59,7 +59,7 @@ impl Task {
         })
     }
 
-    fn states(&self) -> impl Iterator<Item = TaskState> + '_ {
+    fn states(&self) -> impl Iterator<Item=TaskState> + '_ {
         self.props.iter().filter_map(|event| {
             event.kind.try_into().ok().map(|s| TaskState {
                 name: Some(event.content.clone()).filter(|c| !c.is_empty()),
@@ -159,10 +159,7 @@ impl TaskState {
     }
     pub(crate) fn matches_label(&self, label: &str) -> bool {
         self.state == State::Active
-            || self
-                .name
-                .as_ref()
-                .is_some_and(|n| n.eq_ignore_ascii_case(label))
+            || self.name.as_ref().is_some_and(|n| n.eq_ignore_ascii_case(label))
             || self.state.to_string().eq_ignore_ascii_case(label)
     }
 }

@@ -198,19 +198,18 @@ impl Tasks {
             self.traverse_up_from(Some(id))
                 .take_while(|t| Some(t.event.id) != self.position),
             false,
-        )
-        .unwrap_or(id.to_string())
+        ).unwrap_or(id.to_string())
     }
 
     // Helpers
 
-    fn resolve_tasks<'a>(&self, iter: impl IntoIterator<Item = &'a EventId>) -> Vec<&Task> {
+    fn resolve_tasks<'a>(&self, iter: impl IntoIterator<Item=&'a EventId>) -> Vec<&Task> {
         self.resolve_tasks_rec(iter, self.depth)
     }
 
     fn resolve_tasks_rec<'a>(
         &self,
-        iter: impl IntoIterator<Item = &'a EventId>,
+        iter: impl IntoIterator<Item=&'a EventId>,
         depth: i8,
     ) -> Vec<&Task> {
         iter.into_iter()
@@ -266,18 +265,17 @@ impl Tasks {
                 .values()
                 .filter(|t| t.parent_id() == self.position)
                 .map(|t| t.get_id()),
-        )
-        .into_iter()
-        .filter(|t| {
-            self.state.as_ref().map_or(true, |state| {
-                t.state().is_some_and(|t| t.matches_label(state))
-            }) && (self.tags.is_empty()
-                || t.tags.as_ref().map_or(false, |tags| {
+        ).into_iter()
+            .filter(|t| {
+                self.state.as_ref().map_or(true, |state| {
+                    t.state().is_some_and(|t| t.matches_label(state))
+                }) && (self.tags.is_empty()
+                    || t.tags.as_ref().map_or(false, |tags| {
                     let mut iter = tags.iter();
                     self.tags.iter().all(|tag| iter.any(|t| t == tag))
                 }))
-        })
-        .collect()
+            })
+            .collect()
     }
 
     pub(crate) fn print_tasks(&self) -> Result<(), Error> {
@@ -373,7 +371,7 @@ impl Tasks {
 
     pub(crate) fn move_to(&mut self, id: Option<EventId>) {
         self.view.clear();
-        self.tags.clear();
+        self.tags.clear(); // TODO unsure if this is needed, needs alternative way to clear
         if id == self.position {
             return;
         }
