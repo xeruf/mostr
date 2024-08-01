@@ -508,7 +508,8 @@ impl Tasks {
         match self.position {
             None => warn!("Cannot add note '{}' without active task", note),
             Some(id) => {
-                self.submit(EventBuilder::text_note(note, vec![]));
+                let prop = self.build_prop(Kind::TextNote, note, id);
+                self.submit(prop);
             }
         }
     }
