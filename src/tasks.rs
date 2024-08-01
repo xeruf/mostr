@@ -364,6 +364,11 @@ impl Tasks {
         self.tags.insert(Hashtag(tag));
     }
 
+    pub(crate) fn remove_tag(&mut self, tag: String) {
+        self.view.clear();
+        self.tags.retain(|t| !t.content().is_some_and(|value| value.to_string().starts_with(&tag)));
+    }
+
     pub(crate) fn set_state_filter(&mut self, state: Option<String>) {
         self.view.clear();
         self.state = state;
@@ -379,7 +384,6 @@ impl Tasks {
 
     pub(crate) fn move_to(&mut self, id: Option<EventId>) {
         self.view.clear();
-        self.tags.clear(); // TODO unsure if this is needed, needs alternative way to clear
         if id == self.position {
             debug!("Flushing Tasks because of move in place");
             self.flush();
@@ -393,7 +397,7 @@ impl Tasks {
             )
         );
         if !id.and_then(|id| self.tasks.get(&id)).is_some_and(|t| t.parent_id() == self.position.as_ref()) {
-            debug!("Flushing Tasks because of move upwards");
+            debug!("Flushing Tasks because of move");
             self.flush();
         }
         self.position = id;

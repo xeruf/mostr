@@ -337,8 +337,12 @@ async fn main() {
                         }
                     },
 
-                    Some('#') => {
+                    Some('#') | Some('+') => {
                         tasks.add_tag(arg.to_string());
+                    }
+                    
+                    Some('-') => {
+                        tasks.remove_tag(arg.to_string())
                     }
 
                     Some('.') => {
