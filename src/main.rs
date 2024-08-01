@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::env::{args, var};
 use std::fmt::Display;
 use std::fs;
@@ -22,19 +23,34 @@ mod tasks;
 const TASK_KIND: u64 = 1621;
 const TRACKING_KIND: u64 = 1650;
 
+type Events = Vec<Event>;
+
 #[derive(Debug, Clone)]
 struct EventSender {
-    tx: Sender<Event>,
+    tx: Sender<Events>,
     keys: Keys,
+    queue: RefCell<Events>,
 }
 impl EventSender {
-    fn submit(&self, event_builder: EventBuilder) -> Option<Event> {
-        or_print(event_builder.to_event(&self.keys)).inspect(|event| {
-            or_print(self.tx.send(event.clone()));
-        })
+    fn submit(&self, event_builder: EventBuilder) -> Event {
+        event_builder.to_event(&self.keys)
+            .inspect(|e| self.queue.borrow_mut().push(e.clone()))
+            .unwrap()
+    }
+    fn flush(&self) {
+        or_print(self.tx.send(self.clear()));
+    }
+    fn clear(&self) -> Events {
+        debug!("Cleared queue {:?}", self.queue.borrow());
+        self.queue.replace(Vec::with_capacity(3))
     }
     pub(crate) fn pubkey(&self) -> PublicKey {
         self.keys.public_key()
+    }
+}
+impl Drop for EventSender {
+    fn drop(&mut self) {
+        self.flush()
     }
 }
 
@@ -137,10 +153,11 @@ async fn main() {
 
     client.connect().await;
 
-    let (tx, rx) = mpsc::channel::<Event>();
+    let (tx, rx) = mpsc::channel();
     let mut tasks: Tasks = Tasks::from(EventSender {
-        keys: keys.clone(),
+        keys,
         tx,
+        queue: Default::default(),
     });
 
     let sub_id: SubscriptionId = client.subscribe(vec![Filter::new()], None).await;
@@ -168,9 +185,9 @@ async fn main() {
 
     let sender = tokio::spawn(async move {
         while let Ok(e) = rx.recv() {
-            trace!("Sending {}", e.id);
-            // TODO send in batches
-            let _ = client.send_event(e).await;
+            trace!("Sending {:?}", e);
+            // TODO batch up further
+            let _ = client.batch_event(e, RelaySendOptions::new()).await;
         }
         info!("Stopping listeners...");
         client.unsubscribe_all().await;
@@ -220,7 +237,9 @@ async fn main() {
                     ""
                 };
                 match op {
-                    None => {}
+                    None => {
+                        tasks.flush()
+                    }
 
                     Some(':') => match iter.next().and_then(|s| s.to_digit(10)) {
                         Some(digit) => {
@@ -268,29 +287,36 @@ async fn main() {
                         }
                     },
 
-                    Some('?') => {
-                        tasks.set_state_filter(Some(arg.to_string()).filter(|s| !s.is_empty()));
-                    }
-
                     Some('-') => tasks.add_note(arg),
 
                     Some('>') => {
-                        tasks.update_state(arg, |_| Some(State::Done));
+                        tasks.update_state(arg, State::Done);
                         tasks.move_up();
                     }
 
                     Some('<') => {
-                        tasks.update_state(arg, |_| Some(State::Closed));
+                        tasks.update_state(arg, State::Closed);
                         tasks.move_up();
                     }
 
-                    Some('|') | Some('/') => match tasks.get_position() {
+                    Some('@') => {
+                        tasks.undo();
+                    }
+
+                    Some('?') => {
+                        tasks.set_state_filter(Some(arg.to_string()).filter(|s| !s.is_empty()));
+                    }
+
+                    Some('!') => match tasks.get_position() {
                         None => {
                             warn!("First select a task to set its state!");
                         }
                         Some(id) => {
-                            tasks.set_state_for(&id, arg);
-                            tasks.move_to(tasks.get_position());
+                            tasks.set_state_for(id, arg, match arg {
+                                "Closed" => State::Closed,
+                                "Done" => State::Done,
+                                _ => State::Open,
+                            });
                         }
                     },
 
@@ -303,7 +329,7 @@ async fn main() {
                         let mut pos = tasks.get_position();
                         for _ in iter.take_while(|c| c == &'.') {
                             dots += 1;
-                            pos = tasks.get_parent(pos);
+                            pos = tasks.get_parent(pos).cloned();
                         }
                         let slice = &input[dots..];
                         if slice.is_empty() {
@@ -316,9 +342,7 @@ async fn main() {
                             continue;
                         }
                         pos = EventId::parse(slice).ok().or_else(|| {
-                            // TODO check what is more intuitive:
-                            // currently resets filters before filtering again, maybe keep them
-                            tasks.move_to(pos);
+                            // TODO rebuild and use for plaintext too
                             let mut filtered: Vec<EventId> = tasks
                                 .current_tasks()
                                 .into_iter()
@@ -339,7 +363,7 @@ async fn main() {
                             match filtered.len() {
                                 0 => {
                                     // No match, new task
-                                    tasks.make_task(slice)
+                                    Some(tasks.make_task(slice))
                                 }
                                 1 => {
                                     // One match, activate

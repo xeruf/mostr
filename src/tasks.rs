@@ -56,7 +56,7 @@ impl Tasks {
             position: None,
             view: Default::default(),
             tags: Default::default(),
-            state: Some(State::Open.to_string()),
+            state: None,
             depth: 1,
             sender,
         }
@@ -67,14 +67,13 @@ impl Tasks {
     // Accessors
 
     #[inline]
-    pub(crate) fn get_by_id(&self, id: &EventId) -> Option<&Task> {
-        self.tasks.get(id)
-    }
+    pub(crate) fn get_by_id(&self, id: &EventId) -> Option<&Task> { self.tasks.get(id) }
 
     #[inline]
-    pub(crate) fn get_position(&self) -> Option<EventId> {
-        self.position
-    }
+    pub(crate) fn get_position(&self) -> Option<EventId> { self.position }
+
+    #[inline]
+    pub(crate) fn len(&self) -> usize { self.tasks.len() }
 
     /// Ids of all subtasks found for id, including itself
     fn get_subtasks(&self, id: EventId) -> Vec<EventId> {
@@ -164,7 +163,7 @@ impl Tasks {
 
     // Parents
 
-    pub(crate) fn get_parent(&self, id: Option<EventId>) -> Option<EventId> {
+    pub(crate) fn get_parent(&self, id: Option<EventId>) -> Option<&EventId> {
         id.and_then(|id| self.get_by_id(&id))
             .and_then(|t| t.parent_id())
     }
@@ -263,12 +262,18 @@ impl Tasks {
         self.resolve_tasks(
             self.tasks
                 .values()
-                .filter(|t| t.parent_id() == self.position)
+                .filter(|t| t.parent_id() == self.position.as_ref())
                 .map(|t| t.get_id()),
         ).into_iter()
             .filter(|t| {
-                self.state.as_ref().map_or(true, |state| {
-                    t.state().is_some_and(|t| t.matches_label(state))
+                let state = t.pure_state();
+                self.state.as_ref().map_or_else(|| {
+                    state == State::Open || (
+                        state == State::Done &&
+                            t.parent_id() != None
+                    )
+                }, |filter| {
+                    t.state().is_some_and(|t| t.matches_label(filter))
                 }) && (self.tags.is_empty()
                     || t.tags.as_ref().map_or(false, |tags| {
                     let mut iter = tags.iter();
@@ -281,31 +286,30 @@ impl Tasks {
     pub(crate) fn print_tasks(&self) -> Result<(), Error> {
         let mut lock = stdout().lock();
         if let Some(t) = self.current_task() {
-            if let Some(state) = t.state() {
-                writeln!(
-                    lock,
-                    "{} since {} (total tracked time {}m)",
-                    state.get_label(),
-                    match Local.timestamp_opt(state.time.as_i64(), 0) {
-                        Single(time) => {
-                            let date = time.date_naive();
-                            let prefix = match Local::now()
-                                .date_naive()
-                                .signed_duration_since(date)
-                                .num_days()
-                            {
-                                0 => "".into(),
-                                1 => "yesterday ".into(),
-                                2..=6 => date.format("%a ").to_string(),
-                                _ => date.format("%y-%m-%d ").to_string(),
-                            };
-                            format!("{}{}", prefix, time.format("%H:%M"))
-                        }
-                        _ => state.time.to_human_datetime(),
-                    },
-                    self.time_tracked(t.get_id()) / 60
-                )?;
-            }
+            let state = t.state_or_default();
+            writeln!(
+                lock,
+                "{} since {} (total tracked time {}m)",
+                state.get_label(),
+                match Local.timestamp_opt(state.time.as_i64(), 0) {
+                    Single(time) => {
+                        let date = time.date_naive();
+                        let prefix = match Local::now()
+                            .date_naive()
+                            .signed_duration_since(date)
+                            .num_days()
+                        {
+                            0 => "".into(),
+                            1 => "yesterday ".into(),
+                            2..=6 => date.format("%a ").to_string(),
+                            _ => date.format("%y-%m-%d ").to_string(),
+                        };
+                        format!("{}{}", prefix, time.format("%H:%M"))
+                    }
+                    _ => state.time.to_human_datetime(),
+                },
+                self.time_tracked(t.get_id()) / 60
+            )?;
             writeln!(lock, "{}", t.descriptions().join("\n"))?;
         }
         // TODO proper columns
@@ -366,13 +370,18 @@ impl Tasks {
     }
 
     pub(crate) fn move_up(&mut self) {
-        self.move_to(self.current_task().and_then(|t| t.parent_id()))
+        self.move_to(self.current_task().and_then(|t| t.parent_id()).cloned());
+    }
+
+    pub(crate) fn flush(&self) {
+        self.sender.flush();
     }
 
     pub(crate) fn move_to(&mut self, id: Option<EventId>) {
         self.view.clear();
         self.tags.clear(); // TODO unsure if this is needed, needs alternative way to clear
         if id == self.position {
+            self.flush();
             return;
         }
         self.position = id;
@@ -382,9 +391,10 @@ impl Tasks {
                 "",
                 id.iter().map(|id| Tag::event(id.clone())),
             )
-        ).map(|e| {
-            self.add(e);
-        });
+        );
+        if !id.and_then(|id| self.tasks.get(&id)).is_some_and(|t| t.parent_id() == self.position.as_ref()) {
+            self.flush();
+        }
     }
 
     // Updates
@@ -409,14 +419,28 @@ impl Tasks {
     }
 
     /// Sanitizes input
-    pub(crate) fn make_task(&mut self, input: &str) -> Option<EventId> {
-        self.sender.submit(self.build_task(input.trim())).map(|e| {
-            let id = e.id;
-            self.add_task(e);
-            let state = self.state.clone().unwrap_or("Open".to_string());
-            self.set_state_for(&id, &state);
-            id
-        })
+    pub(crate) fn make_task(&mut self, input: &str) -> EventId {
+        self.submit(self.build_task(input.trim()))
+    }
+
+    pub(crate) fn build_prop(
+        &mut self,
+        kind: Kind,
+        comment: &str,
+        id: EventId,
+    ) -> EventBuilder {
+        EventBuilder::new(
+            kind,
+            comment,
+            vec![Tag::event(id)],
+        )
+    }
+
+    fn submit(&mut self, builder: EventBuilder) -> EventId {
+        let event = self.sender.submit(builder);
+        let id = event.id;
+        self.add(event);
+        id
     }
 
     pub(crate) fn add(&mut self, event: Event) {
@@ -448,49 +472,43 @@ impl Tasks {
         });
     }
 
-    pub(crate) fn set_state_for(&mut self, id: &EventId, comment: &str) -> Option<Event> {
-        let t = self.tasks.get_mut(id);
-        t.and_then(|task| {
-            task.set_state(
-                &self.sender,
-                match comment {
-                    "Closed" => State::Closed,
-                    "Done" => State::Done,
-                    _ => State::Open,
-                },
-                comment,
-            )
-        })
+    pub(crate) fn undo(&mut self) {
+        self.sender.clear().into_iter().rev().for_each(|event| {
+            if let Some(pos) = self.position {
+                if pos == event.id {
+                    self.move_up()
+                }
+            }
+            self.remove(&event)
+        });
     }
 
-    pub(crate) fn update_state_for<F>(&mut self, id: &EventId, comment: &str, f: F) -> Option<Event>
-    where
-        F: FnOnce(&Task) -> Option<State>,
-    {
-        self.tasks
-            .get_mut(id)
-            .and_then(|task| f(task).and_then(|state| task.set_state(&self.sender, state, comment)))
+    fn remove(&mut self, event: &Event) {
+        self.tasks.remove(&event.id);
+        self.history.get_mut(&self.sender.pubkey()).map(|t| t.remove(event));
+        self.referenced_tasks(event, |t| { t.props.remove(event); });
     }
 
-    pub(crate) fn update_state<F>(&mut self, comment: &str, f: F) -> Option<Event>
-    where
-        F: FnOnce(&Task) -> Option<State>,
+    pub(crate) fn set_state_for(&mut self, id: EventId, comment: &str, state: State) -> EventId {
+        let prop = self.build_prop(
+            state.into(),
+            comment,
+            id,
+        );
+        self.submit(prop)
+    }
+
+    pub(crate) fn update_state(&mut self, comment: &str, state: State)
     {
         self.position
-            .and_then(|id| self.update_state_for(&id, comment, f))
+            .map(|id| self.set_state_for(id, comment, state));
     }
 
     pub(crate) fn add_note(&mut self, note: &str) {
         match self.position {
             None => warn!("Cannot add note '{}' without active task", note),
             Some(id) => {
-                self.sender
-                    .submit(EventBuilder::text_note(note, vec![]))
-                    .map(|e| {
-                        self.tasks.get_mut(&id).map(|t| {
-                            t.props.insert(e.clone());
-                        });
-                    });
+                self.submit(EventBuilder::text_note(note, vec![]));
             }
         }
     }
@@ -541,7 +559,7 @@ impl<'a> Iterator for ParentIterator<'a> {
         self.current.and_then(|id| self.tasks.get(&id)).map(|t| {
             self.prev.map(|id| assert!(t.children.contains(&id)));
             self.prev = self.current;
-            self.current = t.parent_id();
+            self.current = t.parent_id().cloned();
             t
         })
     }
@@ -556,50 +574,51 @@ fn test_depth() {
     let mut tasks = Tasks::from(EventSender {
         tx,
         keys: Keys::generate(),
+        queue: Default::default(),
     });
 
     let t1 = tasks.make_task("t1");
-    let task1 = tasks.get_by_id(&t1.unwrap()).unwrap();
+    let task1 = tasks.get_by_id(&t1).unwrap();
     assert_eq!(tasks.depth, 1);
-    assert_eq!(task1.state().unwrap().get_label(), "Open");
+    assert_eq!(task1.pure_state(), State::Open);
     debug!("{:?}", tasks);
     assert_eq!(tasks.current_tasks().len(), 1);
     tasks.depth = 0;
     assert_eq!(tasks.current_tasks().len(), 0);
 
-    tasks.move_to(t1);
+    tasks.move_to(Some(t1));
     tasks.depth = 2;
     assert_eq!(tasks.current_tasks().len(), 0);
     let t2 = tasks.make_task("t2");
     assert_eq!(tasks.current_tasks().len(), 1);
-    assert_eq!(tasks.get_task_path(t2), "t1>t2");
-    assert_eq!(tasks.relative_path(t2.unwrap()), "t2");
+    assert_eq!(tasks.get_task_path(Some(t2)), "t1>t2");
+    assert_eq!(tasks.relative_path(t2), "t2");
     let t3 = tasks.make_task("t3");
     assert_eq!(tasks.current_tasks().len(), 2);
 
-    tasks.move_to(t2);
+    tasks.move_to(Some(t2));
     assert_eq!(tasks.current_tasks().len(), 0);
     let t4 = tasks.make_task("t4");
     assert_eq!(tasks.current_tasks().len(), 1);
-    assert_eq!(tasks.get_task_path(t4), "t1>t2>t4");
-    assert_eq!(tasks.relative_path(t4.unwrap()), "t4");
+    assert_eq!(tasks.get_task_path(Some(t4)), "t1>t2>t4");
+    assert_eq!(tasks.relative_path(t4), "t4");
     tasks.depth = 2;
     assert_eq!(tasks.current_tasks().len(), 1);
     tasks.depth = -1;
     assert_eq!(tasks.current_tasks().len(), 1);
 
-    tasks.move_to(t1);
-    assert_eq!(tasks.relative_path(t4.unwrap()), "t2>t4");
+    tasks.move_to(Some(t1));
+    assert_eq!(tasks.relative_path(t4), "t2>t4");
     assert_eq!(tasks.current_tasks().len(), 2);
     tasks.depth = 2;
     assert_eq!(tasks.current_tasks().len(), 3);
-    tasks.set_filter(vec![t2.unwrap()]);
+    tasks.set_filter(vec![t2]);
     assert_eq!(tasks.current_tasks().len(), 2);
     tasks.depth = 1;
     assert_eq!(tasks.current_tasks().len(), 1);
     tasks.depth = -1;
     assert_eq!(tasks.current_tasks().len(), 1);
-    tasks.set_filter(vec![t2.unwrap(), t3.unwrap()]);
+    tasks.set_filter(vec![t2, t3]);
     assert_eq!(tasks.current_tasks().len(), 2);
     tasks.depth = 2;
     assert_eq!(tasks.current_tasks().len(), 3);
@@ -618,20 +637,20 @@ fn test_depth() {
     assert_eq!(tasks.current_tasks().len(), 2);
 
     let empty = tasks.make_task("");
-    let empty_task = tasks.get_by_id(&empty.unwrap()).unwrap();
+    let empty_task = tasks.get_by_id(&empty).unwrap();
     let empty_id = empty_task.event.id.to_string();
     assert_eq!(empty_task.get_title(), empty_id);
-    assert_eq!(tasks.get_task_path(empty), empty_id);
+    assert_eq!(tasks.get_task_path(Some(empty)), empty_id);
 
     let zero = EventId::all_zeros();
     assert_eq!(tasks.get_task_path(Some(zero)), zero.to_string());
     tasks.move_to(Some(zero));
     let dangling = tasks.make_task("test");
     assert_eq!(
-        tasks.get_task_path(dangling),
+        tasks.get_task_path(Some(dangling)),
         "0000000000000000000000000000000000000000000000000000000000000000>test"
     );
-    assert_eq!(tasks.relative_path(dangling.unwrap()), "test");
+    assert_eq!(tasks.relative_path(dangling), "test");
 
     use itertools::Itertools;
     assert_eq!("test  toast".split(' ').collect_vec().len(), 3);

@@ -101,8 +101,9 @@ Dots can be repeated to move to parent tasks.
 - `:[IND][COL]` - add property column COL at IND or end, if it already exists remove property column COL or IND
 - `>[TEXT]` - Complete active task and move to parent, with optional state description
 - `<[TEXT]` - Close active task and move to parent, with optional state description
-- `|TEXT` - Set state for current task from text (also aliased to `/` for now)
+- `!TEXT` - Set state for current task from text
 - `-TEXT` - add text note (comment / description)
+- `@` - undoes last action (moving in place or upwards confirms pending actions)
 
 Property Filters:
 
@@ -147,10 +148,8 @@ Considering to use Calendar: https://github.com/nostr-protocol/nips/blob/master/
 
 ## Plans
 
-- Task markdown support?
-- Time tracking: Active not as task state, ability to postpone task and add planned timestamps (calendar entry)
-  + Personal time tracking
-  + Postponing Tasks
+- Task markdown support? - colored
+- Time tracking: Ability to postpone task and add planned timestamps (calendar entry)
 - Parse Hashtag tags from task name
 - Unified Filter object
   -> include subtasks of matched tasks

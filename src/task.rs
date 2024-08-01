@@ -39,8 +39,8 @@ impl Task {
         &self.event.id
     }
 
-    pub(crate) fn parent_id(&self) -> Option<EventId> {
-        self.parents.first().cloned()
+    pub(crate) fn parent_id(&self) -> Option<&EventId> {
+        self.parents.first()
     }
 
     pub(crate) fn get_title(&self) -> String {
@@ -68,7 +68,7 @@ impl Task {
             })
         })
     }
-
+    
     pub(crate) fn state(&self) -> Option<TaskState> {
         self.states().max_by_key(|t| t.time)
     }
@@ -77,21 +77,8 @@ impl Task {
         self.state().map_or(State::Open, |s| s.state)
     }
 
-    pub(crate) fn set_state(
-        &mut self,
-        sender: &EventSender,
-        state: State,
-        comment: &str,
-    ) -> Option<Event> {
-        sender
-            .submit(EventBuilder::new(
-                state.into(),
-                comment,
-                vec![Tag::event(self.event.id)],
-            ))
-            .inspect(|e| {
-                self.props.insert(e.clone());
-            })
+    pub(crate) fn state_or_default(&self) -> TaskState {
+        self.state().unwrap_or_else(|| self.default_state())
     }
 
     fn default_state(&self) -> TaskState {
@@ -119,7 +106,7 @@ impl Task {
         match property {
             "id" => Some(self.event.id.to_string()),
             "parentid" => self.parent_id().map(|i| i.to_string()),
-            "state" => self.state().map(|s| s.to_string()),
+            "state" => Some(self.state_or_default().get_label()),
             "name" => Some(self.event.content.clone()),
             "desc" => self.descriptions().last().cloned(),
             "description" => Some(self.descriptions().join(" ")),
