@@ -304,7 +304,7 @@ async fn main() {
                         }
                     },
 
-                    Some('-') => tasks.add_note(arg),
+                    Some(',') => tasks.add_note(arg),
 
                     Some('>') => {
                         tasks.update_state(arg, State::Done);

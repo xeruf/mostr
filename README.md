@@ -102,7 +102,7 @@ Dots can be repeated to move to parent tasks.
 - `>[TEXT]` - Complete active task and move to parent, with optional state description
 - `<[TEXT]` - Close active task and move to parent, with optional state description
 - `!TEXT` - Set state for current task from text
-- `-TEXT` - add text note (comment / description)
+- `,TEXT` - add text note (comment / description)
 - `@` - undoes last action (moving in place or upwards or waiting a minute confirms pending actions)
 
 Property Filters:
