@@ -255,6 +255,13 @@ impl Tasks {
     fn current_task(&self) -> Option<&Task> {
         self.position.and_then(|id| self.get_by_id(&id))
     }
+    
+    pub(crate) fn children_of(&self, id: Option<EventId>) -> impl IntoIterator<Item=&EventId> + '_ {
+        self.tasks
+            .values()
+            .filter(move |t| t.parent_id() == id.as_ref())
+            .map(|t| t.get_id())
+    }
 
     pub(crate) fn current_tasks(&self) -> Vec<&Task> {
         if self.depth == 0 {
@@ -265,13 +272,9 @@ impl Tasks {
             // Currently ignores filter when it matches nothing
             return res;
         }
-        self.resolve_tasks(
-            self.tasks
-                .values()
-                .filter(|t| t.parent_id() == self.position.as_ref())
-                .map(|t| t.get_id()),
-        ).into_iter()
+        self.resolve_tasks(self.children_of(self.position)).into_iter()
             .filter(|t| {
+                // TODO apply filters in transit
                 let state = t.pure_state();
                 self.state.as_ref().map_or_else(|| {
                     state == State::Open || (
@@ -388,13 +391,11 @@ impl Tasks {
     pub(crate) fn flush(&self) {
         self.sender.flush();
     }
-
-    /// Finds out what to do with the given string.
-    /// Returns an EventId when a new Task was created.
-    pub(crate) fn filter_or_create(&mut self, arg: &str) -> Option<EventId> {
+    
+    /// Returns ids of tasks matching the filter.
+    pub(crate) fn get_filtered(&self, arg: &str) -> Vec<EventId> {
         if let Ok(id) = EventId::parse(arg) {
-            self.move_to(Some(id));
-            return None;
+            return vec![id];
         }
         let tasks = self.current_tasks();
         let mut filtered: Vec<EventId> = Vec::with_capacity(tasks.len());
@@ -403,17 +404,23 @@ impl Tasks {
         for task in tasks {
             let lowercase = task.event.content.to_ascii_lowercase();
             if lowercase == lowercase_arg {
-                self.move_to(Some(task.event.id));
-                return None
+                return vec![task.event.id]
             } else if task.event.content.starts_with(arg) {
                 filtered.push(task.event.id)
             } else if lowercase.starts_with(&lowercase_arg) {
                 filtered_more.push(task.event.id)
             }
         }
-        if filtered.len() == 0 { 
-            filtered = filtered_more
+        if filtered.len() == 0 {
+            return filtered_more
         }
+        return filtered
+    }
+
+    /// Finds out what to do with the given string.
+    /// Returns an EventId if a new Task was created.
+    pub(crate) fn filter_or_create(&mut self, arg: &str) -> Option<EventId> {
+        let filtered = self.get_filtered(arg);
         match filtered.len() {
             0 => {
                 // No match, new task

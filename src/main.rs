@@ -365,6 +365,38 @@ async fn main() {
                         }
                     }
 
+                    Some('/') => {
+                        let mut dots = 1;
+                        let mut pos = tasks.get_position();
+                        for _ in iter.take_while(|c| c == &'/') {
+                            dots += 1;
+                            pos = tasks.get_parent(pos).cloned();
+                        }
+                        let slice = &input[dots..].to_ascii_lowercase();
+                        if slice.is_empty() {
+                            tasks.move_to(pos);
+                            continue;
+                        }
+                        if let Ok(depth) = slice.parse::<i8>() {
+                            tasks.move_to(pos);
+                            tasks.depth = depth;
+                        } else {
+                            let filtered = tasks
+                                .children_of(pos)
+                                .into_iter()
+                                .filter_map(|child| tasks.get_by_id(&child))
+                                .filter(|t| t.event.content.to_ascii_lowercase().starts_with(slice))
+                                .map(|t| t.event.id)
+                                .collect::<Vec<_>>();
+                            if filtered.len() == 1 {
+                                tasks.move_to(filtered.into_iter().nth(0));
+                            } else {
+                                tasks.move_to(pos);
+                                tasks.set_filter(filtered);
+                            }
+                        }
+                    }
+
                     _ => {
                         tasks.filter_or_create(&input);
                     }

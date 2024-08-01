@@ -37,7 +37,7 @@ To exit the application, press `Ctrl-D`.
 ### Navigation and Nesting
 
 Create tasks and navigate using the shortcuts below.
-Whichever task is selected / "active"
+Whichever task is active (selected)
 will be the parent task for newly created tasks
 and automatically has time-tracking running.
 To track task progress,
@@ -48,7 +48,7 @@ Generally a flat hierarchy is recommended
 with tags for filtering,
 since hierarchies cannot be changed.
 Filtering by a tag is just as easy
-as selecting a task and more flexible.
+as activating a task and more flexible.
 
 Using subtasks has two main advantages:
 - ability to accumulate time tracked
@@ -91,10 +91,11 @@ when the application is terminated regularly.
 - `TASK` - create task
 - `.` - clear filters and reload
 - `.TASK`
-  + select task by id
+  + activate task by id
   + match by task name prefix: if one or more tasks match, filter / activate (tries case-sensitive then case-insensitive)
   + no match: create & activate task
 - `.2` - set view depth to `2`, which can be substituted for any number (how many subtask levels to show, default 1)
+- `/[TEXT]` - like `.`, but never creates a task
 
 Dots can be repeated to move to parent tasks.
 
