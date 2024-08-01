@@ -4,6 +4,7 @@ use std::fmt::Display;
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, stdin, stdout, Write};
+use std::ops::Sub;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::mpsc;
@@ -32,16 +33,32 @@ struct EventSender {
     queue: RefCell<Events>,
 }
 impl EventSender {
-    fn submit(&self, event_builder: EventBuilder) -> Event {
-        event_builder.to_event(&self.keys)
-            .inspect(|e| self.queue.borrow_mut().push(e.clone()))
-            .unwrap()
+    fn submit(&self, event_builder: EventBuilder) -> Result<Event> {
+        if let Some(event) = self.queue.borrow().first() {
+            // Flush if oldest event older than a minute
+            if event.created_at < Timestamp::now().sub(60u64) {
+                debug!("Flushing Event Queue because it is older than a minute");
+                self.flush();
+            }
+        }
+        let mut queue = self.queue.borrow_mut();
+        Ok(event_builder.to_event(&self.keys).inspect(|event| {
+            if event.kind.as_u64() == TRACKING_KIND {
+                queue.retain(|e| {
+                    e.kind.as_u64() != TRACKING_KIND
+                });
+            }
+            queue.push(event.clone());
+        })?)
     }
     fn flush(&self) {
-        or_print(self.tx.send(self.clear()));
+        debug!("Flushing {} events from queue", self.queue.borrow().len());
+        if self.queue.borrow().len() > 0 {
+            or_print(self.tx.send(self.clear()));
+        }
     }
     fn clear(&self) -> Events {
-        debug!("Cleared queue {:?}", self.queue.borrow());
+        trace!("Cleared queue: {:?}", self.queue.borrow());
         self.queue.replace(Vec::with_capacity(3))
     }
     pub(crate) fn pubkey(&self) -> PublicKey {

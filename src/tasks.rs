@@ -381,10 +381,10 @@ impl Tasks {
         self.view.clear();
         self.tags.clear(); // TODO unsure if this is needed, needs alternative way to clear
         if id == self.position {
+            debug!("Flushing Tasks because of move in place");
             self.flush();
             return;
         }
-        self.position = id;
         self.submit(
             EventBuilder::new(
                 Kind::from(TRACKING_KIND),
@@ -393,8 +393,10 @@ impl Tasks {
             )
         );
         if !id.and_then(|id| self.tasks.get(&id)).is_some_and(|t| t.parent_id() == self.position.as_ref()) {
+            debug!("Flushing Tasks because of move upwards");
             self.flush();
         }
+        self.position = id;
     }
 
     // Updates
@@ -437,7 +439,7 @@ impl Tasks {
     }
 
     fn submit(&mut self, builder: EventBuilder) -> EventId {
-        let event = self.sender.submit(builder);
+        let event = self.sender.submit(builder).unwrap();
         let id = event.id;
         self.add(event);
         id
@@ -474,16 +476,16 @@ impl Tasks {
 
     pub(crate) fn undo(&mut self) {
         self.sender.clear().into_iter().rev().for_each(|event| {
-            if let Some(pos) = self.position {
-                if pos == event.id {
-                    self.move_up()
-                }
-            }
             self.remove(&event)
         });
     }
 
     fn remove(&mut self, event: &Event) {
+        if let Some(pos) = self.position {
+            if pos == event.id {
+                self.move_up()
+            }
+        }
         self.tasks.remove(&event.id);
         self.history.get_mut(&self.sender.pubkey()).map(|t| t.remove(event));
         self.referenced_tasks(event, |t| { t.props.remove(event); });
