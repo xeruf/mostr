@@ -150,12 +150,18 @@ impl Tasks {
             State::Closed => None,
             State::Done => Some(1.0),
             _ => {
-                let count = t.children.len() as f32;
+                let mut sum = 0f32;
+                let mut count = 0;
+                for prog in t.children.iter().filter_map(|e| self.total_progress(e)) {
+                    sum += prog;
+                    count += 1;
+                }
                 Some(
-                    t.children
-                        .iter()
-                        .filter_map(|e| self.total_progress(e).map(|p| p / count))
-                        .sum(),
+                    if count > 0 {
+                        sum / (count as f32)
+                    } else {
+                        0.0
+                    }
                 )
             }
         })
@@ -338,6 +344,7 @@ impl Tasks {
                         }
                         "progress" => self
                             .total_progress(task.get_id())
+                            .filter(|_| task.children.len() > 0)
                             .map_or(String::new(), |p| format!("{:2.0}%", p * 100.0)),
                         "path" => self.get_task_path(Some(task.event.id)),
                         "rpath" => self.relative_path(task.event.id),
