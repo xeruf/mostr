@@ -385,7 +385,7 @@ impl Tasks {
             return;
         }
         self.position = id;
-        self.sender.submit(
+        self.submit(
             EventBuilder::new(
                 Kind::from(TRACKING_KIND),
                 "",
