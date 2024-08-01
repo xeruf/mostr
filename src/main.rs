@@ -340,7 +340,7 @@ async fn main() {
                     Some('#') | Some('+') => {
                         tasks.add_tag(arg.to_string());
                     }
-                    
+
                     Some('-') => {
                         tasks.remove_tag(arg.to_string())
                     }
@@ -360,50 +360,13 @@ async fn main() {
                         if let Ok(depth) = slice.parse::<i8>() {
                             tasks.move_to(pos);
                             tasks.depth = depth;
-                            continue;
-                        }
-                        pos = EventId::parse(slice).ok().or_else(|| {
-                            // TODO rebuild and use for plaintext too
-                            let mut filtered: Vec<EventId> = tasks
-                                .current_tasks()
-                                .into_iter()
-                                .filter(|t| t.event.content.starts_with(slice))
-                                .map(|t| t.event.id)
-                                .collect();
-                            if filtered.is_empty() {
-                                let lowercase = slice.to_ascii_lowercase();
-                                filtered = tasks
-                                    .current_tasks()
-                                    .into_iter()
-                                    .filter(|t| {
-                                        t.event.content.to_ascii_lowercase().starts_with(&lowercase)
-                                    })
-                                    .map(|t| t.event.id)
-                                    .collect();
-                            }
-                            match filtered.len() {
-                                0 => {
-                                    // No match, new task
-                                    Some(tasks.make_task(slice))
-                                }
-                                1 => {
-                                    // One match, activate
-                                    Some(filtered.first().unwrap().clone())
-                                }
-                                _ => {
-                                    // Multiple match, filter
-                                    tasks.set_filter(filtered);
-                                    None
-                                }
-                            }
-                        });
-                        if pos != None {
-                            tasks.move_to(pos);
+                        } else {
+                            tasks.filter_or_create(slice).map(|id| tasks.move_to(Some(id)));
                         }
                     }
 
                     _ => {
-                        tasks.make_task(&input);
+                        tasks.filter_or_create(&input);
                     }
                 }
             }

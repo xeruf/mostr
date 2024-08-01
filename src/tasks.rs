@@ -389,6 +389,50 @@ impl Tasks {
         self.sender.flush();
     }
 
+    /// Finds out what to do with the given string.
+    /// Returns an EventId when a new Task was created.
+    pub(crate) fn filter_or_create(&mut self, arg: &str) -> Option<EventId> {
+        if let Ok(id) = EventId::parse(arg) {
+            self.move_to(Some(id));
+            return None;
+        }
+        let tasks = self.current_tasks();
+        let mut filtered: Vec<EventId> = Vec::with_capacity(tasks.len());
+        let lowercase_arg = arg.to_ascii_lowercase();
+        let mut filtered_more: Vec<EventId> = Vec::with_capacity(tasks.len());
+        for task in tasks {
+            let lowercase = task.event.content.to_ascii_lowercase();
+            if lowercase == lowercase_arg {
+                self.move_to(Some(task.event.id));
+                return None
+            } else if task.event.content.starts_with(arg) {
+                filtered.push(task.event.id)
+            } else if lowercase.starts_with(&lowercase_arg) {
+                filtered_more.push(task.event.id)
+            }
+        }
+        if filtered.len() == 0 { 
+            filtered = filtered_more
+        }
+        match filtered.len() {
+            0 => {
+                // No match, new task
+                self.view.clear();
+                Some(self.make_task(arg))
+            }
+            1 => {
+                // One match, activate
+                self.move_to(filtered.into_iter().nth(0));
+                None
+            }
+            _ => {
+                // Multiple match, filter
+                self.set_filter(filtered);
+                None
+            }
+        }
+    }
+
     pub(crate) fn move_to(&mut self, id: Option<EventId>) {
         self.view.clear();
         if id == self.position {
