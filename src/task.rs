@@ -110,10 +110,7 @@ impl Task {
             "name" => Some(self.event.content.clone()),
             "desc" => self.descriptions().last().cloned(),
             "description" => Some(self.descriptions().join(" ")),
-            "hashtags" => self.filter_tags(|tag| {
-                tag.single_letter_tag()
-                    .is_some_and(|sltag| sltag.character == Alphabet::T)
-            }),
+            "hashtags" => self.filter_tags(|tag| { is_hashtag(tag) }),
             "tags" => self.filter_tags(|_| true),
             "alltags" => Some(format!("{:?}", self.tags)),
             "props" => Some(format!(
@@ -133,6 +130,11 @@ impl Task {
             }
         }
     }
+}
+
+pub(crate) fn is_hashtag(tag: &Tag) -> bool {
+    tag.single_letter_tag()
+        .is_some_and(|sltag| sltag.character == Alphabet::T)
 }
 
 pub(crate) struct TaskState {
