@@ -655,18 +655,22 @@ impl<'a> Iterator for ParentIterator<'a> {
     }
 }
 
-#[test]
-fn test_depth() {
+fn stub_tasks() -> Tasks {
     use std::sync::mpsc;
     use nostr_sdk::Keys;
 
     let (tx, _rx) = mpsc::channel();
-    let mut tasks = Tasks::from(EventSender {
+    Tasks::from(EventSender {
         tx,
         keys: Keys::generate(),
         queue: Default::default(),
-    });
+    })
+}
 
+#[test]
+fn test_depth() {
+    let mut tasks = stub_tasks();
+    
     let t1 = tasks.make_task("t1");
     let task1 = tasks.get_by_id(&t1).unwrap();
     assert_eq!(tasks.depth, 1);
@@ -725,12 +729,22 @@ fn test_depth() {
     assert_eq!(tasks.current_tasks().len(), 4);
     tasks.depth = -1;
     assert_eq!(tasks.current_tasks().len(), 2);
+}
+
+#[test]
+fn test_empty_task_title_fallback_to_id() {
+    let mut tasks = stub_tasks();
 
     let empty = tasks.make_task("");
     let empty_task = tasks.get_by_id(&empty).unwrap();
     let empty_id = empty_task.event.id.to_string();
     assert_eq!(empty_task.get_title(), empty_id);
     assert_eq!(tasks.get_task_path(Some(empty)), empty_id);
+}
+
+#[test]
+fn test_unknown_task() {
+    let mut tasks = stub_tasks();
 
     let zero = EventId::all_zeros();
     assert_eq!(tasks.get_task_path(Some(zero)), zero.to_string());
