@@ -10,12 +10,13 @@ use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::mpsc::Sender;
 
+use chrono::DateTime;
 use colored::Colorize;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::prelude::*;
 use xdg::BaseDirectories;
 
-use crate::kinds::{build_tracking, TRACKING_KIND};
+use crate::kinds::TRACKING_KIND;
 use crate::task::State;
 use crate::tasks::Tasks;
 
@@ -352,7 +353,17 @@ async fn main() {
                     }
 
                     Some('-') => {
-                        tasks.remove_tag(arg.to_string())
+                        tasks.remove_tag(arg.to_string());
+                    }
+
+                    Some('*') => {
+                        if let Ok(num) = arg.parse::<i64>() {
+                            tasks.track_at(Timestamp::now() + num);
+                        } else if let Ok(date) = DateTime::parse_from_rfc3339(arg) {
+                            tasks.track_at(Timestamp::from(date.to_utc().timestamp() as u64));
+                        } else {
+                            warn!("Cannot parse {arg}");
+                        }
                     }
 
                     Some('.') => {

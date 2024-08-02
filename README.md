@@ -100,9 +100,10 @@ when the application is terminated regularly.
 Dots can be repeated to move to parent tasks.
 
 - `:[IND][COL]` - add property column COL at IND or end, if it already exists remove property column COL or IND
-- `>[TEXT]` - Complete active task and move to parent, with optional state description
-- `<[TEXT]` - Close active task and move to parent, with optional state description
-- `!TEXT` - Set state for current task from text
+- `*[TIME]` - add timetracking with the specified offset
+- `>[TEXT]` - complete active task and move to parent, with optional state description
+- `<[TEXT]` - close active task and move to parent, with optional state description
+- `!TEXT` - set state for current task from text
 - `,TEXT` - add text note (comment / description)
 - `@` - undoes last action (moving in place or upwards or waiting a minute confirms pending actions)
 

@@ -495,6 +495,18 @@ impl Tasks {
         )
     }
 
+   fn get_task_title(&self, id: &EventId) -> String {
+       self.tasks.get(id).map_or(id.to_string(), |t| t.get_title())
+   }
+    
+    pub(crate) fn track_at(&mut self, time: Timestamp) -> EventId {
+        info!("Tracking \"{:?}\" from {}", self.position.map(|id| self.get_task_title(&id)), time.to_human_datetime());
+        self.submit(
+            build_tracking(self.get_position())
+                .custom_created_at(time)
+        )
+    }
+
     fn submit(&mut self, builder: EventBuilder) -> EventId {
         let event = self.sender.submit(builder).unwrap();
         let id = event.id;
