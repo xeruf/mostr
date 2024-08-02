@@ -34,11 +34,16 @@ struct EventSender {
 }
 impl EventSender {
     fn submit(&self, event_builder: EventBuilder) -> Result<Event> {
-        if let Some(event) = self.queue.borrow().first() {
+        {
             // Flush if oldest event older than a minute
-            if event.created_at < Timestamp::now().sub(60u64) {
-                debug!("Flushing Event Queue because it is older than a minute");
-                self.flush();
+            let borrow = self.queue.borrow();
+            if let Some(event) = borrow.first() {
+                let old = event.created_at < Timestamp::now().sub(60u64);
+                drop(borrow);
+                if old {
+                    debug!("Flushing event queue because it is older than a minute");
+                    self.force_flush();
+                }
             }
         }
         let mut queue = self.queue.borrow_mut();
@@ -51,10 +56,15 @@ impl EventSender {
             queue.push(event.clone());
         })?)
     }
-    fn flush(&self) {
+    /// Sends all pending events
+    fn force_flush(&self) {
         debug!("Flushing {} events from queue", self.queue.borrow().len());
-        if self.queue.borrow().len() > 0 {
-            or_print(self.tx.send(self.clear()));
+        or_print(self.tx.send(self.clear()));
+    }
+    /// Sends all pending events if there is a non-tracking event
+    fn flush(&self) {
+        if self.queue.borrow().iter().any(|event| event.kind.as_u64() != TRACKING_KIND) {
+            self.force_flush()
         }
     }
     fn clear(&self) -> Events {
@@ -67,7 +77,7 @@ impl EventSender {
 }
 impl Drop for EventSender {
     fn drop(&mut self) {
-        self.flush()
+        self.force_flush()
     }
 }
 
@@ -255,6 +265,7 @@ async fn main() {
                 };
                 match op {
                     None => {
+                        debug!("Flushing Tasks because of empty command");
                         tasks.flush()
                     }
 
