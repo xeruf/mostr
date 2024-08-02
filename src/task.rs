@@ -8,7 +8,7 @@ use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, Kind, Tag, Timestamp};
 
-use crate::EventSender;
+use crate::kinds::is_hashtag;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Task {
@@ -130,11 +130,6 @@ impl Task {
             }
         }
     }
-}
-
-pub(crate) fn is_hashtag(tag: &Tag) -> bool {
-    tag.single_letter_tag()
-        .is_some_and(|sltag| sltag.character == Alphabet::T)
 }
 
 pub(crate) struct TaskState {

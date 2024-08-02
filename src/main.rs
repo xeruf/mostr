@@ -15,14 +15,13 @@ use log::{debug, error, info, trace, warn};
 use nostr_sdk::prelude::*;
 use xdg::BaseDirectories;
 
+use crate::kinds::{build_tracking, TRACKING_KIND};
 use crate::task::State;
 use crate::tasks::Tasks;
 
 mod task;
 mod tasks;
-
-const TASK_KIND: u64 = 1621;
-const TRACKING_KIND: u64 = 1650;
+mod kinds;
 
 type Events = Vec<Event>;
 
@@ -315,7 +314,7 @@ async fn main() {
                         }
                     },
 
-                    Some(',') => tasks.add_note(arg),
+                    Some(',') => tasks.make_note(arg),
 
                     Some('>') => {
                         tasks.update_state(arg, State::Done);

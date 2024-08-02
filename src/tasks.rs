@@ -11,8 +11,9 @@ use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Event, EventBuilder, EventId, GenericTagValue, Kind, PublicKey, Tag, Timestamp};
 use nostr_sdk::Tag::Hashtag;
 
-use crate::{EventSender, TASK_KIND, TRACKING_KIND};
-use crate::task::{is_hashtag, State, Task};
+use crate::EventSender;
+use crate::kinds::*;
+use crate::task::{State, Task};
 
 type TaskMap = HashMap<EventId, Task>;
 #[derive(Debug, Clone)]
@@ -447,13 +448,7 @@ impl Tasks {
             self.flush();
             return;
         }
-        self.submit(
-            EventBuilder::new(
-                Kind::from(TRACKING_KIND),
-                "",
-                id.iter().map(|id| Tag::event(id.clone())),
-            )
-        );
+        self.submit(build_tracking(id));
         if !id.and_then(|id| self.tasks.get(&id)).is_some_and(|t| t.parent_id() == self.position.as_ref()) {
             debug!("Flushing Tasks because of move");
             self.flush();
@@ -567,7 +562,7 @@ impl Tasks {
             .map(|id| self.set_state_for(id, comment, state));
     }
 
-    pub(crate) fn add_note(&mut self, note: &str) {
+    pub(crate) fn make_note(&mut self, note: &str) {
         match self.position {
             None => warn!("Cannot add note '{}' without active task", note),
             Some(id) => {
@@ -591,27 +586,6 @@ fn display_time(format: &str, secs: u64) -> String {
             .replace("HH", &format!("{:02}", mins.div(60)))
             .replace("MM", &format!("{:02}", mins.rem(60)))
         )
-}
-
-fn build_task(name: &str, tags: Vec<Tag>) -> EventBuilder {
-    info!("Created task \"{name}\" with tags [{}]", tags.iter().map(|tag| format_tag(tag)).join(", "));
-    EventBuilder::new(Kind::from(TASK_KIND), name, tags)
-}
-
-fn format_tag(tag: &Tag) -> String {
-    tag.content().map(|c| {
-        match c {
-            GenericTagValue::PublicKey(key) => format!("Key: {}", key.to_string()[..8].to_string()),
-            GenericTagValue::EventId(id) => format!("Parent: {}", id.to_string()[..8].to_string()),
-            GenericTagValue::String(str) => {
-               if is_hashtag(tag) {
-                   format!("#{str}")
-               } else {
-                   str
-               }
-            }
-        }
-    }).unwrap_or_else(|| format!("Kind {}", tag.kind()))
 }
 
 pub(crate) fn join_tasks<'a>(
