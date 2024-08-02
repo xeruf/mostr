@@ -579,13 +579,18 @@ impl Tasks {
     }
 }
 
+/// Formats the given seconds according to the given format.
+/// MMM - minutes
+/// MM - minutes of the hour
+/// HH - hours
+/// Returns an empty string if under a minute.
 fn display_time(format: &str, secs: u64) -> String {
     Some(secs / 60)
         .filter(|t| t > &0)
         .map_or(String::new(), |mins| format
+            .replace("MMM", &format!("{:3}", mins))
             .replace("HH", &format!("{:02}", mins.div(60)))
             .replace("MM", &format!("{:02}", mins.rem(60)))
-            .replace("MMM", &format!("{:3}", mins)),
         )
 }
 
