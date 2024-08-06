@@ -111,9 +111,11 @@ impl Tasks {
         }
         total
     }
-    
+
     fn time_tracked_for<'a, E>(events: E, ids: &Vec<EventId>) -> u64
-    where E: IntoIterator<Item=&'a Event> {
+    where
+        E: IntoIterator<Item=&'a Event>,
+    {
         let mut total = 0;
         let mut start: Option<Timestamp> = None;
         for event in events {
@@ -126,6 +128,7 @@ impl Tasks {
                 }
                 _ => if let Some(stamp) = start {
                     total += (event.created_at - stamp).as_u64();
+                    start = None;
                 }
             }
         }
@@ -484,16 +487,26 @@ impl Tasks {
         )
     }
 
-   fn get_task_title(&self, id: &EventId) -> String {
-       self.tasks.get(id).map_or(id.to_string(), |t| t.get_title())
-   }
-    
+    fn get_task_title(&self, id: &EventId) -> String {
+        self.tasks.get(id).map_or(id.to_string(), |t| t.get_title())
+    }
+
     pub(crate) fn track_at(&mut self, time: Timestamp) -> EventId {
         info!("Tracking \"{:?}\" from {}", self.position.map(|id| self.get_task_title(&id)), time.to_human_datetime());
-        self.submit(
-            build_tracking(self.get_position())
-                .custom_created_at(time)
-        )
+        let pos = self.get_position();
+        let tracking = build_tracking(pos);
+        self.get_own_history().map(|events| {
+            if let Some(event) = events.pop_last() {
+                if event.kind.as_u16() == TRACKING_KIND &&
+                    (pos == None && event.tags.is_empty()) ||
+                    event.tags.iter().all(|t| t.content().map(|str| str.to_string()) == pos.map(|id| id.to_string())) {
+                    // Replace last for easier calculation
+                } else {
+                    events.insert(event);
+                }
+            }
+        });
+        self.submit(tracking.custom_created_at(time))
     }
 
     fn submit(&mut self, builder: EventBuilder) -> EventId {
@@ -520,7 +533,7 @@ impl Tasks {
             t.children.insert(event.id);
         });
         if self.tasks.contains_key(&event.id) {
-            debug!("Did not insert duplicate event {}", event.id);
+            warn!("Did not insert duplicate event {}", event.id);
         } else {
             self.tasks.insert(event.id, Task::new(event));
         }
@@ -530,6 +543,10 @@ impl Tasks {
         self.referenced_tasks(&event, |t| {
             t.props.insert(event.clone());
         });
+    }
+
+    fn get_own_history(&mut self) -> Option<&mut BTreeSet<Event>> {
+        self.history.get_mut(&self.sender.pubkey())
     }
 
     pub(crate) fn undo(&mut self) {
@@ -545,7 +562,7 @@ impl Tasks {
             }
         }
         self.tasks.remove(&event.id);
-        self.history.get_mut(&self.sender.pubkey()).map(|t| t.remove(event));
+        self.get_own_history().map(|t| t.remove(event));
         self.referenced_tasks(event, |t| { t.props.remove(event); });
     }
 
@@ -630,131 +647,136 @@ impl<'a> Iterator for ParentIterator<'a> {
     }
 }
 
-fn stub_tasks() -> Tasks {
-    use std::sync::mpsc;
-    use nostr_sdk::Keys;
+#[cfg(test)]
+mod tasks_test {
+    use super::*;
 
-    let (tx, _rx) = mpsc::channel();
-    Tasks::from(EventSender {
-        tx,
-        keys: Keys::generate(),
-        queue: Default::default(),
-    })
-}
+    fn stub_tasks() -> Tasks {
+        use std::sync::mpsc;
+        use nostr_sdk::Keys;
 
-#[test]
-fn test_tracking() {
-    let mut tasks = stub_tasks();
-    
-    //let task = tasks.make_task("task");
-    tasks.track_at(Timestamp::from(0));
-    assert_eq!(tasks.history.len(), 1);
-    let zero = EventId::all_zeros();
-    
-    tasks.move_to(Some(zero));
-    let now: Timestamp = Timestamp::now() - 2u64;
-    tasks.track_at(Timestamp::from(1));
-    assert!(tasks.time_tracked(zero) > now.as_u64());
-    
-    tasks.move_to(None);
-    tasks.track_at(Timestamp::from(2));
-    assert_eq!(tasks.history.values().nth(0).unwrap().len(), 5);
-    assert_eq!(tasks.time_tracked(zero), 2);
-}
+        let (tx, _rx) = mpsc::channel();
+        Tasks::from(EventSender {
+            tx,
+            keys: Keys::generate(),
+            queue: Default::default(),
+        })
+    }
 
-#[test]
-fn test_depth() {
-    let mut tasks = stub_tasks();
+    #[test]
+    fn test_tracking() {
+        let mut tasks = stub_tasks();
 
-    let t1 = tasks.make_task("t1");
-    let task1 = tasks.get_by_id(&t1).unwrap();
-    assert_eq!(tasks.depth, 1);
-    assert_eq!(task1.pure_state(), State::Open);
-    debug!("{:?}", tasks);
-    assert_eq!(tasks.current_tasks().len(), 1);
-    tasks.depth = 0;
-    assert_eq!(tasks.current_tasks().len(), 0);
+        //let task = tasks.make_task("task");
+        tasks.track_at(Timestamp::from(0));
+        assert_eq!(tasks.history.len(), 1);
+        let zero = EventId::all_zeros();
 
-    tasks.move_to(Some(t1));
-    tasks.depth = 2;
-    assert_eq!(tasks.current_tasks().len(), 0);
-    let t2 = tasks.make_task("t2");
-    assert_eq!(tasks.current_tasks().len(), 1);
-    assert_eq!(tasks.get_task_path(Some(t2)), "t1>t2");
-    assert_eq!(tasks.relative_path(t2), "t2");
-    let t3 = tasks.make_task("t3");
-    assert_eq!(tasks.current_tasks().len(), 2);
+        tasks.move_to(Some(zero));
+        let now: Timestamp = Timestamp::now() - 2u64;
+        tasks.track_at(Timestamp::from(1));
+        assert!(tasks.time_tracked(zero) > now.as_u64());
 
-    tasks.move_to(Some(t2));
-    assert_eq!(tasks.current_tasks().len(), 0);
-    let t4 = tasks.make_task("t4");
-    assert_eq!(tasks.current_tasks().len(), 1);
-    assert_eq!(tasks.get_task_path(Some(t4)), "t1>t2>t4");
-    assert_eq!(tasks.relative_path(t4), "t4");
-    tasks.depth = 2;
-    assert_eq!(tasks.current_tasks().len(), 1);
-    tasks.depth = -1;
-    assert_eq!(tasks.current_tasks().len(), 1);
+        tasks.move_to(None);
+        tasks.track_at(Timestamp::from(2));
+        assert_eq!(tasks.get_own_history().unwrap().len(), 3);
+        assert_eq!(tasks.time_tracked(zero), 1);
+    }
 
-    tasks.move_to(Some(t1));
-    assert_eq!(tasks.relative_path(t4), "t2>t4");
-    assert_eq!(tasks.current_tasks().len(), 2);
-    tasks.depth = 2;
-    assert_eq!(tasks.current_tasks().len(), 3);
-    tasks.set_filter(vec![t2]);
-    assert_eq!(tasks.current_tasks().len(), 2);
-    tasks.depth = 1;
-    assert_eq!(tasks.current_tasks().len(), 1);
-    tasks.depth = -1;
-    assert_eq!(tasks.current_tasks().len(), 1);
-    tasks.set_filter(vec![t2, t3]);
-    assert_eq!(tasks.current_tasks().len(), 2);
-    tasks.depth = 2;
-    assert_eq!(tasks.current_tasks().len(), 3);
-    tasks.depth = 1;
-    assert_eq!(tasks.current_tasks().len(), 2);
+    #[test]
+    fn test_depth() {
+        let mut tasks = stub_tasks();
 
-    tasks.move_to(None);
-    assert_eq!(tasks.current_tasks().len(), 1);
-    tasks.depth = 2;
-    assert_eq!(tasks.current_tasks().len(), 3);
-    tasks.depth = 3;
-    assert_eq!(tasks.current_tasks().len(), 4);
-    tasks.depth = 9;
-    assert_eq!(tasks.current_tasks().len(), 4);
-    tasks.depth = -1;
-    assert_eq!(tasks.current_tasks().len(), 2);
-}
+        let t1 = tasks.make_task("t1");
+        let task1 = tasks.get_by_id(&t1).unwrap();
+        assert_eq!(tasks.depth, 1);
+        assert_eq!(task1.pure_state(), State::Open);
+        debug!("{:?}", tasks);
+        assert_eq!(tasks.current_tasks().len(), 1);
+        tasks.depth = 0;
+        assert_eq!(tasks.current_tasks().len(), 0);
 
-#[test]
-fn test_empty_task_title_fallback_to_id() {
-    let mut tasks = stub_tasks();
+        tasks.move_to(Some(t1));
+        tasks.depth = 2;
+        assert_eq!(tasks.current_tasks().len(), 0);
+        let t2 = tasks.make_task("t2");
+        assert_eq!(tasks.current_tasks().len(), 1);
+        assert_eq!(tasks.get_task_path(Some(t2)), "t1>t2");
+        assert_eq!(tasks.relative_path(t2), "t2");
+        let t3 = tasks.make_task("t3");
+        assert_eq!(tasks.current_tasks().len(), 2);
 
-    let empty = tasks.make_task("");
-    let empty_task = tasks.get_by_id(&empty).unwrap();
-    let empty_id = empty_task.event.id.to_string();
-    assert_eq!(empty_task.get_title(), empty_id);
-    assert_eq!(tasks.get_task_path(Some(empty)), empty_id);
-}
+        tasks.move_to(Some(t2));
+        assert_eq!(tasks.current_tasks().len(), 0);
+        let t4 = tasks.make_task("t4");
+        assert_eq!(tasks.current_tasks().len(), 1);
+        assert_eq!(tasks.get_task_path(Some(t4)), "t1>t2>t4");
+        assert_eq!(tasks.relative_path(t4), "t4");
+        tasks.depth = 2;
+        assert_eq!(tasks.current_tasks().len(), 1);
+        tasks.depth = -1;
+        assert_eq!(tasks.current_tasks().len(), 1);
 
-#[test]
-fn test_unknown_task() {
-    let mut tasks = stub_tasks();
+        tasks.move_to(Some(t1));
+        assert_eq!(tasks.relative_path(t4), "t2>t4");
+        assert_eq!(tasks.current_tasks().len(), 2);
+        tasks.depth = 2;
+        assert_eq!(tasks.current_tasks().len(), 3);
+        tasks.set_filter(vec![t2]);
+        assert_eq!(tasks.current_tasks().len(), 2);
+        tasks.depth = 1;
+        assert_eq!(tasks.current_tasks().len(), 1);
+        tasks.depth = -1;
+        assert_eq!(tasks.current_tasks().len(), 1);
+        tasks.set_filter(vec![t2, t3]);
+        assert_eq!(tasks.current_tasks().len(), 2);
+        tasks.depth = 2;
+        assert_eq!(tasks.current_tasks().len(), 3);
+        tasks.depth = 1;
+        assert_eq!(tasks.current_tasks().len(), 2);
 
-    let zero = EventId::all_zeros();
-    assert_eq!(tasks.get_task_path(Some(zero)), zero.to_string());
-    tasks.move_to(Some(zero));
-    let dangling = tasks.make_task("test");
-    assert_eq!(
-        tasks.get_task_path(Some(dangling)),
-        "0000000000000000000000000000000000000000000000000000000000000000>test"
-    );
-    assert_eq!(tasks.relative_path(dangling), "test");
+        tasks.move_to(None);
+        assert_eq!(tasks.current_tasks().len(), 1);
+        tasks.depth = 2;
+        assert_eq!(tasks.current_tasks().len(), 3);
+        tasks.depth = 3;
+        assert_eq!(tasks.current_tasks().len(), 4);
+        tasks.depth = 9;
+        assert_eq!(tasks.current_tasks().len(), 4);
+        tasks.depth = -1;
+        assert_eq!(tasks.current_tasks().len(), 2);
+    }
 
-    use itertools::Itertools;
-    assert_eq!("test  toast".split(' ').collect_vec().len(), 3);
-    assert_eq!(
-        "test  toast".split_ascii_whitespace().collect_vec().len(),
-        2
-    );
+    #[test]
+    fn test_empty_task_title_fallback_to_id() {
+        let mut tasks = stub_tasks();
+
+        let empty = tasks.make_task("");
+        let empty_task = tasks.get_by_id(&empty).unwrap();
+        let empty_id = empty_task.event.id.to_string();
+        assert_eq!(empty_task.get_title(), empty_id);
+        assert_eq!(tasks.get_task_path(Some(empty)), empty_id);
+    }
+
+    #[test]
+    fn test_unknown_task() {
+        let mut tasks = stub_tasks();
+
+        let zero = EventId::all_zeros();
+        assert_eq!(tasks.get_task_path(Some(zero)), zero.to_string());
+        tasks.move_to(Some(zero));
+        let dangling = tasks.make_task("test");
+        assert_eq!(
+            tasks.get_task_path(Some(dangling)),
+            "0000000000000000000000000000000000000000000000000000000000000000>test"
+        );
+        assert_eq!(tasks.relative_path(dangling), "test");
+
+        use itertools::Itertools;
+        assert_eq!("test  toast".split(' ').collect_vec().len(), 3);
+        assert_eq!(
+            "test  toast".split_ascii_whitespace().collect_vec().len(),
+            2
+        );
+    }
 }
