@@ -154,15 +154,15 @@ dependencies = [
 
 [[package]]
 name = "async-wsocket"
-version = "0.4.0"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c38341e6ee670913fb9dc3aba40c22d616261da4dc0928326d3168ebf576fb0"
+checksum = "3445f8f330db8e5f3be7912f170f32e43fec90d995c71ced1ec3b8394b4a873c"
 dependencies = [
  "async-utility",
  "futures-util",
  "thiserror",
  "tokio",
- "tokio-rustls",
+ "tokio-rustls 0.26.0",
  "tokio-socks",
  "tokio-tungstenite",
  "url",
@@ -183,9 +183,9 @@ dependencies = [
 
 [[package]]
 name = "atomic-destructor"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4653a42bf04120a1d4e92452e006b4e3af4ab4afff8fb4af0f1bbb98418adf3e"
+checksum = "7d919cb60ba95c87ba42777e9e246c4e8d658057299b437b7512531ce0a09a23"
 dependencies = [
  "tracing",
 ]
@@ -755,10 +755,10 @@ dependencies = [
  "http",
  "hyper",
  "hyper-util",
- "rustls",
+ "rustls 0.22.4",
  "rustls-pki-types",
  "tokio",
- "tokio-rustls",
+ "tokio-rustls 0.25.0",
  "tower-service",
 ]
 
@@ -977,9 +977,9 @@ checksum = "e664971378a3987224f7a0e10059782035e89899ae403718ee07de85bec42afe"
 
 [[package]]
 name = "nostr"
-version = "0.30.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a27223888faca0c4ba9b97c2b7dc776e9a33d5f54e3558887471cf17798b5fbf"
+checksum = "f08db214560a34bf7c4c1fea09a8461b9412bae58ba06e99ce3177d89fa1e0a6"
 dependencies = [
  "aes",
  "base64 0.21.7",
@@ -1007,9 +1007,9 @@ dependencies = [
 
 [[package]]
 name = "nostr-database"
-version = "0.30.0"
+version = "0.33.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f726b8c0904a838f64b51a931a1bf39e341f5584a5e04f06310fbfb847e2e924"
+checksum = "50eebf5020d70891e3c229128de5fc73af632b651d02742383b314d3d0c7e953"
 dependencies = [
  "async-trait",
  "lru",
@@ -1021,9 +1021,9 @@ dependencies = [
 
 [[package]]
 name = "nostr-relay-pool"
-version = "0.30.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52f0ccf9e81aa747abdfa130007651248b37c3699d37029bad701e68902257ce"
+checksum = "afa5502a3df456790ca16d90cc688a677117d57ab56b079dcfa091390ac9f202"
 dependencies = [
  "async-utility",
  "async-wsocket",
@@ -1037,11 +1037,12 @@ dependencies = [
 
 [[package]]
 name = "nostr-sdk"
-version = "0.30.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1ffedac7ab488e0dfea52804d0c43fafc7e3eefc62d97726d3927a1390db05b"
+checksum = "b427dceefbbb49a9dd98abb8c4e40d25fdd467e99821aaad88615252bdb915bd"
 dependencies = [
  "async-utility",
+ "atomic-destructor",
  "lnurl-pay",
  "nostr",
  "nostr-database",
@@ -1056,9 +1057,9 @@ dependencies = [
 
 [[package]]
 name = "nostr-signer"
-version = "0.30.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22e568670664cf5cc14a794ae32dfc04bde385d63ff0f5b1c3745dd3ea69f73a"
+checksum = "665268b316f41cd8fa791be54b6c7935c5a239461708c380a699d6677be9af38"
 dependencies = [
  "async-utility",
  "nostr",
@@ -1070,9 +1071,9 @@ dependencies = [
 
 [[package]]
 name = "nostr-zapper"
-version = "0.30.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "420a7c6458d5c1dc502b3d36fb9f8598837743a737b84adb4ef8ea36b98c5e07"
+checksum = "69922e74f8eab1f9d287008c0c06acdec87277a2d8f44bd9d38e003422aea0ab"
 dependencies = [
  "async-trait",
  "nostr",
@@ -1100,9 +1101,9 @@ dependencies = [
 
 [[package]]
 name = "nwc"
-version = "0.30.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e236611ea96d3545138f7b2152f2e4571e3c93436ddc91d1c458f366e5c6430f"
+checksum = "bb2e04b3edb5e9572e95b62842430625f1718e8a4a3596a30aeb04e6734764ea"
 dependencies = [
  "async-utility",
  "nostr",
@@ -1319,7 +1320,7 @@ dependencies = [
  "once_cell",
  "percent-encoding",
  "pin-project-lite",
- "rustls",
+ "rustls 0.22.4",
  "rustls-pemfile",
  "rustls-pki-types",
  "serde",
@@ -1327,7 +1328,7 @@ dependencies = [
  "serde_urlencoded",
  "sync_wrapper",
  "tokio",
- "tokio-rustls",
+ "tokio-rustls 0.25.0",
  "tokio-socks",
  "tower-service",
  "url",
@@ -1375,6 +1376,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf4ef73721ac7bcd79b2b315da7779d8fc09718c6b3d2d1b2d94850eb8c18432"
 dependencies = [
  "log",
+ "ring",
+ "rustls-pki-types",
+ "rustls-webpki",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "rustls"
+version = "0.23.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ebbbdb961df0ad3f2652da8f3fdc4b36122f568f968f45ad3316f26c025c677b"
+dependencies = [
+ "once_cell",
  "ring",
  "rustls-pki-types",
  "rustls-webpki",
@@ -1459,9 +1474,9 @@ dependencies = [
 
 [[package]]
 name = "semver"
-version = "1.0.22"
+version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92d43fe69e652f3df9bdc2b85b2854a0825b86e4fb76bc44d945137d053639ca"
+checksum = "61697e0a1c7e512e84a621326239844a24d8207b4669b41bc18b32ea5cbf988b"
 
 [[package]]
 name = "send_wrapper"
@@ -1658,7 +1673,18 @@ version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "775e0c0f0adb3a2f22a00c4745d728b479985fc15ee7ca6a2608388c5569860f"
 dependencies = [
- "rustls",
+ "rustls 0.22.4",
+ "rustls-pki-types",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-rustls"
+version = "0.26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c7bc40d0e5a97695bb96e27995cd3a08538541b0a846f65bba7a359f36700d4"
+dependencies = [
+ "rustls 0.23.7",
  "rustls-pki-types",
  "tokio",
 ]
@@ -1677,16 +1703,16 @@ dependencies = [
 
 [[package]]
 name = "tokio-tungstenite"
-version = "0.21.0"
+version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c83b561d025642014097b66e6c1bb422783339e0909e4429cde4749d1990bc38"
+checksum = "c6989540ced10490aaf14e6bad2e3d33728a2813310a0c71d1574304c49631cd"
 dependencies = [
  "futures-util",
  "log",
- "rustls",
+ "rustls 0.23.7",
  "rustls-pki-types",
  "tokio",
- "tokio-rustls",
+ "tokio-rustls 0.26.0",
  "tungstenite",
  "webpki-roots",
 ]
@@ -1759,9 +1785,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tungstenite"
-version = "0.21.0"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ef1a641ea34f399a848dea702823bbecfb4c486f911735368f1f137cb8257e1"
+checksum = "6e2e2ce1e47ed2994fd43b04c8f618008d4cabdd5ee34027cf14f9d918edd9c8"
 dependencies = [
  "byteorder",
  "bytes",
@@ -1770,11 +1796,10 @@ dependencies = [
  "httparse",
  "log",
  "rand",
- "rustls",
+ "rustls 0.23.7",
  "rustls-pki-types",
  "sha1",
  "thiserror",
- "url",
  "utf-8",
 ]
 
@@ -1934,9 +1959,9 @@ checksum = "af190c94f2773fdb3729c55b007a722abb5384da03bc0986df4c289bf5567e96"
 
 [[package]]
 name = "wasm-ws"
-version = "0.1.1"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5b3a482e27ff54809c0848629d9033179705c5ea2f58e26cf45dc77c34c4984"
+checksum = "688c5806d1b06b4f3d90d015e23364dc5d3af412ee64abba6dde8fdc01637e33"
 dependencies = [
  "async_io_stream",
  "futures",

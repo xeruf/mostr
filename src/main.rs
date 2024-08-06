@@ -48,9 +48,9 @@ impl EventSender {
         }
         let mut queue = self.queue.borrow_mut();
         Ok(event_builder.to_event(&self.keys).inspect(|event| {
-            if event.kind.as_u64() == TRACKING_KIND {
+            if event.kind.as_u16() == TRACKING_KIND {
                 queue.retain(|e| {
-                    e.kind.as_u64() != TRACKING_KIND
+                    e.kind.as_u16() != TRACKING_KIND
                 });
             }
             queue.push(event.clone());
@@ -63,7 +63,7 @@ impl EventSender {
     }
     /// Sends all pending events if there is a non-tracking event
     fn flush(&self) {
-        if self.queue.borrow().iter().any(|event| event.kind.as_u64() != TRACKING_KIND) {
+        if self.queue.borrow().iter().any(|event| event.kind.as_u16() != TRACKING_KIND) {
             self.force_flush()
         }
     }
@@ -187,8 +187,8 @@ async fn main() {
         queue: Default::default(),
     });
 
-    let sub_id: SubscriptionId = client.subscribe(vec![Filter::new()], None).await;
-    info!("Subscribed with {}", sub_id);
+    let sub_id = client.subscribe(vec![Filter::new()], None).await;
+    info!("Subscribed with {:?}", sub_id);
     let mut notifications = client.notifications();
 
     /*println!("Finding existing events");
@@ -358,7 +358,7 @@ async fn main() {
 
                     Some('*') => {
                         if let Ok(num) = arg.parse::<i64>() {
-                            tasks.track_at(Timestamp::now() + num);
+                            tasks.track_at(Timestamp::from(Timestamp::now().as_u64().saturating_add_signed(num)));
                         } else if let Ok(date) = DateTime::parse_from_rfc3339(arg) {
                             tasks.track_at(Timestamp::from(date.to_utc().timestamp() as u64));
                         } else {

@@ -6,7 +6,7 @@ use std::ops::Div;
 use itertools::Either::{Left, Right};
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, Kind, Tag, Timestamp};
+use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, Kind, Tag, TagStandard, Timestamp};
 
 use crate::kinds::is_hashtag;
 
@@ -22,8 +22,8 @@ pub(crate) struct Task {
 
 impl Task {
     pub(crate) fn new(event: Event) -> Task {
-        let (parents, tags) = event.tags.iter().partition_map(|tag| match tag {
-            Tag::Event { event_id, .. } => return Left(event_id),
+        let (parents, tags) = event.tags.iter().partition_map(|tag| match tag.as_standardized() {
+            Some(TagStandard::Event { event_id, .. }) => return Left(event_id),
             _ => Right(tag.clone()),
         });
         Task {
@@ -190,7 +190,7 @@ impl State {
         }
     }
 
-    pub(crate) fn kind(&self) -> u64 {
+    pub(crate) fn kind(&self) -> u16 {
         match self {
             State::Open => 1630,
             State::Done => 1631,

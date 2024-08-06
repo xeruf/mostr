@@ -1,12 +1,14 @@
 use itertools::Itertools;
 use log::info;
-use nostr_sdk::{Alphabet, EventBuilder, EventId, GenericTagValue, Kind, Tag};
+use nostr_sdk::{Alphabet, EventBuilder, EventId, Kind, Tag, TagStandard};
 
-pub const TASK_KIND: u64 = 1621;
-pub const TRACKING_KIND: u64 = 1650;
+pub const TASK_KIND: u16 = 1621;
+pub const TRACKING_KIND: u16 = 1650;
 
 pub(crate) fn build_tracking<I>(id: I) -> EventBuilder
-where I: IntoIterator<Item=EventId> {
+where
+    I: IntoIterator<Item=EventId>,
+{
     EventBuilder::new(
         Kind::from(TRACKING_KIND),
         "",
@@ -20,19 +22,21 @@ pub(crate) fn build_task(name: &str, tags: Vec<Tag>) -> EventBuilder {
 }
 
 fn format_tag(tag: &Tag) -> String {
-    tag.content().map(|c| {
-        match c {
-            GenericTagValue::PublicKey(key) => format!("Key: {}", key.to_string()[..8].to_string()),
-            GenericTagValue::EventId(id) => format!("Parent: {}", id.to_string()[..8].to_string()),
-            GenericTagValue::String(str) => {
-                if is_hashtag(tag) {
-                    format!("#{str}")
-                } else {
-                    str
-                }
-            }
-        }
-    }).unwrap_or_else(|| format!("Kind {}", tag.kind()))
+    match tag.as_standardized() {
+        Some(TagStandard::Event {
+            event_id,
+            ..
+        }) => format!("Parent: {}", event_id.to_string()[..8].to_string()),
+        Some(TagStandard::PublicKey {
+            public_key,
+            ..
+        }) => format!("Key: {}", public_key.to_string()[..8].to_string()),
+        Some(TagStandard::Hashtag(content)) => format!("#{content}"),
+        _ => tag.content().map_or_else(
+            || format!("Kind {}", tag.kind()),
+            |content| content.to_string()
+        )
+    }
 }
 
 pub(crate) fn is_hashtag(tag: &Tag) -> bool {

@@ -3,5 +3,4 @@
 relays
 keys
 *.html
-/src/bin
-/src/test
+*.rs

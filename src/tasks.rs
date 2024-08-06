@@ -8,8 +8,8 @@ use chrono::LocalResult::Single;
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use nostr_sdk::{Event, EventBuilder, EventId, GenericTagValue, Kind, PublicKey, Tag, Timestamp};
-use nostr_sdk::Tag::Hashtag;
+use nostr_sdk::{Event, EventBuilder, EventId, Kind, PublicKey, Tag, TagStandard, Timestamp};
+use TagStandard::Hashtag;
 
 use crate::EventSender;
 use crate::kinds::*;
@@ -96,26 +96,8 @@ impl Tasks {
     }
 
     /// Total time tracked on this task by the current user.
-    pub(crate) fn time_tracked(&self, id: &EventId) -> u64 {
-        let mut total = 0;
-        let mut start: Option<Timestamp> = None;
-        for event in self.history.get(&self.sender.pubkey()).into_iter().flatten() {
-            match event.tags.first() {
-                Some(Tag::Event {
-                         event_id,
-                         ..
-                     }) if event_id == id => {
-                    start = start.or(Some(event.created_at))
-                }
-                _ => if let Some(stamp) = start {
-                    total += (event.created_at - stamp).as_u64();
-                }
-            }
-        }
-        if let Some(start) = start {
-            total += (Timestamp::now() - start).as_u64();
-        }
-        total
+    pub(crate) fn time_tracked(&self, id: EventId) -> u64 {
+        Self::time_tracked_for(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &vec![id])
     }
 
     /// Total time tracked on this task and its subtasks by all users.
@@ -125,23 +107,30 @@ impl Tasks {
 
         let children = self.get_subtasks(id);
         for user in self.history.values() {
-            let mut start: Option<Timestamp> = None;
-            for event in user {
-                match event.tags.first() {
-                    Some(Tag::Event {
-                             event_id,
-                             ..
-                         }) if children.contains(event_id) => {
-                        start = start.or(Some(event.created_at))
-                    }
-                    _ => if let Some(stamp) = start {
-                        total += (event.created_at - stamp).as_u64();
-                    }
+            total += Self::time_tracked_for(user, &children);
+        }
+        total
+    }
+    
+    fn time_tracked_for<'a, E>(events: E, ids: &Vec<EventId>) -> u64
+    where E: IntoIterator<Item=&'a Event> {
+        let mut total = 0;
+        let mut start: Option<Timestamp> = None;
+        for event in events {
+            match event.tags.first().and_then(|tag| tag.as_standardized()) {
+                Some(TagStandard::Event {
+                         event_id,
+                         ..
+                     }) if ids.contains(event_id) => {
+                    start = start.or(Some(event.created_at))
+                }
+                _ => if let Some(stamp) = start {
+                    total += (event.created_at - stamp).as_u64();
                 }
             }
-            if let Some(start) = start {
-                total += (Timestamp::now() - start).as_u64();
-            }
+        }
+        if let Some(start) = start {
+            total += (Timestamp::now() - start).as_u64();
         }
         total
     }
@@ -246,7 +235,7 @@ impl Tasks {
 
     pub(crate) fn referenced_tasks<F: Fn(&mut Task)>(&mut self, event: &Event, f: F) {
         for tag in event.tags.iter() {
-            if let Tag::Event { event_id, .. } = tag {
+            if let Some(TagStandard::Event { event_id, .. }) = tag.as_standardized() {
                 self.tasks.get_mut(event_id).map(|t| f(t));
             }
         }
@@ -256,7 +245,7 @@ impl Tasks {
     fn current_task(&self) -> Option<&Task> {
         self.position.and_then(|id| self.get_by_id(&id))
     }
-    
+
     pub(crate) fn children_of(&self, id: Option<EventId>) -> impl IntoIterator<Item=&EventId> + '_ {
         self.tasks
             .values()
@@ -301,7 +290,7 @@ impl Tasks {
                 lock,
                 "{} since {} (total tracked time {}m)",
                 state.get_label(),
-                match Local.timestamp_opt(state.time.as_i64(), 0) {
+                match Local.timestamp_opt(state.time.as_u64() as i64, 0) {
                     Single(time) => {
                         let date = time.date_naive();
                         let prefix = match Local::now()
@@ -318,7 +307,7 @@ impl Tasks {
                     }
                     _ => state.time.to_human_datetime(),
                 },
-                self.time_tracked(t.get_id()) / 60
+                self.time_tracked(*t.get_id()) / 60
             )?;
             writeln!(lock, "{}", t.descriptions().join("\n"))?;
         }
@@ -352,7 +341,7 @@ impl Tasks {
                             .map_or(String::new(), |p| format!("{:2.0}%", p * 100.0)),
                         "path" => self.get_task_path(Some(task.event.id)),
                         "rpath" => self.relative_path(task.event.id),
-                        "time" => display_time("MMMm", self.time_tracked(task.get_id())),
+                        "time" => display_time("MMMm", self.time_tracked(*task.get_id())),
                         "rtime" => display_time("HH:MMm", self.total_time_tracked(*task.get_id())),
                         prop => task.get(prop).unwrap_or(String::new()),
                     })
@@ -372,7 +361,7 @@ impl Tasks {
 
     pub(crate) fn add_tag(&mut self, tag: String) {
         self.view.clear();
-        self.tags.insert(Hashtag(tag));
+        self.tags.insert(Hashtag(tag).into());
     }
 
     pub(crate) fn remove_tag(&mut self, tag: String) {
@@ -392,7 +381,7 @@ impl Tasks {
     pub(crate) fn flush(&self) {
         self.sender.flush();
     }
-    
+
     /// Returns ids of tasks matching the filter.
     pub(crate) fn get_filtered(&self, arg: &str) -> Vec<EventId> {
         if let Ok(id) = EventId::parse(arg) {
@@ -405,7 +394,7 @@ impl Tasks {
         for task in tasks {
             let lowercase = task.event.content.to_ascii_lowercase();
             if lowercase == lowercase_arg {
-                return vec![task.event.id]
+                return vec![task.event.id];
             } else if task.event.content.starts_with(arg) {
                 filtered.push(task.event.id)
             } else if lowercase.starts_with(&lowercase_arg) {
@@ -413,9 +402,9 @@ impl Tasks {
             }
         }
         if filtered.len() == 0 {
-            return filtered_more
+            return filtered_more;
         }
-        return filtered
+        return filtered;
     }
 
     /// Finds out what to do with the given string.
@@ -450,7 +439,7 @@ impl Tasks {
         }
         self.submit(build_tracking(id));
         if !id.and_then(|id| self.tasks.get(&id)).is_some_and(|t| t.parent_id() == self.position.as_ref()) {
-            debug!("Flushing Tasks because of move");
+            debug!("Flushing Tasks because of move beyond child");
             self.flush();
         }
         self.position = id;
@@ -469,7 +458,7 @@ impl Tasks {
                     &mut s
                         .1
                         .split_ascii_whitespace()
-                        .map(|t| Hashtag(t.to_string()))
+                        .map(|t| Hashtag(t.to_string()).into())
                         .collect(),
                 );
                 build_task(s.0, tags)
@@ -515,7 +504,7 @@ impl Tasks {
     }
 
     pub(crate) fn add(&mut self, event: Event) {
-        match event.kind.as_u64() {
+        match event.kind.as_u16() {
             TASK_KIND => self.add_task(event),
             TRACKING_KIND =>
                 match self.history.get_mut(&event.pubkey) {
@@ -596,7 +585,7 @@ fn display_time(format: &str, secs: u64) -> String {
         .map_or(String::new(), |mins| format
             .replace("MMM", &format!("{:3}", mins))
             .replace("HH", &format!("{:02}", mins.div(60)))
-            .replace("MM", &format!("{:02}", mins.rem(60)))
+            .replace("MM", &format!("{:02}", mins.rem(60))),
         )
 }
 
@@ -654,9 +643,29 @@ fn stub_tasks() -> Tasks {
 }
 
 #[test]
-fn test_depth() {
+fn test_tracking() {
     let mut tasks = stub_tasks();
     
+    //let task = tasks.make_task("task");
+    tasks.track_at(Timestamp::from(0));
+    assert_eq!(tasks.history.len(), 1);
+    let zero = EventId::all_zeros();
+    
+    tasks.move_to(Some(zero));
+    let now: Timestamp = Timestamp::now() - 2u64;
+    tasks.track_at(Timestamp::from(1));
+    assert!(tasks.time_tracked(zero) > now.as_u64());
+    
+    tasks.move_to(None);
+    tasks.track_at(Timestamp::from(2));
+    assert_eq!(tasks.history.values().nth(0).unwrap().len(), 5);
+    assert_eq!(tasks.time_tracked(zero), 2);
+}
+
+#[test]
+fn test_depth() {
+    let mut tasks = stub_tasks();
+
     let t1 = tasks.make_task("t1");
     let task1 = tasks.get_by_id(&t1).unwrap();
     assert_eq!(tasks.depth, 1);
