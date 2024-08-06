@@ -79,6 +79,10 @@ impl Drop for EventSender {
     }
 }
 
+fn some_non_empty(str: &str) -> Option<String> {
+    if str.is_empty() { None } else { Some(str.to_owned()) }
+}
+
 fn or_print<T, U: Display>(result: Result<T, U>) -> Option<T> {
     match result {
         Ok(value) => Some(value),
@@ -330,7 +334,7 @@ async fn main() {
                     }
 
                     Some('?') => {
-                        tasks.set_state_filter(Some(arg.to_string()).filter(|s| !s.is_empty()));
+                        tasks.set_state_filter(some_non_empty(arg).filter(|s| !s.is_empty()));
                     }
 
                     Some('!') => match tasks.get_position() {
@@ -348,10 +352,12 @@ async fn main() {
 
                     Some('#') | Some('+') => {
                         tasks.add_tag(arg.to_string());
+                        info!("Added tag filter for #{arg}")
                     }
 
                     Some('-') => {
                         tasks.remove_tag(arg.to_string());
+                        info!("Removed tag filter for #{arg}")
                     }
 
                     Some('*') => {
@@ -436,7 +442,7 @@ async fn main() {
 
 fn print_event(event: &Event) {
     debug!(
-        "At {} found {} kind {} '{}' {:?}",
+        "At {} found {} kind {} \"{}\" {:?}",
         event.created_at, event.id, event.kind, event.content, event.tags
     );
 }

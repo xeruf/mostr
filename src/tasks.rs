@@ -13,7 +13,7 @@ use TagStandard::Hashtag;
 
 use crate::EventSender;
 use crate::kinds::*;
-use crate::task::{State, Task};
+use crate::task::{State, Task, TaskState};
 
 type TaskMap = HashMap<EventId, Task>;
 #[derive(Debug, Clone)]
@@ -550,9 +550,12 @@ impl Tasks {
     }
 
     pub(crate) fn undo(&mut self) {
+        let mut count = 0;
         self.sender.clear().into_iter().rev().for_each(|event| {
+            count += 1;
             self.remove(&event)
         });
+        info!("Reverted last {count} actions!")
     }
 
     fn remove(&mut self, event: &Event) {
@@ -572,6 +575,7 @@ impl Tasks {
             comment,
             id,
         );
+        info!("Task status {} set for \"{}\"", TaskState::get_label_for(&state, comment), self.get_task_title(&id));
         self.submit(prop)
     }
 
@@ -582,7 +586,7 @@ impl Tasks {
 
     pub(crate) fn make_note(&mut self, note: &str) {
         match self.position {
-            None => warn!("Cannot add note '{}' without active task", note),
+            None => warn!("Cannot add note \"{}\" without active task", note),
             Some(id) => {
                 let prop = self.build_prop(Kind::TextNote, note, id);
                 self.submit(prop);

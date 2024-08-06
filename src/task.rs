@@ -9,6 +9,7 @@ use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, Kind, Tag, TagStandard, Timestamp};
 
 use crate::kinds::is_hashtag;
+use crate::some_non_empty;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Task {
@@ -62,13 +63,13 @@ impl Task {
     fn states(&self) -> impl Iterator<Item=TaskState> + '_ {
         self.props.iter().filter_map(|event| {
             event.kind.try_into().ok().map(|s| TaskState {
-                name: Some(event.content.clone()).filter(|c| !c.is_empty()),
+                name: some_non_empty(&event.content),
                 state: s,
                 time: event.created_at.clone(),
             })
         })
     }
-    
+
     pub(crate) fn state(&self) -> Option<TaskState> {
         self.states().max_by_key(|t| t.time)
     }
@@ -117,7 +118,7 @@ impl Task {
                 "{:?}",
                 self.props
                     .iter()
-                    .map(|e| format!("{} kind {} '{}'", e.created_at, e.kind, e.content))
+                    .map(|e| format!("{} kind {} \"{}\"", e.created_at, e.kind, e.content))
                     .collect::<Vec<String>>()
             )),
             "descriptions" => Some(format!(
@@ -138,12 +139,14 @@ pub(crate) struct TaskState {
     pub(crate) time: Timestamp,
 }
 impl TaskState {
+    pub(crate) fn get_label_for(state: &State, comment: &str) -> String {
+        some_non_empty(comment).unwrap_or_else(|| state.to_string())
+    }
     pub(crate) fn get_label(&self) -> String {
         self.name.clone().unwrap_or_else(|| self.state.to_string())
     }
     pub(crate) fn matches_label(&self, label: &str) -> bool {
-        self.state == State::Active
-            || self.name.as_ref().is_some_and(|n| n.eq_ignore_ascii_case(label))
+        self.name.as_ref().is_some_and(|n| n.eq_ignore_ascii_case(label))
             || self.state.to_string().eq_ignore_ascii_case(label)
     }
 }
