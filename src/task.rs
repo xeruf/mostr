@@ -8,8 +8,8 @@ use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, Kind, Tag, TagStandard, Timestamp};
 
+use crate::helpers::some_non_empty;
 use crate::kinds::is_hashtag;
-use crate::some_non_empty;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Task {

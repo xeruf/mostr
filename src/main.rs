@@ -16,10 +16,12 @@ use log::{debug, error, info, trace, warn};
 use nostr_sdk::prelude::*;
 use xdg::BaseDirectories;
 
+use crate::helpers::*;
 use crate::kinds::TRACKING_KIND;
 use crate::task::State;
 use crate::tasks::Tasks;
 
+mod helpers;
 mod task;
 mod tasks;
 mod kinds;
@@ -76,29 +78,6 @@ impl EventSender {
 impl Drop for EventSender {
     fn drop(&mut self) {
         self.force_flush()
-    }
-}
-
-fn some_non_empty(str: &str) -> Option<String> {
-    if str.is_empty() { None } else { Some(str.to_owned()) }
-}
-
-fn or_print<T, U: Display>(result: Result<T, U>) -> Option<T> {
-    match result {
-        Ok(value) => Some(value),
-        Err(error) => {
-            warn!("{}", error);
-            None
-        }
-    }
-}
-
-fn prompt(prompt: &str) -> Option<String> {
-    print!("{} ", prompt);
-    stdout().flush().unwrap();
-    match stdin().lines().next() {
-        Some(Ok(line)) => Some(line),
-        _ => None,
     }
 }
 
