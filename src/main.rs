@@ -35,15 +35,13 @@ struct EventSender {
 impl EventSender {
     fn submit(&self, event_builder: EventBuilder) -> Result<Event> {
         {
-            // Flush if oldest event older than a minute
+            // Always flush if oldest event older than a minute or newer than now
             let borrow = self.queue.borrow();
-            if let Some(event) = borrow.first() {
-                let old = event.created_at < Timestamp::now().sub(60u64);
+            let min = Timestamp::now().sub(60u64);
+            if borrow.iter().any(|e| e.created_at < min || e.created_at > Timestamp::now()) {
                 drop(borrow);
-                if old {
-                    debug!("Flushing event queue because it is older than a minute");
-                    self.force_flush();
-                }
+                debug!("Flushing event queue because it is older than a minute");
+                self.force_flush();
             }
         }
         let mut queue = self.queue.borrow_mut();
