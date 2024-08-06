@@ -252,18 +252,14 @@ async fn main() {
 
                     Some(':') => match iter.next().and_then(|s| s.to_digit(10)) {
                         Some(digit) => {
-                            let index = digit as usize;
+                            let index = (digit as usize).saturating_sub(1);
                             let remaining = iter.collect::<String>().trim().to_string();
                             if remaining.is_empty() {
-                                tasks.properties.remove(index);
+                                tasks.remove_column(index);
                                 continue;
                             }
                             let value = input[2..].trim().to_string();
-                            if tasks.properties.get(index) == Some(&value) {
-                                tasks.properties.remove(index);
-                            } else {
-                                tasks.properties.insert(index, value);
-                            }
+                            tasks.add_or_remove_property_column_at_index(value, index);
                         }
                         None => {
                             if arg.is_empty() {
@@ -284,15 +280,7 @@ async fn main() {
 - `subtasks` - how many direct subtasks are complete");
                                 continue;
                             }
-                            let pos = tasks.properties.iter().position(|s| s == arg);
-                            match pos {
-                                None => {
-                                    tasks.properties.push(arg.to_string());
-                                }
-                                Some(i) => {
-                                    tasks.properties.remove(i);
-                                }
-                            }
+                            tasks.add_or_remove_property_column(arg);
                         }
                     },
 
@@ -363,7 +351,7 @@ async fn main() {
                         }
                         if let Ok(depth) = slice.parse::<i8>() {
                             tasks.move_to(pos);
-                            tasks.depth = depth;
+                            tasks.set_depth(depth);
                         } else {
                             tasks.filter_or_create(slice).map(|id| tasks.move_to(Some(id)));
                         }
@@ -383,7 +371,7 @@ async fn main() {
                         }
                         if let Ok(depth) = slice.parse::<i8>() {
                             tasks.move_to(pos);
-                            tasks.depth = depth;
+                            tasks.set_depth(depth);
                         } else {
                             let filtered = tasks
                                 .children_of(pos)

@@ -23,11 +23,11 @@ pub(crate) struct Tasks {
     /// History of active tasks by PubKey
     history: HashMap<PublicKey, BTreeSet<Event>>,
     /// The task properties currently visible
-    pub(crate) properties: Vec<String>,
+    properties: Vec<String>,
     /// Negative: Only Leaf nodes
     /// Zero: Only Active node
     /// Positive: Go down the respective level
-    pub(crate) depth: i8,
+    depth: i8,
 
     /// Currently active task
     position: Option<EventId>,
@@ -62,9 +62,7 @@ impl Tasks {
             sender,
         }
     }
-}
 
-impl Tasks {
     // Accessors
 
     #[inline]
@@ -183,7 +181,7 @@ impl Tasks {
             .unwrap_or(String::new())
     }
 
-    pub(crate) fn traverse_up_from(&self, id: Option<EventId>) -> ParentIterator {
+    fn traverse_up_from(&self, id: Option<EventId>) -> ParentIterator {
         ParentIterator {
             tasks: &self.tasks,
             current: id,
@@ -593,6 +591,40 @@ impl Tasks {
             }
         }
     }
+    
+    // Properties
+
+    pub(crate) fn set_depth(&mut self, depth: i8) {
+        self.depth = depth;
+        info!("Changed view depth to {depth}");
+    }
+    
+    pub(crate) fn remove_column(&mut self, index: usize) {
+        let col = self.properties.remove(index);
+        info!("Removed property column \"{col}\"");
+    }
+    
+    pub(crate) fn add_or_remove_property_column(&mut self, property: &str) {
+        match self.properties.iter().position(|s| s == property) {
+            None => {
+                self.properties.push(property.to_string());
+                info!("Added property column \"{property}\"");
+            }
+            Some(index) => {
+                self.properties.remove(index);
+            }
+        }
+    }
+
+    pub(crate) fn add_or_remove_property_column_at_index(&mut self, property: String, index: usize) {
+        if self.properties.get(index) == Some(&property) {
+            self.properties.remove(index);
+        } else {
+            info!("Added property column \"{property}\" at position {}", index + 1);
+            self.properties.insert(index, property);
+        }
+    }
+    
 }
 
 /// Formats the given seconds according to the given format.

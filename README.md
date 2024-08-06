@@ -99,7 +99,7 @@ when the application is terminated regularly.
 
 Dots can be repeated to move to parent tasks.
 
-- `:[IND][COL]` - add property column COL at IND or end, if it already exists remove property column COL or IND
+- `:[IND][COL]` - add property column COL at IND or end, if it already exists remove property column COL or IND (1-indexed)
 - `*[TIME]` - add timetracking with the specified offset
 - `>[TEXT]` - complete active task and move to parent, with optional state description
 - `<[TEXT]` - close active task and move to parent, with optional state description
