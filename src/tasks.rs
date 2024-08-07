@@ -353,8 +353,9 @@ impl Tasks {
                             .map_or(String::new(), |p| format!("{:2.0}%", p * 100.0)),
                         "path" => self.get_task_path(Some(task.event.id)),
                         "rpath" => self.relative_path(task.event.id),
+                        // TODO format strings as config
                         "time" => display_time("MMMm", self.time_tracked(*task.get_id())),
-                        "rtime" => display_time("HH:MMm", self.total_time_tracked(*task.get_id())),
+                        "rtime" => display_time("HH:MM", self.total_time_tracked(*task.get_id())),
                         prop => task.get(prop).unwrap_or(String::new()),
                     })
                     .collect::<Vec<String>>()
