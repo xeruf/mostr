@@ -1,12 +1,11 @@
 use fmt::Display;
 use std::collections::{BTreeSet, HashSet};
 use std::fmt;
-use std::ops::Div;
 
 use itertools::Either::{Left, Right};
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, Kind, Tag, TagStandard, Timestamp};
+use nostr_sdk::{Event, EventBuilder, EventId, Kind, Tag, TagStandard, Timestamp};
 
 use crate::helpers::some_non_empty;
 use crate::kinds::is_hashtag;

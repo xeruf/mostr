@@ -139,11 +139,11 @@ For debugging: `props`, `alltags`, `descriptions`
 ## Nostr reference
 
 Mostr mainly uses the following NIPs:
-- NIP01 for task descriptions
+- Kind 1 for task descriptions
 - Issue Tracking: https://github.com/nostr-protocol/nips/blob/master/34.md
   + Tasks have Kind 1621 (originally: git issue - currently no native markdown support)
   + Kind 1622 may be used for task comments or replace Kind 1 for descriptions
-  + Kind 1630-1633: Task Status (Open, Done, Closed, Pending)
+  + Kind 1630-1633: Task Status (1630 Open, 1631 Done, 1632 Closed, 1633 Pending)
 - Implementing proprietary Kind 1650 for time-tracking
 
 Considering to use Calendar: https://github.com/nostr-protocol/nips/blob/master/52.md

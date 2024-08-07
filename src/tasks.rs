@@ -64,7 +64,7 @@ impl Tasks {
                 "rpath".into(),
                 "desc".into(),
             ],
-            position: None,
+            position: None, // TODO persist position
             view: Default::default(),
             tags: Default::default(),
             state: None,
@@ -300,6 +300,7 @@ impl Tasks {
             writeln!(
                 lock,
                 "{} since {} (total tracked time {}m)",
+                // TODO tracking since, scheduled/planned for
                 state.get_label(),
                 match Local.timestamp_opt(state.time.as_u64() as i64, 0) {
                     Single(time) => {
@@ -322,7 +323,7 @@ impl Tasks {
             )?;
             writeln!(lock, "{}", t.descriptions().join("\n"))?;
         }
-        // TODO proper columns
+        // TODO proper column alignment
         writeln!(lock, "{}", self.properties.join("\t").bold())?;
         for task in self.current_tasks() {
             writeln!(
@@ -728,6 +729,8 @@ mod tasks_test {
         tasks.track_at(Timestamp::from(2));
         assert_eq!(tasks.get_own_history().unwrap().len(), 3);
         assert_eq!(tasks.time_tracked(zero), 1);
+        
+        // TODO test received events
     }
 
     #[test]
@@ -819,8 +822,15 @@ mod tasks_test {
         );
         assert_eq!(tasks.relative_path(dangling), "test");
 
+    }
+
+    #[allow(dead_code)]
+    fn test_itertools() {
         use itertools::Itertools;
-        assert_eq!("test  toast".split(' ').collect_vec().len(), 3);
+        assert_eq!(
+            "test  toast".split(' ').collect_vec().len(),
+            3
+        );
         assert_eq!(
             "test  toast".split_ascii_whitespace().collect_vec().len(),
             2
