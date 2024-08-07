@@ -8,17 +8,17 @@ use std::ops::Sub;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::mpsc;
-use std::sync::mpsc::Sender;
-
-use chrono::DateTime;
+use std::sync::mpsc::{Sender};
+use chrono::{DateTime};
 use colored::Colorize;
+use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::prelude::*;
 use regex::Regex;
 use xdg::BaseDirectories;
 
 use crate::helpers::*;
-use crate::kinds::{KINDS, TRACKING_KIND};
+use crate::kinds::{KINDS, PROPERTY_COLUMNS, TRACKING_KIND};
 use crate::task::State;
 use crate::tasks::Tasks;
 
@@ -224,12 +224,10 @@ async fn main() {
         }
     }
 
-    println!();
     let mut lines = stdin().lines();
     loop {
+        println!();
         selected_relay.as_ref().and_then(|url| relays.get(url)).inspect(|tasks| {
-            or_print(tasks.print_tasks());
-
             print!(
                 "{}",
                 format!(
@@ -266,10 +264,11 @@ async fn main() {
                 let mut iter = input.chars();
                 let op = iter.next();
                 let arg = if input.len() > 1 {
-                    input[1..].trim()
+                    Some(input[1..].trim())
                 } else {
-                    ""
+                    None
                 };
+                let arg_default = arg.unwrap_or("");
                 let tasks = selected_relay.as_ref().and_then(|url| relays.get_mut(&url)).unwrap_or_else(|| &mut local_tasks);
                 match op {
                     None => {
@@ -277,49 +276,43 @@ async fn main() {
                         tasks.flush()
                     }
 
-                    Some(':') => match iter.next().and_then(|s| s.to_digit(10)) {
-                        Some(digit) => {
+                    Some(':') =>
+                        if let Some(digit) = iter.next().and_then(|s| s.to_digit(10)) {
                             let index = (digit as usize).saturating_sub(1);
                             let remaining = iter.collect::<String>().trim().to_string();
                             if remaining.is_empty() {
                                 tasks.remove_column(index);
-                                continue;
+                            } else {
+                                let value = input[2..].trim().to_string();
+                                tasks.add_or_remove_property_column_at_index(value, index);
                             }
-                            let value = input[2..].trim().to_string();
-                            tasks.add_or_remove_property_column_at_index(value, index);
-                        }
-                        None => {
-                            if arg.is_empty() {
-                                println!("Available properties:
-- `id`
-- `parentid`
-- `name`
-- `state`
-- `hashtags`
-- `tags` - values of all nostr tags associated with the event, except event tags
-- `desc` - last note on the task
-- `description` - accumulated notes on the task
-- `path` - name including parent tasks
-- `rpath` - name including parent tasks up to active task
-- `time` - time tracked on this task
-- `rtime` - time tracked on this tasks and all recursive subtasks
-- `progress` - recursive subtask completion in percent
-- `subtasks` - how many direct subtasks are complete");
-                                continue;
-                            }
+                        } else if let Some(arg) = arg {
                             tasks.add_or_remove_property_column(arg);
-                        }
-                    },
+                        } else {
+                            println!("{}", PROPERTY_COLUMNS);
+                            continue
+                        },
 
-                    Some(',') => tasks.make_note(arg),
+                    Some(',') => {
+                        match arg {
+                            None => {
+                                tasks.get_current_task().map_or_else(
+                                    || info!("With a task selected, use ,NOTE to attach NOTE and , to list all its notes"),
+                                    |task| println!("{}", task.description_events().map(|e| format!("{} {}", e.created_at.to_human_datetime(), e.content)).join("\n")),
+                                );
+                                continue
+                            },
+                            Some(arg) => tasks.make_note(arg),
+                        }
+                    }
 
                     Some('>') => {
-                        tasks.update_state(arg, State::Done);
+                        tasks.update_state(&arg_default, State::Done);
                         tasks.move_up();
                     }
 
                     Some('<') => {
-                        tasks.update_state(arg, State::Closed);
+                        tasks.update_state(&arg_default, State::Closed);
                         tasks.move_up();
                     }
 
@@ -328,39 +321,43 @@ async fn main() {
                     }
 
                     Some('?') => {
-                        tasks.set_state_filter(some_non_empty(arg).filter(|s| !s.is_empty()));
+                        tasks.set_state_filter(arg.map(|s| s.to_string()));
                     }
 
                     Some('!') => match tasks.get_position() {
-                        None => {
-                            warn!("First select a task to set its state!");
-                        }
+                        None => warn!("First select a task to set its state!"),
                         Some(id) => {
-                            tasks.set_state_for(id, arg, match arg {
-                                "Closed" => State::Closed,
-                                "Done" => State::Done,
-                                _ => State::Open,
-                            });
+                            tasks.set_state_for_with(id, arg_default);
                         }
                     },
 
                     Some('#') | Some('+') => {
-                        tasks.add_tag(arg.to_string());
-                        info!("Added tag filter for #{arg}")
+                        match arg {
+                            Some(arg) => tasks.add_tag(arg.to_string()),
+                            None => tasks.clear_filter()
+                        }
                     }
 
                     Some('-') => {
-                        tasks.remove_tag(arg.to_string());
-                        info!("Removed tag filter for #{arg}")
+                        match arg {
+                            Some(arg) => tasks.remove_tag(arg),
+                            None => tasks.clear_filter()
+                        }
                     }
 
-                    Some('*') => {
-                        if let Ok(num) = arg.parse::<i64>() {
-                            tasks.track_at(Timestamp::from(Timestamp::now().as_u64().saturating_add_signed(num)));
-                        } else if let Ok(date) = DateTime::parse_from_rfc3339(arg) {
-                            tasks.track_at(Timestamp::from(date.to_utc().timestamp() as u64));
-                        } else {
-                            warn!("Cannot parse {arg}");
+                    Some('*') => match arg {
+                        Some(arg) => {
+                            if let Ok(num) = arg.parse::<i64>() {
+                                tasks.track_at(Timestamp::from(Timestamp::now().as_u64().saturating_add_signed(num)));
+                            } else if let Ok(date) = DateTime::parse_from_rfc3339(arg) {
+                                tasks.track_at(Timestamp::from(date.to_utc().timestamp() as u64));
+                            } else {
+                                warn!("Cannot parse {arg}");
+                            }
+                        }
+                        None => {
+                            // TODO time tracked list
+                            // continue
                         }
                     }
 
@@ -372,12 +369,12 @@ async fn main() {
                             pos = tasks.get_parent(pos).cloned();
                         }
                         let slice = &input[dots..];
+                        tasks.move_to(pos);
                         if slice.is_empty() {
-                            tasks.move_to(pos);
-                            continue;
-                        }
-                        if let Ok(depth) = slice.parse::<i8>() {
-                            tasks.move_to(pos);
+                            if dots > 1 { 
+                                info!("Moving up {} tasks", dots - 1)
+                            }
+                        } else if let Ok(depth) = slice.parse::<i8>() {
                             tasks.set_depth(depth);
                         } else {
                             tasks.filter_or_create(slice).map(|id| tasks.move_to(Some(id)));
@@ -394,9 +391,7 @@ async fn main() {
                         let slice = &input[dots..].to_ascii_lowercase();
                         if slice.is_empty() {
                             tasks.move_to(pos);
-                            continue;
-                        }
-                        if let Ok(depth) = slice.parse::<i8>() {
+                        } else if let Ok(depth) = slice.parse::<i8>() {
                             tasks.move_to(pos);
                             tasks.set_depth(depth);
                         } else {
@@ -434,11 +429,14 @@ async fn main() {
                             if new_relay.is_some() {
                                 selected_relay = new_relay;
                             }
+                            //or_print(tasks.print_tasks());
+                            continue
                         } else {
                             tasks.filter_or_create(&input);
                         }
                     }
                 }
+                or_print(tasks.print_tasks());
             }
             Some(Err(e)) => warn!("{}", e),
             None => break,

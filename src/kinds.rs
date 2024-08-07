@@ -6,6 +6,22 @@ pub const TASK_KIND: u16 = 1621;
 pub const TRACKING_KIND: u16 = 1650;
 pub const KINDS: [u16; 7] = [1, TASK_KIND, TRACKING_KIND, 1630, 1631, 1632, 1633];
 
+pub const PROPERTY_COLUMNS: &str = "Available properties:
+- `id`
+- `parentid`
+- `name`
+- `state`
+- `hashtags`
+- `tags` - values of all nostr tags associated with the event, except event tags
+- `desc` - last note on the task
+- `description` - accumulated notes on the task
+- `path` - name including parent tasks
+- `rpath` - name including parent tasks up to active task
+- `time` - time tracked on this task by you
+- `rtime` - time tracked on this tasks and its subtree by everyone
+- `progress` - recursive subtask completion in percent
+- `subtasks` - how many direct subtasks are complete";
+
 pub(crate) fn build_tracking<I>(id: I) -> EventBuilder
 where
     I: IntoIterator<Item=EventId>,

@@ -49,14 +49,18 @@ impl Task {
             .unwrap_or_else(|| self.get_id().to_string())
     }
 
-    pub(crate) fn descriptions(&self) -> impl Iterator<Item=&String> + '_ {
+    pub(crate) fn description_events(&self) -> impl Iterator<Item=&Event> + '_ {
         self.props.iter().filter_map(|event| {
             if event.kind == Kind::TextNote {
-                Some(&event.content)
+                Some(event)
             } else {
                 None
             }
         })
+    }
+    
+    pub(crate) fn descriptions(&self) -> impl Iterator<Item=&String> + '_ {
+        self.description_events().map(|e| &e.content)
     }
 
     fn states(&self) -> impl Iterator<Item=TaskState> + '_ {
@@ -118,11 +122,11 @@ impl Task {
                 self.props
                     .iter()
                     .map(|e| format!("{} kind {} \"{}\"", e.created_at, e.kind, e.content))
-                    .collect::<Vec<String>>()
+                    .collect_vec()
             )),
             "descriptions" => Some(format!(
                 "{:?}",
-                self.descriptions().collect::<Vec<&String>>()
+                self.descriptions().collect_vec()
             )),
             _ => {
                 warn!("Unknown task property {}", property);

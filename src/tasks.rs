@@ -1,10 +1,10 @@
 use std::collections::{BTreeSet, HashMap};
 use std::io::{Error, stdout, Write};
-use std::iter::once;
+use std::iter::{once, Sum};
 use std::ops::{Div, Rem};
 use std::sync::mpsc::Sender;
-
-use chrono::{Local, TimeZone};
+use std::time::Duration;
+use chrono::{DateTime, Local, TimeZone};
 use chrono::LocalResult::Single;
 use colored::Colorize;
 use itertools::Itertools;
@@ -103,45 +103,18 @@ impl Tasks {
         children
     }
 
-    /// Total time tracked on this task by the current user.
+    /// Total time in seconds tracked on this task by the current user.
     pub(crate) fn time_tracked(&self, id: EventId) -> u64 {
-        Self::time_tracked_for(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &vec![id])
+        TimesTracked::from(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &vec![id]).sum::<Duration>().as_secs()
     }
 
-    /// Total time tracked on this task and its subtasks by all users.
-    /// TODO needs testing!
+    /// Total time in seconds tracked on this task and its subtasks by all users.
     fn total_time_tracked(&self, id: EventId) -> u64 {
         let mut total = 0;
 
         let children = self.get_subtasks(id);
         for user in self.history.values() {
-            total += Self::time_tracked_for(user, &children);
-        }
-        total
-    }
-
-    fn time_tracked_for<'a, E>(events: E, ids: &Vec<EventId>) -> u64
-    where
-        E: IntoIterator<Item=&'a Event>,
-    {
-        let mut total = 0;
-        let mut start: Option<Timestamp> = None;
-        for event in events {
-            match event.tags.first().and_then(|tag| tag.as_standardized()) {
-                Some(TagStandard::Event {
-                         event_id,
-                         ..
-                     }) if ids.contains(event_id) => {
-                    start = start.or(Some(event.created_at))
-                }
-                _ => if let Some(stamp) = start {
-                    total += (event.created_at - stamp).as_u64();
-                    start = None;
-                }
-            }
-        }
-        if let Some(start) = start {
-            total += (Timestamp::now() - start).as_u64();
+            total += TimesTracked::from(user, &children).into_iter().sum::<Duration>().as_secs();
         }
         total
     }
@@ -253,7 +226,7 @@ impl Tasks {
     }
 
     #[inline]
-    fn current_task(&self) -> Option<&Task> {
+    pub(crate) fn get_current_task(&self) -> Option<&Task> {
         self.position.and_then(|id| self.get_by_id(&id))
     }
 
@@ -266,7 +239,7 @@ impl Tasks {
 
     pub(crate) fn current_tasks(&self) -> Vec<&Task> {
         if self.depth == 0 {
-            return self.current_task().into_iter().collect();
+            return self.get_current_task().into_iter().collect();
         }
         let res: Vec<&Task> = self.resolve_tasks(self.view.iter());
         if res.len() > 0 {
@@ -295,7 +268,7 @@ impl Tasks {
 
     pub(crate) fn print_tasks(&self) -> Result<(), Error> {
         let mut lock = stdout().lock();
-        if let Some(t) = self.current_task() {
+        if let Some(t) = self.get_current_task() {
             let state = t.state_or_default();
             writeln!(
                 lock,
@@ -362,7 +335,6 @@ impl Tasks {
                     .join(" \t")
             )?;
         }
-        writeln!(lock)?;
         Ok(())
     }
 
@@ -372,23 +344,37 @@ impl Tasks {
         self.view = view;
     }
 
+    pub(crate) fn clear_filter(&mut self) {
+        self.view.clear();
+        self.tags.clear();
+        info!("Removed all filters");
+    }
+
     pub(crate) fn add_tag(&mut self, tag: String) {
         self.view.clear();
+        info!("Added tag filter for #{tag}");
         self.tags.insert(Hashtag(tag).into());
     }
 
-    pub(crate) fn remove_tag(&mut self, tag: String) {
+    pub(crate) fn remove_tag(&mut self, tag: &str) {
         self.view.clear();
-        self.tags.retain(|t| !t.content().is_some_and(|value| value.to_string().starts_with(&tag)));
+        let len = self.tags.len();
+        self.tags.retain(|t| !t.content().is_some_and(|value| value.to_string().starts_with(tag)));
+        if self.tags.len() < len {
+            info!("Removed tag filters starting with {tag}");
+        } else {
+            info!("Found no tag filters starting with {tag} to remove");
+        }
     }
 
     pub(crate) fn set_state_filter(&mut self, state: Option<String>) {
         self.view.clear();
+        info!("Filtering for {}", state.as_ref().map_or("open tasks".to_string(), |s| format!("state {s}")));
         self.state = state;
     }
 
     pub(crate) fn move_up(&mut self) {
-        self.move_to(self.current_task().and_then(|t| t.parent_id()).cloned());
+        self.move_to(self.get_current_task().and_then(|t| t.parent_id()).cloned());
     }
 
     pub(crate) fn flush(&self) {
@@ -613,19 +599,19 @@ impl Tasks {
             }
         }
     }
-    
+
     // Properties
 
     pub(crate) fn set_depth(&mut self, depth: i8) {
         self.depth = depth;
         info!("Changed view depth to {depth}");
     }
-    
+
     pub(crate) fn remove_column(&mut self, index: usize) {
         let col = self.properties.remove(index);
         info!("Removed property column \"{col}\"");
     }
-    
+
     pub(crate) fn add_or_remove_property_column(&mut self, property: &str) {
         match self.properties.iter().position(|s| s == property) {
             None => {
@@ -646,7 +632,6 @@ impl Tasks {
             self.properties.insert(index, property);
         }
     }
-    
 }
 
 /// Formats the given seconds according to the given format.
@@ -685,6 +670,43 @@ pub(crate) fn join_tasks<'a>(
             Some(acc.map_or_else(|| val.clone(), |cur| format!("{}>{}", val, cur)))
         })
 }
+
+
+struct TimesTracked<'a> {
+    events: Box<dyn Iterator<Item=&'a Event> + 'a>,
+    ids: &'a Vec<EventId>,
+}
+impl TimesTracked<'_> {
+    fn from<'b>(events: impl IntoIterator<Item=&'b Event> + 'b, ids: &'b Vec<EventId>) -> TimesTracked<'b> {
+        TimesTracked {
+            events: Box::new(events.into_iter()),
+            ids,
+        }
+    }
+}
+
+impl Iterator for TimesTracked<'_> {
+    type Item = Duration;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut start: Option<u64> = None;
+        while let Some(event) = self.events.next() {
+            match event.tags.first().and_then(|tag| tag.as_standardized()) {
+                Some(TagStandard::Event {
+                         event_id,
+                         ..
+                     }) if self.ids.contains(event_id) => {
+                    start = start.or(Some(event.created_at.as_u64()))
+                }
+                _ => if let Some(stamp) = start {
+                    return Some(Duration::from_secs(event.created_at.as_u64() - stamp))
+                }
+            }
+        }
+        return start.map(|stamp| Duration::from_secs(Timestamp::now().as_u64() - stamp))
+    }
+}
+
 
 struct ParentIterator<'a> {
     tasks: &'a TaskMap,
@@ -740,7 +762,7 @@ mod tasks_test {
         tasks.track_at(Timestamp::from(2));
         assert_eq!(tasks.get_own_history().unwrap().len(), 3);
         assert_eq!(tasks.time_tracked(zero), 1);
-        
+
         // TODO test received events
     }
 
@@ -832,7 +854,6 @@ mod tasks_test {
             "0000000000000000000000000000000000000000000000000000000000000000>test"
         );
         assert_eq!(tasks.relative_path(dangling), "test");
-
     }
 
     #[allow(dead_code)]
