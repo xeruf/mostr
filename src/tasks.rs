@@ -481,7 +481,9 @@ impl Tasks {
 
     /// Sanitizes input
     pub(crate) fn make_task(&mut self, input: &str) -> EventId {
-        self.submit(self.parse_task(input.trim()))
+        let id = self.submit(self.parse_task(input.trim()));
+        self.state.clone().inspect(|s| self.set_state_for_with(id, s));
+        id
     }
 
     pub(crate) fn build_prop(
@@ -579,6 +581,14 @@ impl Tasks {
         self.referenced_tasks(event, |t| { t.props.remove(event); });
     }
 
+    pub(crate) fn set_state_for_with(&mut self, id: EventId, comment: &str) {
+        self.set_state_for(id, comment, match comment {
+            "Closed" => State::Closed,
+            "Done" => State::Done,
+            _ => State::Open,
+        });
+    }
+    
     pub(crate) fn set_state_for(&mut self, id: EventId, comment: &str, state: State) -> EventId {
         let prop = self.build_prop(
             state.into(),
