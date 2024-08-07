@@ -1,6 +1,6 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::env::{args, var};
-use std::fmt::Display;
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, stdin, stdout, Write};
@@ -14,10 +14,11 @@ use chrono::DateTime;
 use colored::Colorize;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::prelude::*;
+use regex::Regex;
 use xdg::BaseDirectories;
 
 use crate::helpers::*;
-use crate::kinds::TRACKING_KIND;
+use crate::kinds::{KINDS, TRACKING_KIND};
 use crate::task::State;
 use crate::tasks::Tasks;
 
@@ -30,11 +31,21 @@ type Events = Vec<Event>;
 
 #[derive(Debug, Clone)]
 struct EventSender {
-    tx: Sender<Events>,
+    url: Option<Url>,
+    tx: Sender<(Url, Events)>,
     keys: Keys,
     queue: RefCell<Events>,
 }
 impl EventSender {
+    fn from(url: Option<Url>, tx: &Sender<(Url, Events)>, keys: &Keys) -> Self {
+        EventSender {
+            url,
+            tx: tx.clone(),
+            keys: keys.clone(),
+            queue: Default::default(),
+        }
+    }
+
     fn submit(&self, event_builder: EventBuilder) -> Result<Event> {
         {
             // Always flush if oldest event older than a minute or newer than now
@@ -59,7 +70,10 @@ impl EventSender {
     /// Sends all pending events
     fn force_flush(&self) {
         debug!("Flushing {} events from queue", self.queue.borrow().len());
-        or_print(self.tx.send(self.clear()));
+        let values = self.clear();
+        self.url.as_ref().map(|url| {
+            or_print(self.tx.send((url.clone(), values)));
+        });
     }
     /// Sends all pending events if there is a non-tracking event
     fn flush(&self) {
@@ -77,7 +91,8 @@ impl EventSender {
 }
 impl Drop for EventSender {
     fn drop(&mut self) {
-        self.force_flush()
+        self.force_flush();
+        debug!("Dropped {:?}", self);
     }
 }
 
@@ -105,6 +120,7 @@ async fn main() {
 
     let client = Client::new(&keys);
     info!("My public key: {}", keys.public_key());
+
     match var("MOSTR_RELAY") {
         Ok(relay) => {
             or_print(client.add_relay(relay).await);
@@ -133,6 +149,9 @@ async fn main() {
         },
     }
 
+    let sub_id = client.subscribe(vec![Filter::new().kinds(KINDS.into_iter().map(|k| Kind::from(k)))], None).await;
+    info!("Subscribed with {:?}", sub_id);
+
     //let proxy = Some(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 9050)));
     //client
     //    .add_relay_with_opts(
@@ -160,17 +179,12 @@ async fn main() {
     //client.set_metadata(&metadata).await?;
 
     client.connect().await;
+    let mut notifications = client.notifications();
 
     let (tx, rx) = mpsc::channel();
-    let mut tasks: Tasks = Tasks::from(EventSender {
-        keys,
-        tx,
-        queue: Default::default(),
-    });
-
-    let sub_id = client.subscribe(vec![Filter::new()], None).await;
-    info!("Subscribed with {:?}", sub_id);
-    let mut notifications = client.notifications();
+    let tasks_for_url = |url: Option<Url>| Tasks::from(url, &tx, &keys);
+    let mut relays: HashMap<Url, Tasks> =
+        client.relays().await.into_keys().map(|url| (url.clone(), tasks_for_url(Some(url)))).collect();
 
     /*println!("Finding existing events");
     let _ = client
@@ -192,49 +206,61 @@ async fn main() {
         .await;*/
 
     let sender = tokio::spawn(async move {
-        while let Ok(e) = rx.recv() {
-            trace!("Sending {:?}", e);
+        while let Ok((url, events)) = rx.recv() {
+            trace!("Sending {:?}", events);
             // TODO batch up further
-            let _ = client.batch_event(e, RelaySendOptions::new()).await;
+            let _ = client.batch_event_to(vec![url], events, RelaySendOptions::new()).await;
         }
-        info!("Stopping listeners...");
-        client.unsubscribe_all().await;
+        info!("Shutting down sender thread");
     });
-    for argument in args().skip(1) {
-        tasks.make_task(&argument);
+
+    let mut local_tasks = Tasks::from(None, &tx, &keys);
+    let mut selected_relay: Option<Url> = relays.keys().nth(0).cloned();
+
+    {
+        let tasks = selected_relay.as_ref().and_then(|url| relays.get_mut(&url)).unwrap_or_else(|| &mut local_tasks);
+        for argument in args().skip(1) {
+            tasks.make_task(&argument);
+        }
     }
 
     println!();
     let mut lines = stdin().lines();
     loop {
-        or_print(tasks.print_tasks());
+        selected_relay.as_ref().and_then(|url| relays.get(url)).inspect(|tasks| {
+            or_print(tasks.print_tasks());
 
-        print!(
-            "{}",
-            format!(
-                " {}{}) ",
-                tasks.get_task_path(tasks.get_position()),
-                tasks.get_prompt_suffix()
-            ).italic()
-        );
+            print!(
+                "{}",
+                format!(
+                    "{} {}{}) ",
+                    selected_relay.as_ref().map_or("local".to_string(), |url| url.to_string()),
+                    tasks.get_task_path(tasks.get_position()),
+                    tasks.get_prompt_suffix()
+                ).italic()
+            );
+        });
         stdout().flush().unwrap();
         match lines.next() {
             Some(Ok(input)) => {
                 let mut count = 0;
                 while let Ok(notification) = notifications.try_recv() {
                     if let RelayPoolNotification::Event {
-                        subscription_id,
+                        relay_url,
                         event,
                         ..
                     } = notification
                     {
                         print_event(&event);
-                        tasks.add(*event);
+                        match relays.get_mut(&relay_url) {
+                            Some(tasks) => tasks.add(*event),
+                            None => warn!("Event received from unknown relay {relay_url}: {:?}", event)
+                        }
                         count += 1;
                     }
                 }
                 if count > 0 {
-                    info!("Received {count} updates");
+                    info!("Received {count} Updates");
                 }
 
                 let mut iter = input.chars();
@@ -244,6 +270,7 @@ async fn main() {
                 } else {
                     ""
                 };
+                let tasks = selected_relay.as_ref().and_then(|url| relays.get_mut(&url)).unwrap_or_else(|| &mut local_tasks);
                 match op {
                     None => {
                         debug!("Flushing Tasks because of empty command");
@@ -390,7 +417,26 @@ async fn main() {
                     }
 
                     _ => {
-                        tasks.filter_or_create(&input);
+                        if Regex::new("^wss?://").unwrap().is_match(&input) {
+                            tasks.move_to(None);
+                            let mut new_relay = relays.keys().find(|key| key.as_str().starts_with(&input)).cloned();
+                            if new_relay.is_none() {
+                                if let Some(url) = or_print(Url::parse(&input)) {
+                                    warn!("Connecting to {url} while running not yet supported");
+                                    //new_relay = Some(url.clone());
+                                    //relays.insert(url.clone(), tasks_for_url(Some(url.clone())));
+                                    //if client.add_relay(url).await.unwrap() {
+                                    //    relays.insert(url.clone(), tasks_for_url(Some(url.clone())));
+                                    //    client.connect().await;
+                                    //}
+                                }
+                            }
+                            if new_relay.is_some() {
+                                selected_relay = new_relay;
+                            }
+                        } else {
+                            tasks.filter_or_create(&input);
+                        }
                     }
                 }
             }
@@ -400,10 +446,11 @@ async fn main() {
     }
     println!();
 
-    tasks.move_to(None);
-    drop(tasks);
+    drop(tx);
+    drop(local_tasks);
+    drop(relays);
 
-    info!("Submitting pending changes...");
+    info!("Submitting pending updates...");
     or_print(sender.await);
 }
 

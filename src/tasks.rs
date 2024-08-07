@@ -2,16 +2,17 @@ use std::collections::{BTreeSet, HashMap};
 use std::io::{Error, stdout, Write};
 use std::iter::once;
 use std::ops::{Div, Rem};
+use std::sync::mpsc::Sender;
 
 use chrono::{Local, TimeZone};
 use chrono::LocalResult::Single;
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use nostr_sdk::{Event, EventBuilder, EventId, Kind, PublicKey, Tag, TagStandard, Timestamp};
+use nostr_sdk::{Event, EventBuilder, EventId, Keys, Kind, PublicKey, Tag, TagStandard, Timestamp, Url};
 use TagStandard::Hashtag;
 
-use crate::EventSender;
+use crate::{Events, EventSender};
 use crate::kinds::*;
 use crate::task::{State, Task, TaskState};
 
@@ -42,7 +43,16 @@ pub(crate) struct Tasks {
 }
 
 impl Tasks {
-    pub(crate) fn from(sender: EventSender) -> Self {
+    pub(crate) fn from(url: Option<Url>, tx: &Sender<(Url, Events)>, keys: &Keys) -> Self {
+        Self::with_sender(EventSender {
+            url,
+            tx: tx.clone(),
+            keys: keys.clone(),
+            queue: Default::default(),
+        })
+    }
+
+    pub(crate) fn with_sender(sender: EventSender) -> Self {
         Tasks {
             tasks: Default::default(),
             history: Default::default(),
@@ -692,7 +702,8 @@ mod tasks_test {
         use nostr_sdk::Keys;
 
         let (tx, _rx) = mpsc::channel();
-        Tasks::from(EventSender {
+        Tasks::with_sender(EventSender {
+            url: None,
             tx,
             keys: Keys::generate(),
             queue: Default::default(),

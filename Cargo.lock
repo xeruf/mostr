@@ -964,7 +964,7 @@ dependencies = [
  "itertools",
  "log",
  "nostr-sdk",
- "once_cell",
+ "regex",
  "tokio",
  "xdg",
 ]
