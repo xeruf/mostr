@@ -94,6 +94,7 @@ To stop time-tracking completely, simply move to the root of all tasks.
   + no match: create & activate task
 - `.2` - set view depth to `2`, which can be substituted for any number (how many subtask levels to show, default 1)
 - `/[TEXT]` - like `.`, but never creates a task
+- `|[TASK]` - (un)mark current task as procedure or create and activate a new task procedure (where subtasks automatically depend on the previously created task)
 
 Dots can be repeated to move to parent tasks.
 
@@ -132,6 +133,7 @@ An active tag or state filter will also set that attribute for newly created tas
 - `rtime` - time tracked on this tasks and all recursive subtasks
 - `progress` - recursive subtask completion in percent
 - `subtasks` - how many direct subtasks are complete
+- TBI `depends`
 
 For debugging: `props`, `alltags`, `descriptions`
 
@@ -151,6 +153,7 @@ Considering to use Calendar: https://github.com/nostr-protocol/nips/blob/master/
 
 ## Plans
 
+- Remove state filter when moving up?
 - Task markdown support? - colored
 - Time tracking: Ability to postpone task and add planned timestamps (calendar entry)
 - Parse Hashtag tags from task name
@@ -168,6 +171,8 @@ The following features are not ready to be implemented
 because they need conceptualization.
 Suggestions welcome!
 
+- Task Dependencies
+- Task Templates
 - Task Ownership
 - Combined formatting and recursion specifiers
   + progress count/percentage and recursive or not

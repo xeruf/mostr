@@ -11,8 +11,9 @@ use chrono::LocalResult::Single;
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use nostr_sdk::{Event, EventBuilder, EventId, Keys, Kind, PublicKey, Tag, TagStandard, Timestamp, Url};
+use nostr_sdk::{Event, EventBuilder, EventId, Keys, Kind, PublicKey, Tag, TagStandard, Timestamp, UncheckedUrl, Url};
 use nostr_sdk::base64::write::StrConsumer;
+use nostr_sdk::prelude::Marker;
 use TagStandard::Hashtag;
 
 use crate::{Events, EventSender};
@@ -306,7 +307,7 @@ impl Tasks {
                 // TODO apply filters in transit
                 let state = t.pure_state();
                 self.state.as_ref().map_or_else(|| {
-                    state == State::Open || (
+                    state.is_open() || (
                         state == State::Done &&
                             t.parent_id() != None
                     )
@@ -382,13 +383,13 @@ impl Tasks {
                             .map_or(String::new(), |p| format!("{:2.0}%", p * 100.0)),
                         "path" => self.get_task_path(Some(task.event.id)),
                         "rpath" => self.relative_path(task.event.id),
-                        // TODO format strings as config
+                        // TODO format strings configurable
                         "time" => display_time("MMMm", self.time_tracked(*task.get_id())),
                         "rtime" => {
                             let time = self.total_time_tracked(*task.get_id());
                             total_time += time;
                             display_time("HH:MM", time)
-                        },
+                        }
                         prop => task.get(prop).unwrap_or(String::new()),
                     })
                     .collect::<Vec<String>>()
@@ -540,7 +541,31 @@ impl Tasks {
 
     /// Sanitizes input
     pub(crate) fn make_task(&mut self, input: &str) -> EventId {
-        let id = self.submit(self.parse_task(input.trim()));
+        let tag: Option<Tag> = self.get_current_task()
+            .and_then(|t| {
+                println!("{:?}", t);
+                if t.pure_state() == State::Procedure {
+                    t.children.iter()
+                        .filter_map(|id| self.get_by_id(id))
+                        .max()
+                        .map(|t| {
+                            Tag::from(
+                                TagStandard::Event {
+                                    event_id: t.event.id,
+                                    relay_url: self.sender.url.as_ref().map(|url| UncheckedUrl::new(url.as_str())),
+                                    marker: Some(Marker::Custom("depends".to_string())),
+                                    public_key: Some(t.event.pubkey),
+                                }
+                            )
+                        })
+                } else {
+                    None
+                }
+            });
+        let id = self.submit(
+            self.parse_task(input.trim())
+                .add_tags(tag.into_iter())
+        );
         self.state.clone().inspect(|s| self.set_state_for_with(id, s));
         id
     }
@@ -604,7 +629,7 @@ impl Tasks {
             t.children.insert(event.id);
         });
         if self.tasks.contains_key(&event.id) {
-            warn!("Did not insert duplicate event {}", event.id);
+            debug!("Did not insert duplicate event {}", event.id); // TODO warn in next sdk version
         } else {
             self.tasks.insert(event.id, Task::new(event));
         }

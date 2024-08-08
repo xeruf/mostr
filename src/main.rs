@@ -320,6 +320,28 @@ async fn main() {
                         tasks.undo();
                     }
 
+                    Some('|') =>
+                        match arg {
+                            None => match tasks.get_position() {
+                                None => {
+                                    tasks.set_filter(
+                                        tasks.current_tasks().into_iter()
+                                            .filter(|t| t.pure_state() == State::Procedure)
+                                            .map(|t| t.event.id)
+                                            .collect()
+                                    );
+                                }
+                                Some(id) => {
+                                    tasks.set_state_for(id, "", State::Procedure);
+                                }
+                            },
+                            Some(arg) => {
+                                let id = tasks.make_task(arg);
+                                tasks.set_state_for(id, "", State::Procedure);
+                                tasks.move_to(Some(id));
+                            }
+                        }
+
                     Some('?') => {
                         tasks.set_state_filter(arg.map(|s| s.to_string()));
                     }

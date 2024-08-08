@@ -1,4 +1,5 @@
 use fmt::Display;
+use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashSet};
 use std::fmt;
 
@@ -8,29 +9,47 @@ use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Event, EventBuilder, EventId, Kind, Tag, TagStandard, Timestamp};
 
 use crate::helpers::some_non_empty;
-use crate::kinds::is_hashtag;
+use crate::kinds::{is_hashtag, PROCEDURE_KIND};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Task {
+    /// Event that defines this task
     pub(crate) event: Event,
-    pub(crate) children: HashSet<EventId>,
-    pub(crate) props: BTreeSet<Event>,
-    /// Cached sorted tags of the event
+    /// Cached sorted tags of the event with references remove - do not modify!
     pub(crate) tags: Option<BTreeSet<Tag>>,
+    /// Parent task references derived from the event tags
     parents: Vec<EventId>,
+
+    /// Reference to children, populated dynamically
+    pub(crate) children: HashSet<EventId>,
+    /// Events belonging to this task, such as state updates and notes
+    pub(crate) props: BTreeSet<Event>,
+}
+
+impl PartialOrd<Self> for Task {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.event.partial_cmp(&other.event)
+    }
+}
+
+impl Ord for Task {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.event.cmp(&other.event)
+    }
 }
 
 impl Task {
     pub(crate) fn new(event: Event) -> Task {
-        let (parents, tags) = event.tags.iter().partition_map(|tag| match tag.as_standardized() {
+        let (refs, tags) = event.tags.iter().partition_map(|tag| match tag.as_standardized() {
             Some(TagStandard::Event { event_id, .. }) => return Left(event_id),
             _ => Right(tag.clone()),
         });
+        // Separate refs for dependencies
         Task {
             children: Default::default(),
             props: Default::default(),
             tags: Some(tags).filter(|t: &BTreeSet<Tag>| !t.is_empty()),
-            parents,
+            parents: refs,
             event,
         }
     }
@@ -117,6 +136,7 @@ impl Task {
             "hashtags" => self.filter_tags(|tag| { is_hashtag(tag) }),
             "tags" => self.filter_tags(|_| true),
             "alltags" => Some(format!("{:?}", self.tags)),
+            "parents" => Some(format!("{:?}", self.parents.iter().map(|id| id.to_string()).collect_vec())),
             "props" => Some(format!(
                 "{:?}",
                 self.props
@@ -172,18 +192,20 @@ impl Display for TaskState {
 pub(crate) enum State {
     Closed,
     Open,
-    Active,
+    Procedure,
+    Pending,
     Done,
 }
 impl TryFrom<Kind> for State {
     type Error = ();
 
     fn try_from(value: Kind) -> Result<Self, Self::Error> {
-        match value.as_u32() {
+        match value.as_u16() {
             1630 => Ok(State::Open),
             1631 => Ok(State::Done),
             1632 => Ok(State::Closed),
-            1633 => Ok(State::Active),
+            1633 => Ok(State::Pending),
+            PROCEDURE_KIND => Ok(State::Procedure),
             _ => Err(()),
         }
     }
@@ -191,7 +213,7 @@ impl TryFrom<Kind> for State {
 impl State {
     pub(crate) fn is_open(&self) -> bool {
         match self {
-            State::Open | State::Active => true,
+            State::Open | State::Procedure => true,
             _ => false,
         }
     }
@@ -201,7 +223,8 @@ impl State {
             State::Open => 1630,
             State::Done => 1631,
             State::Closed => 1632,
-            State::Active => 1633,
+            State::Pending => 1633,
+            State::Procedure => PROCEDURE_KIND,
         }
     }
 }
