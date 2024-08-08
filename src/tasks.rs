@@ -429,7 +429,12 @@ impl Tasks {
             0 => {
                 // No match, new task
                 self.view.clear();
-                Some(self.make_task(arg))
+                if arg.len() > 2 {
+                    Some(self.make_task(arg))
+                } else {
+                    warn!("Not creating task under 3 chars to avoid silly mistakes");
+                    None
+                }
             }
             1 => {
                 // One match, activate
