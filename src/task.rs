@@ -58,7 +58,7 @@ impl Task {
             }
         })
     }
-    
+
     pub(crate) fn descriptions(&self) -> impl Iterator<Item=&String> + '_ {
         self.description_events().map(|e| &e.content)
     }

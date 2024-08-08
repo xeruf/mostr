@@ -1,9 +1,10 @@
 use std::collections::{BTreeSet, HashMap};
 use std::io::{Error, stdout, Write};
-use std::iter::{once, Sum};
+use std::iter::once;
 use std::ops::{Div, Rem};
 use std::sync::mpsc::Sender;
 use std::time::Duration;
+
 use chrono::{DateTime, Local, TimeZone};
 use chrono::LocalResult::Single;
 use colored::Colorize;
@@ -102,7 +103,7 @@ impl Tasks {
 
         children
     }
-    
+
     pub(crate) fn all_hashtags(&self) -> impl Iterator<Item=&str> {
         self.tasks.values()
             .filter(|t| t.pure_state() != State::Closed)
@@ -594,7 +595,7 @@ impl Tasks {
             _ => State::Open,
         });
     }
-    
+
     pub(crate) fn set_state_for(&mut self, id: EventId, comment: &str, state: State) -> EventId {
         let prop = self.build_prop(
             state.into(),

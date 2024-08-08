@@ -41,17 +41,17 @@ pub(crate) fn build_task(name: &str, tags: Vec<Tag>) -> EventBuilder {
 fn format_tag(tag: &Tag) -> String {
     match tag.as_standardized() {
         Some(TagStandard::Event {
-            event_id,
-            ..
-        }) => format!("Parent: {}", event_id.to_string()[..8].to_string()),
+                 event_id,
+                 ..
+             }) => format!("Parent: {}", event_id.to_string()[..8].to_string()),
         Some(TagStandard::PublicKey {
-            public_key,
-            ..
-        }) => format!("Key: {}", public_key.to_string()[..8].to_string()),
+                 public_key,
+                 ..
+             }) => format!("Key: {}", public_key.to_string()[..8].to_string()),
         Some(TagStandard::Hashtag(content)) => format!("#{content}"),
         _ => tag.content().map_or_else(
             || format!("Kind {}", tag.kind()),
-            |content| content.to_string()
+            |content| content.to_string(),
         )
     }
 }

@@ -8,8 +8,9 @@ use std::ops::Sub;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::mpsc;
-use std::sync::mpsc::{Sender};
-use chrono::{DateTime};
+use std::sync::mpsc::Sender;
+
+use chrono::DateTime;
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
@@ -290,7 +291,7 @@ async fn main() {
                             tasks.add_or_remove_property_column(arg);
                         } else {
                             println!("{}", PROPERTY_COLUMNS);
-                            continue
+                            continue;
                         },
 
                     Some(',') => {
@@ -300,8 +301,8 @@ async fn main() {
                                     || info!("With a task selected, use ,NOTE to attach NOTE and , to list all its notes"),
                                     |task| println!("{}", task.description_events().map(|e| format!("{} {}", e.created_at.to_human_datetime(), e.content)).join("\n")),
                                 );
-                                continue
-                            },
+                                continue;
+                            }
                             Some(arg) => tasks.make_note(arg),
                         }
                     }
@@ -336,7 +337,7 @@ async fn main() {
                             Some(arg) => tasks.set_tag(arg.to_string()),
                             None => {
                                 println!("Hashtags of all known tasks:\n{}", tasks.all_hashtags().join(" "));
-                                continue
+                                continue;
                             }
                         }
                     }
@@ -381,7 +382,7 @@ async fn main() {
                         let slice = &input[dots..];
                         tasks.move_to(pos);
                         if slice.is_empty() {
-                            if dots > 1 { 
+                            if dots > 1 {
                                 info!("Moving up {} tasks", dots - 1)
                             }
                         } else if let Ok(depth) = slice.parse::<i8>() {
@@ -440,7 +441,7 @@ async fn main() {
                                 selected_relay = new_relay;
                             }
                             //or_print(tasks.print_tasks());
-                            continue
+                            continue;
                         } else {
                             tasks.filter_or_create(&input);
                         }
