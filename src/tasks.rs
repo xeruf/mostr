@@ -353,6 +353,7 @@ impl Tasks {
         }
         // TODO proper column alignment
         writeln!(lock, "{}", self.properties.join("\t").bold())?;
+        let mut total_time = 0;
         for task in self.current_tasks() {
             writeln!(
                 lock,
@@ -383,12 +384,19 @@ impl Tasks {
                         "rpath" => self.relative_path(task.event.id),
                         // TODO format strings as config
                         "time" => display_time("MMMm", self.time_tracked(*task.get_id())),
-                        "rtime" => display_time("HH:MM", self.total_time_tracked(*task.get_id())),
+                        "rtime" => {
+                            let time = self.total_time_tracked(*task.get_id());
+                            total_time += time;
+                            display_time("HH:MM", time)
+                        },
                         prop => task.get(prop).unwrap_or(String::new()),
                     })
                     .collect::<Vec<String>>()
                     .join(" \t")
             )?;
+        }
+        if total_time > 0 {
+            writeln!(lock, "{}", display_time("Total time tracked on visible tasks: HHh MMm", total_time))?;
         }
         Ok(())
     }
