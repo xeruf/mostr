@@ -4,7 +4,7 @@ use std::io::{stdin, stdout, Write};
 use log::{debug, error, info, trace, warn};
 
 pub fn some_non_empty(str: &str) -> Option<String> {
-    if str.is_empty() { None } else { Some(str.to_owned()) }
+    if str.is_empty() { None } else { Some(str.to_string()) }
 }
 
 pub fn or_print<T, U: Display>(result: Result<T, U>) -> Option<T> {

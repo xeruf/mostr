@@ -2,18 +2,21 @@ use std::collections::{BTreeSet, HashMap};
 use std::io::{Error, stdout, Write};
 use std::iter::once;
 use std::ops::{Div, Rem};
+use std::str::FromStr;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
-use chrono::{DateTime, Local, TimeZone};
+use chrono::{Local, TimeZone};
 use chrono::LocalResult::Single;
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Event, EventBuilder, EventId, Keys, Kind, PublicKey, Tag, TagStandard, Timestamp, Url};
+use nostr_sdk::base64::write::StrConsumer;
 use TagStandard::Hashtag;
 
 use crate::{Events, EventSender};
+use crate::helpers::some_non_empty;
 use crate::kinds::*;
 use crate::task::{State, Task, TaskState};
 
@@ -117,6 +120,47 @@ impl Tasks {
     /// Total time in seconds tracked on this task by the current user.
     pub(crate) fn time_tracked(&self, id: EventId) -> u64 {
         TimesTracked::from(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &vec![id]).sum::<Duration>().as_secs()
+    }
+
+    pub(crate) fn times_tracked(&self) -> String {
+        match self.get_position() {
+            None => {
+                let hist = self.history.get(&self.sender.pubkey());
+                if let Some(set) = hist {
+                    let mut full = String::with_capacity(set.len() * 40);
+                    let mut last: Option<String> = None;
+                    full.push_str("Your Time Tracking History:\n");
+                    for event in set {
+                        let new = some_non_empty(&event.tags.iter()
+                            .filter_map(|t| t.content())
+                            .map(|str| EventId::from_str(str).ok().map_or(str.to_string(), |id| self.get_task_title(&id)))
+                            .join(" "));
+                        if new != last {
+                            full.push_str(&format!("{} {}\n", event.created_at.to_human_datetime(), new.as_ref().unwrap_or(&"---".to_string())));
+                            last = new;
+                        }
+                    }
+                    full
+                } else {
+                    String::from("You have nothing tracked yet")
+                }
+            }
+            Some(id) => {
+                let vec = vec![id];
+                let res =
+                    once(format!("Times tracked on {}", self.get_task_title(&id))).chain(
+                        self.history.iter().flat_map(|(key, set)|
+                        timestamps(set.iter(), &vec)
+                            .tuples::<(_, _)>()
+                            .map(move |((start, _), (end, _))| {
+                                format!("{} - {} by {}", start.to_human_datetime(), end.to_human_datetime(), key)
+                            })
+                        ).sorted_unstable()
+                    ).join("\n");
+                drop(vec);
+                res
+            }
+        }
     }
 
     /// Total time in seconds tracked on this task and its subtasks by all users.
@@ -692,6 +736,18 @@ pub(crate) fn join_tasks<'a>(
         })
 }
 
+fn matching_tag_id<'a>(event: &'a Event, ids: &'a Vec<EventId>) -> Option<&'a EventId> {
+    event.tags.iter().find_map(|tag| match tag.as_standardized() {
+        Some(TagStandard::Event { event_id, .. }) if ids.contains(event_id) => Some(event_id),
+        _ => None
+    })
+}
+
+fn timestamps<'a>(events: impl Iterator<Item=&'a Event>, ids: &'a Vec<EventId>) -> impl Iterator<Item=(&Timestamp, Option<&EventId>)> {
+    events.map(|event| (&event.created_at, matching_tag_id(event, ids)))
+        .dedup_by(|(_, e1), (_, e2)| e1 == e2)
+        .skip_while(|element| element.1 == None)
+}
 
 struct TimesTracked<'a> {
     events: Box<dyn Iterator<Item=&'a Event> + 'a>,
@@ -712,19 +768,15 @@ impl Iterator for TimesTracked<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut start: Option<u64> = None;
         while let Some(event) = self.events.next() {
-            match event.tags.first().and_then(|tag| tag.as_standardized()) {
-                Some(TagStandard::Event {
-                         event_id,
-                         ..
-                     }) if self.ids.contains(event_id) => {
-                    start = start.or(Some(event.created_at.as_u64()))
-                }
-                _ => if let Some(stamp) = start {
-                    return Some(Duration::from_secs(event.created_at.as_u64() - stamp))
+            if matching_tag_id(event, self.ids).is_some() {
+                start = start.or(Some(event.created_at.as_u64()))
+            } else {
+                if let Some(stamp) = start {
+                    return Some(Duration::from_secs(event.created_at.as_u64() - stamp));
                 }
             }
         }
-        return start.map(|stamp| Duration::from_secs(Timestamp::now().as_u64() - stamp))
+        return start.map(|stamp| Duration::from_secs(Timestamp::now().as_u64() - stamp));
     }
 }
 

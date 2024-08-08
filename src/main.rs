@@ -367,8 +367,8 @@ async fn main() {
                             }
                         }
                         None => {
-                            // TODO time tracked list
-                            // continue
+                            println!("{}", tasks.times_tracked());
+                            continue
                         }
                     }
 
