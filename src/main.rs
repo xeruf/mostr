@@ -294,7 +294,7 @@ async fn main() {
                             continue;
                         },
 
-                    Some(',') => {
+                    Some(',') =>
                         match arg {
                             None => {
                                 tasks.get_current_task().map_or_else(
@@ -305,7 +305,6 @@ async fn main() {
                             }
                             Some(arg) => tasks.make_note(arg),
                         }
-                    }
 
                     Some('>') => {
                         tasks.update_state(&arg_default, State::Done);
@@ -325,14 +324,15 @@ async fn main() {
                         tasks.set_state_filter(arg.map(|s| s.to_string()));
                     }
 
-                    Some('!') => match tasks.get_position() {
-                        None => warn!("First select a task to set its state!"),
-                        Some(id) => {
-                            tasks.set_state_for_with(id, arg_default);
+                    Some('!') =>
+                        match tasks.get_position() {
+                            None => warn!("First select a task to set its state!"),
+                            Some(id) => {
+                                tasks.set_state_for_with(id, arg_default);
+                            }
                         }
-                    },
 
-                    Some('#') => {
+                    Some('#') =>
                         match arg {
                             Some(arg) => tasks.set_tag(arg.to_string()),
                             None => {
@@ -340,37 +340,35 @@ async fn main() {
                                 continue;
                             }
                         }
-                    }
 
-                    Some('+') => {
+                    Some('+') =>
                         match arg {
                             Some(arg) => tasks.add_tag(arg.to_string()),
                             None => tasks.clear_filter()
                         }
-                    }
 
-                    Some('-') => {
+                    Some('-') =>
                         match arg {
                             Some(arg) => tasks.remove_tag(arg),
                             None => tasks.clear_filter()
                         }
-                    }
 
-                    Some('*') => match arg {
-                        Some(arg) => {
-                            if let Ok(num) = arg.parse::<i64>() {
-                                tasks.track_at(Timestamp::from(Timestamp::now().as_u64().saturating_add_signed(num)));
-                            } else if let Ok(date) = DateTime::parse_from_rfc3339(arg) {
-                                tasks.track_at(Timestamp::from(date.to_utc().timestamp() as u64));
-                            } else {
-                                warn!("Cannot parse {arg}");
+                    Some('*') =>
+                        match arg {
+                            Some(arg) => {
+                                if let Ok(num) = arg.parse::<i64>() {
+                                    tasks.track_at(Timestamp::from(Timestamp::now().as_u64().saturating_add_signed(num)));
+                                } else if let Ok(date) = DateTime::parse_from_rfc3339(arg) {
+                                    tasks.track_at(Timestamp::from(date.to_utc().timestamp() as u64));
+                                } else {
+                                    warn!("Cannot parse {arg}");
+                                }
+                            }
+                            None => {
+                                println!("{}", tasks.times_tracked());
+                                continue;
                             }
                         }
-                        None => {
-                            println!("{}", tasks.times_tracked());
-                            continue
-                        }
-                    }
 
                     Some('.') => {
                         let mut dots = 1;
@@ -422,7 +420,7 @@ async fn main() {
                         }
                     }
 
-                    _ => {
+                    _ =>
                         if Regex::new("^wss?://").unwrap().is_match(&input) {
                             tasks.move_to(None);
                             let mut new_relay = relays.keys().find(|key| key.as_str().starts_with(&input)).cloned();
@@ -445,7 +443,6 @@ async fn main() {
                         } else {
                             tasks.filter_or_create(&input);
                         }
-                    }
                 }
                 or_print(tasks.print_tasks());
             }
