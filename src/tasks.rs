@@ -102,6 +102,16 @@ impl Tasks {
 
         children
     }
+    
+    pub(crate) fn all_hashtags(&self) -> impl Iterator<Item=&str> {
+        self.tasks.values()
+            .filter(|t| t.pure_state() != State::Closed)
+            .filter_map(|t| t.tags.as_ref()).flatten()
+            .filter(|tag| is_hashtag(tag))
+            .filter_map(|tag| tag.content().map(|s| s.trim()))
+            .sorted_unstable()
+            .dedup()
+    }
 
     /// Total time in seconds tracked on this task by the current user.
     pub(crate) fn time_tracked(&self, id: EventId) -> u64 {
@@ -348,6 +358,11 @@ impl Tasks {
         self.view.clear();
         self.tags.clear();
         info!("Removed all filters");
+    }
+
+    pub(crate) fn set_tag(&mut self, tag: String) {
+        self.tags.clear();
+        self.add_tag(tag);
     }
 
     pub(crate) fn add_tag(&mut self, tag: String) {

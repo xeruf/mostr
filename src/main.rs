@@ -331,7 +331,17 @@ async fn main() {
                         }
                     },
 
-                    Some('#') | Some('+') => {
+                    Some('#') => {
+                        match arg {
+                            Some(arg) => tasks.set_tag(arg.to_string()),
+                            None => {
+                                println!("Hashtags of all known tasks:\n{}", tasks.all_hashtags().join(" "));
+                                continue
+                            }
+                        }
+                    }
+
+                    Some('+') => {
                         match arg {
                             Some(arg) => tasks.add_tag(arg.to_string()),
                             None => tasks.clear_filter()

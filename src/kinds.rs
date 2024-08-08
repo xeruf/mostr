@@ -58,6 +58,6 @@ fn format_tag(tag: &Tag) -> String {
 
 pub(crate) fn is_hashtag(tag: &Tag) -> bool {
     tag.single_letter_tag()
-        .is_some_and(|sltag| sltag.character == Alphabet::T)
+        .is_some_and(|letter| letter.character == Alphabet::T)
 }
 

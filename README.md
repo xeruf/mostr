@@ -110,8 +110,9 @@ Dots can be repeated to move to parent tasks.
 
 Property Filters:
 
-- `+TAG` - filter by tag
-- `-TAG` - remove filter by tag
+- `#TAG` - set tag filter (empty: list all used tags)
+- `+TAG` - add tag filter
+- `-TAG` - remove tag filters
 - `?STATE` - filter by state (type or description) - plain `?` to reset
 
 State descriptions can be used for example for Kanban columns or review flows.
