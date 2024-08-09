@@ -2,6 +2,7 @@ use fmt::Display;
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashSet};
 use std::fmt;
+use std::string::ToString;
 
 use itertools::Either::{Left, Right};
 use itertools::Itertools;
@@ -11,14 +12,17 @@ use nostr_sdk::{Event, EventBuilder, EventId, Kind, Tag, TagStandard, Timestamp}
 use crate::helpers::some_non_empty;
 use crate::kinds::{is_hashtag, PROCEDURE_KIND};
 
+pub static MARKER_PARENT: &str = "parent";
+pub static MARKER_DEPENDS: &str = "depends";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Task {
     /// Event that defines this task
     pub(crate) event: Event,
     /// Cached sorted tags of the event with references remove - do not modify!
     pub(crate) tags: Option<BTreeSet<Tag>>,
-    /// Parent task references derived from the event tags
-    parents: Vec<EventId>,
+    /// Task references derived from the event tags
+    refs: Vec<(String, EventId)>,
 
     /// Reference to children, populated dynamically
     pub(crate) children: HashSet<EventId>,
@@ -41,7 +45,7 @@ impl Ord for Task {
 impl Task {
     pub(crate) fn new(event: Event) -> Task {
         let (refs, tags) = event.tags.iter().partition_map(|tag| match tag.as_standardized() {
-            Some(TagStandard::Event { event_id, .. }) => return Left(event_id),
+            Some(TagStandard::Event { event_id, marker, .. }) => Left((marker.as_ref().map_or(MARKER_PARENT.to_string(), |m| m.to_string()), event_id.clone())),
             _ => Right(tag.clone()),
         });
         // Separate refs for dependencies
@@ -49,7 +53,7 @@ impl Task {
             children: Default::default(),
             props: Default::default(),
             tags: Some(tags).filter(|t: &BTreeSet<Tag>| !t.is_empty()),
-            parents: refs,
+            refs,
             event,
         }
     }
@@ -58,8 +62,17 @@ impl Task {
         &self.event.id
     }
 
+    fn find_refs<'a>(&'a self, marker: &'a str) -> impl Iterator<Item=&'a EventId> {
+        self.refs.iter().filter_map(move |(str, id)| Some(id).filter(|_| str == marker))
+    }
+
     pub(crate) fn parent_id(&self) -> Option<&EventId> {
-        self.parents.first()
+        self.find_refs(MARKER_PARENT).next()
+    }
+
+    pub(crate) fn get_dependendees(&self) -> Vec<&EventId> {
+        // TODO honor properly
+        self.find_refs(MARKER_DEPENDS).collect()
     }
 
     pub(crate) fn get_title(&self) -> String {
@@ -136,7 +149,7 @@ impl Task {
             "hashtags" => self.filter_tags(|tag| { is_hashtag(tag) }),
             "tags" => self.filter_tags(|_| true),
             "alltags" => Some(format!("{:?}", self.tags)),
-            "parents" => Some(format!("{:?}", self.parents.iter().map(|id| id.to_string()).collect_vec())),
+            "refs" => Some(format!("{:?}", self.refs.iter().map(|re| format!("{}: {}", re.0,  re.1)).collect_vec())),
             "props" => Some(format!(
                 "{:?}",
                 self.props

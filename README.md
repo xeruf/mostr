@@ -171,7 +171,7 @@ The following features are not ready to be implemented
 because they need conceptualization.
 Suggestions welcome!
 
-- Task Dependencies
+- Task Dependencies (change from tags to properties so they can be added later, or maybe as a state?)
 - Task Templates
 - Task Ownership
 - Combined formatting and recursion specifiers
