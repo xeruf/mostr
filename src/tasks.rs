@@ -13,7 +13,6 @@ use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Event, EventBuilder, EventId, Keys, Kind, PublicKey, Tag, TagStandard, Timestamp, UncheckedUrl, Url};
-use nostr_sdk::base64::write::StrConsumer;
 use nostr_sdk::prelude::Marker;
 use TagStandard::Hashtag;
 
@@ -172,11 +171,7 @@ impl Tasks {
             .dedup()
     }
 
-    /// Total time in seconds tracked on this task by the current user.
-    pub(crate) fn time_tracked(&self, id: EventId) -> u64 {
-        TimesTracked::from(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &vec![id]).sum::<Duration>().as_secs()
-    }
-
+    /// Dynamic time tracking overview for current task or current user.
     pub(crate) fn times_tracked(&self) -> String {
         match self.get_position() {
             None => {
@@ -201,22 +196,28 @@ impl Tasks {
                 }
             }
             Some(id) => {
-                let vec = vec![id];
-                let res =
-                    once(format!("Times tracked on {}", self.get_task_title(&id))).chain(
-                        self.history.iter().flat_map(|(key, set)|
-                        timestamps(set.iter(), &vec)
-                            .tuples::<(_, _)>()
-                            .map(move |((start, _), (end, _))| {
-                                format!("{} - {} by {}", start.to_human_datetime(), end.to_human_datetime(), key)
-                            })
-                        ).sorted_unstable()
-                    ).join("\n");
-                drop(vec);
-                res
+                let ids = vec![id];
+                once(format!("Times tracked on {}", self.get_task_title(&id))).chain(
+                    self.history.iter().flat_map(|(key, set)| {
+                        let mut vec = Vec::with_capacity(set.len() / 2);
+                        let mut iter = timestamps(set.iter(), &ids).tuples();
+                        while let Some(((start, _), (end, _))) = iter.next() {
+                            vec.push(format!("{} - {} by {}", start.to_human_datetime(), end.to_human_datetime(), key))
+                        }
+                        iter.into_buffer().for_each(|(stamp, _)|
+                        vec.push(format!("{} started by {}", stamp.to_human_datetime(), key)));
+                        vec
+                    }).sorted_unstable()
+                ).join("\n")
             }
         }
     }
+
+    /// Total time in seconds tracked on this task by the current user.
+    pub(crate) fn time_tracked(&self, id: EventId) -> u64 {
+        TimesTracked::from(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &vec![id]).sum::<Duration>().as_secs()
+    }
+
 
     /// Total time in seconds tracked on this task and its subtasks by all users.
     fn total_time_tracked(&self, id: EventId) -> u64 {
