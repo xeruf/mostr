@@ -1,4 +1,5 @@
 use std::collections::{BTreeSet, HashMap};
+use std::fmt::{Display, Formatter};
 use std::io::{Error, stdout, Write};
 use std::iter::once;
 use std::ops::{Div, Rem};
@@ -40,11 +41,64 @@ pub(crate) struct Tasks {
     /// Currently active tags
     tags: BTreeSet<Tag>,
     /// Current active state
-    state: Option<String>,
+    state: StateFilter,
     /// A filtered view of the current tasks
     view: Vec<EventId>,
 
     sender: EventSender,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum StateFilter {
+    Default,
+    All,
+    State(String),
+}
+impl StateFilter {
+    fn indicator(&self) -> String {
+        match self {
+            StateFilter::Default => "".to_string(),
+            StateFilter::All => " ?ALL".to_string(),
+            StateFilter::State(str) => format!(" ?{str}"),
+        }
+    }
+
+    fn matches(&self, task: &Task) -> bool {
+        match self {
+            StateFilter::Default => {
+                let state = task.pure_state();
+                state.is_open() || (state == State::Done && task.parent_id() != None)
+            },
+            StateFilter::All => true,
+            StateFilter::State(filter) => task.state().is_some_and(|t| t.matches_label(filter)),
+        }
+    }
+    
+    fn as_option(&self) -> Option<String> {
+        if let StateFilter::State(str) = self {
+            Some(str.to_string())
+        } else {
+            None
+        }
+    }
+}
+impl Default for StateFilter {
+    fn default() -> Self {
+        StateFilter::Default
+    }
+}
+impl Display for StateFilter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                StateFilter::Default => "relevant tasks".to_string(),
+                StateFilter::All => "all tasks".to_string(),
+                StateFilter::State(s) => format!("state {s}"),
+            }
+        )
+    }
 }
 
 impl Tasks {
@@ -72,7 +126,7 @@ impl Tasks {
             position: None, // TODO persist position
             view: Default::default(),
             tags: Default::default(),
-            state: None,
+            state: Default::default(),
             depth: 1,
             sender,
         }
@@ -208,8 +262,7 @@ impl Tasks {
         self.tags
             .iter()
             .map(|t| format!(" #{}", t.content().unwrap()))
-            .chain(self.state.as_ref().map(|s| format!(" ?{s}")).into_iter())
-            .collect::<Vec<String>>()
+            .chain(once(self.state.indicator()))
             .join("")
     }
 
@@ -306,14 +359,7 @@ impl Tasks {
             .filter(|t| {
                 // TODO apply filters in transit
                 let state = t.pure_state();
-                self.state.as_ref().map_or_else(|| {
-                    state.is_open() || (
-                        state == State::Done &&
-                            t.parent_id() != None
-                    )
-                }, |filter| {
-                    t.state().is_some_and(|t| t.matches_label(filter))
-                }) && (self.tags.is_empty()
+                self.state.matches(t) && (self.tags.is_empty()
                     || t.tags.as_ref().map_or(false, |tags| {
                     let mut iter = tags.iter();
                     self.tags.iter().all(|tag| iter.any(|t| t == tag))
@@ -436,9 +482,9 @@ impl Tasks {
         }
     }
 
-    pub(crate) fn set_state_filter(&mut self, state: Option<String>) {
+    pub(crate) fn set_state_filter(&mut self, state: StateFilter) {
         self.view.clear();
-        info!("Filtering for {}", state.as_ref().map_or("open tasks".to_string(), |s| format!("state {s}")));
+        info!("Filtering for {}", state);
         self.state = state;
     }
 
@@ -566,7 +612,7 @@ impl Tasks {
             self.parse_task(input.trim())
                 .add_tags(tag.into_iter())
         );
-        self.state.clone().inspect(|s| self.set_state_for_with(id, s));
+        self.state.as_option().inspect(|s| self.set_state_for_with(id, s));
         id
     }
 

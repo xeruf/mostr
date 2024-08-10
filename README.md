@@ -112,7 +112,7 @@ Property Filters:
 - `#TAG` - set tag filter (empty: list all used tags)
 - `+TAG` - add tag filter
 - `-TAG` - remove tag filters
-- `?STATE` - filter by state (type or description) - plain `?` to reset
+- `?STATE` - filter by state (type or description) - plain `?` to reset, `??` to show all
 
 State descriptions can be used for example for Kanban columns or review flows.
 An active tag or state filter will also set that attribute for newly created tasks.
@@ -171,9 +171,10 @@ The following features are not ready to be implemented
 because they need conceptualization.
 Suggestions welcome!
 
-- Task Dependencies (change from tags to properties so they can be added later, or maybe as a state?)
-- Task Templates
-- Task Ownership
+- Priorities
+- Dependencies (change from tags to properties so they can be added later? or maybe as a state?)
+- Templates
+- Ownership
 - Combined formatting and recursion specifiers
   + progress count/percentage and recursive or not
   + Subtask progress immediate/all/leafs

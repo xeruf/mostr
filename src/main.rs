@@ -21,7 +21,7 @@ use xdg::BaseDirectories;
 use crate::helpers::*;
 use crate::kinds::{KINDS, PROPERTY_COLUMNS, TRACKING_KIND};
 use crate::task::State;
-use crate::tasks::Tasks;
+use crate::tasks::{StateFilter, Tasks};
 
 mod helpers;
 mod task;
@@ -343,7 +343,11 @@ async fn main() {
                         }
 
                     Some('?') => {
-                        tasks.set_state_filter(arg.map(|s| s.to_string()));
+                        match arg {
+                            None => tasks.set_state_filter(StateFilter::Default),
+                            Some("?") => tasks.set_state_filter(StateFilter::All),
+                            Some(arg) => tasks.set_state_filter(StateFilter::State(arg.to_string())),
+                        }
                     }
 
                     Some('!') =>
