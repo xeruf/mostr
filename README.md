@@ -54,10 +54,16 @@ Using subtasks has two main advantages:
 - ability to accumulate time tracked
 - swiftly navigate between related tasks
 
+Managing a project with subtasks makes it continuously visible,
+which is helpful if you want to be able to track time on the project itself
+without a specific task,
 Thus subtasks can be very useful for specific contexts,
 for example a project or a specific place.
+
 On the other hand, related tasks like chores
 should be grouped with a tag instead.
+Similarly for projects which are only sporadically worked on
+when a specific task comes up, so they do not clutter the list.
 
 ### Collaboration
 
@@ -86,7 +92,7 @@ To stop time-tracking completely, simply move to the root of all tasks.
 
 `TASK` creation syntax: `NAME: TAG1 TAG2 ...`
 
-- `TASK` - create task
+- `TASK` - create task (prefix with space if you want a task to start with a command character)
 - `.` - clear filters and reload
 - `.TASK`
   + activate task by id
@@ -96,7 +102,7 @@ To stop time-tracking completely, simply move to the root of all tasks.
 - `/[TEXT]` - like `.`, but never creates a task
 - `|[TASK]` - (un)mark current task as procedure or create and activate a new task procedure (where subtasks automatically depend on the previously created task)
 
-Dots can be repeated to move to parent tasks.
+Dots and slashes can be repeated to move to parent tasks.
 
 - `:[IND][COL]` - add property column COL at IND or end, if it already exists remove property column COL or IND (1-indexed)
 - `*[TIME]` - add timetracking with the specified offset (empty: list tracked times)
@@ -105,7 +111,7 @@ Dots can be repeated to move to parent tasks.
 - `!TEXT` - set state for current task from text
 - `,TEXT` - add text note (comment / description)
 - `@` - undoes last action (moving in place or upwards or waiting a minute confirms pending actions)
-- `wss://...` - switch or subscribe to relay
+- `wss://...` - switch or subscribe to relay (prefix with space to forcibly add a new one)
 
 Property Filters:
 

@@ -284,8 +284,7 @@ async fn main() {
                             if remaining.is_empty() {
                                 tasks.remove_column(index);
                             } else {
-                                let value = input[2..].trim().to_string();
-                                tasks.add_or_remove_property_column_at_index(value, index);
+                                tasks.add_or_remove_property_column_at_index(remaining, index);
                             }
                         } else if let Some(arg) = arg {
                             tasks.add_or_remove_property_column(arg);
@@ -403,7 +402,8 @@ async fn main() {
                             dots += 1;
                             pos = tasks.get_parent(pos).cloned();
                         }
-                        let slice = &input[dots..];
+                        let slice = input[dots..].trim();
+
                         tasks.move_to(pos);
                         if slice.is_empty() {
                             if dots > 1 {
@@ -423,7 +423,8 @@ async fn main() {
                             dots += 1;
                             pos = tasks.get_parent(pos).cloned();
                         }
-                        let slice = &input[dots..].to_ascii_lowercase();
+                        let slice = &input[dots..].trim().to_ascii_lowercase();
+
                         if slice.is_empty() {
                             tasks.move_to(pos);
                         } else if let Ok(depth) = slice.parse::<i8>() {
@@ -447,7 +448,7 @@ async fn main() {
                     }
 
                     _ =>
-                        if Regex::new("^wss?://").unwrap().is_match(&input) {
+                        if Regex::new("^wss?://").unwrap().is_match(&input.trim()) {
                             tasks.move_to(None);
                             let mut new_relay = relays.keys().find(|key| key.as_str().starts_with(&input)).cloned();
                             if new_relay.is_none() {
