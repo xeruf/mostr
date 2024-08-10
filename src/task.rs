@@ -219,6 +219,17 @@ pub(crate) enum State {
     Pending,
     Procedure,
 }
+impl From<&str> for State {
+    fn from(value: &str) -> Self {
+        match value {
+            "Closed" => State::Closed,
+            "Done" => State::Done,
+            "Pending" => State::Pending,
+            "Proc" | "Procedure" | "List" => State::Procedure,
+            _ => State::Open,
+        }
+    }
+}
 impl TryFrom<Kind> for State {
     type Error = ();
 
@@ -236,7 +247,7 @@ impl TryFrom<Kind> for State {
 impl State {
     pub(crate) fn is_open(&self) -> bool {
         match self {
-            State::Open | State::Procedure => true,
+            State::Open | State::Pending | State::Procedure => true,
             _ => false,
         }
     }

@@ -712,11 +712,7 @@ impl Tasks {
     }
 
     pub(crate) fn set_state_for_with(&mut self, id: EventId, comment: &str) {
-        self.set_state_for(id, comment, match comment {
-            "Closed" => State::Closed,
-            "Done" => State::Done,
-            _ => State::Open,
-        });
+        self.set_state_for(id, comment, comment.into());
     }
 
     pub(crate) fn set_state_for(&mut self, id: EventId, comment: &str, state: State) -> EventId {
