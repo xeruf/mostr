@@ -68,12 +68,12 @@ impl StateFilter {
             StateFilter::Default => {
                 let state = task.pure_state();
                 state.is_open() || (state == State::Done && task.parent_id() != None)
-            },
+            }
             StateFilter::All => true,
             StateFilter::State(filter) => task.state().is_some_and(|t| t.matches_label(filter)),
         }
     }
-    
+
     fn as_option(&self) -> Option<String> {
         if let StateFilter::State(str) = self {
             Some(str.to_string())
@@ -585,11 +585,11 @@ impl Tasks {
         }
     }
 
+    /// Creates a task following the current state
     /// Sanitizes input
     pub(crate) fn make_task(&mut self, input: &str) -> EventId {
         let tag: Option<Tag> = self.get_current_task()
             .and_then(|t| {
-                println!("{:?}", t);
                 if t.pure_state() == State::Procedure {
                     t.children.iter()
                         .filter_map(|id| self.get_by_id(id))

@@ -134,7 +134,6 @@ impl Task {
             tags.into_iter()
                 .filter(predicate)
                 .map(|t| format!("{}", t.content().unwrap()))
-                .collect::<Vec<String>>()
                 .join(" ")
         })
     }
@@ -160,7 +159,7 @@ impl Task {
             "hashtags" => self.filter_tags(|tag| { is_hashtag(tag) }),
             "tags" => self.filter_tags(|_| true),
             "alltags" => Some(format!("{:?}", self.tags)),
-            "refs" => Some(format!("{:?}", self.refs.iter().map(|re| format!("{}: {}", re.0,  re.1)).collect_vec())),
+            "refs" => Some(format!("{:?}", self.refs.iter().map(|re| format!("{}: {}", re.0, re.1)).collect_vec())),
             "props" => Some(format!(
                 "{:?}",
                 self.props
