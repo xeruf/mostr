@@ -840,15 +840,19 @@ fn timestamps<'a>(events: impl Iterator<Item=&'a Event>, ids: &'a Vec<EventId>) 
         .skip_while(|element| element.1 == None)
 }
 
+/// Iterates Events to accumulate times tracked
+/// Expects a sorted iterator
 struct TimesTracked<'a> {
     events: Box<dyn Iterator<Item=&'a Event> + 'a>,
     ids: &'a Vec<EventId>,
+    threshold: Option<Timestamp>,
 }
 impl TimesTracked<'_> {
     fn from<'b>(events: impl IntoIterator<Item=&'b Event> + 'b, ids: &'b Vec<EventId>) -> TimesTracked<'b> {
         TimesTracked {
             events: Box::new(events.into_iter()),
             ids,
+            threshold: Some(Timestamp::now()),
         }
     }
 }
@@ -860,6 +864,9 @@ impl Iterator for TimesTracked<'_> {
         let mut start: Option<u64> = None;
         while let Some(event) = self.events.next() {
             if matching_tag_id(event, self.ids).is_some() {
+                if self.threshold.is_some_and(|th| event.created_at > th) {
+                    continue;
+                }
                 start = start.or(Some(event.created_at.as_u64()))
             } else {
                 if let Some(stamp) = start {
@@ -867,7 +874,8 @@ impl Iterator for TimesTracked<'_> {
                 }
             }
         }
-        return start.map(|stamp| Duration::from_secs(Timestamp::now().as_u64() - stamp));
+        let now = self.threshold.unwrap_or(Timestamp::now()).as_u64();
+        return start.filter(|t| t < &now).map(|stamp| Duration::from_secs(now.saturating_sub(stamp)));
     }
 }
 
