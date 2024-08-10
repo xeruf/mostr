@@ -4,6 +4,7 @@ use std::collections::{BTreeSet, HashSet};
 use std::fmt;
 use std::string::ToString;
 
+use colored::Colorize;
 use itertools::Either::{Left, Right};
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
@@ -142,7 +143,17 @@ impl Task {
         match property {
             "id" => Some(self.event.id.to_string()),
             "parentid" => self.parent_id().map(|i| i.to_string()),
-            "state" => Some(self.state_or_default().get_label()),
+            "state" => Some({
+                let state = self.state_or_default();
+                let label = state.get_label();
+                match state.state {
+                    State::Open => label.green(),
+                    State::Done => label.bright_black(),
+                    State::Closed => label.magenta(),
+                    State::Pending => label.yellow(),
+                    State::Procedure => label.blue(),
+                }.to_string()
+            }),
             "name" => Some(self.event.content.clone()),
             "desc" => self.descriptions().last().cloned(),
             "description" => Some(self.descriptions().join(" ")),
@@ -203,11 +214,11 @@ impl Display for TaskState {
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub(crate) enum State {
-    Closed,
     Open,
-    Procedure,
-    Pending,
     Done,
+    Closed,
+    Pending,
+    Procedure,
 }
 impl TryFrom<Kind> for State {
     type Error = ();
