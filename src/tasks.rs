@@ -7,7 +7,7 @@ use std::str::FromStr;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
-use chrono::{Local, TimeZone};
+use chrono::{DateTime, Local, TimeZone};
 use chrono::LocalResult::Single;
 use colored::Colorize;
 use itertools::Itertools;
@@ -633,10 +633,25 @@ impl Tasks {
         self.tasks.get(id).map_or(id.to_string(), |t| t.get_title())
     }
 
+    /// Parse string and set tracking
+    /// Returns false if parsing failed
+    pub(crate) fn track_from(&mut self, str: &str) -> bool {
+        if let Ok(num) = str.parse::<i64>() {
+            self.track_at(Timestamp::from(Timestamp::now().as_u64().saturating_add_signed(num * 60)));
+        } else if let Ok(date) = DateTime::parse_from_rfc3339(str) {
+            self.track_at(Timestamp::from(date.to_utc().timestamp() as u64));
+        } else {
+            warn!("Cannot parse {str}");
+            return false;
+        }
+        true
+    }
+
     pub(crate) fn track_at(&mut self, time: Timestamp) -> EventId {
-        info!("Tracking \"{:?}\" from {}", self.position.map(|id| self.get_task_title(&id)), time.to_human_datetime());
+        info!("{} from {}", self.position.map_or(String::from("Stopping time-tracking"), |id| format!("Tracking \"{}\"", self.get_task_title(&id))), time.to_human_datetime()); // TODO omit seconds
         let pos = self.get_position();
         let tracking = build_tracking(pos);
+        // TODO this can lead to funny deletions
         self.get_own_history().map(|events| {
             if let Some(event) = events.pop_last() {
                 if event.kind.as_u16() == TRACKING_KIND &&
@@ -913,6 +928,18 @@ mod tasks_test {
 
         // TODO test received events
     }
+
+    #[test]
+    #[ignore]
+    fn test_timestamps() {
+        let mut tasks = stub_tasks();
+        let zero = EventId::all_zeros();
+        tasks.move_to(Some(zero));
+        tasks.track_at(Timestamp::from(Timestamp::now().as_u64() + 100));
+        assert_eq!(timestamps(tasks.history.values().nth(0).unwrap().into_iter(), &vec![zero]).collect_vec().len(), 2)
+        // TODO Does not show both future and current tracking properly, need to split by now
+    }
+
 
     #[test]
     fn test_depth() {

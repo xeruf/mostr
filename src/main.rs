@@ -378,22 +378,27 @@ async fn main() {
                             None => tasks.clear_filter()
                         }
 
-                    Some('*') =>
+                    Some('(') =>
                         match arg {
-                            Some(arg) => {
-                                if let Ok(num) = arg.parse::<i64>() {
-                                    tasks.track_at(Timestamp::from(Timestamp::now().as_u64().saturating_add_signed(num)));
-                                } else if let Ok(date) = DateTime::parse_from_rfc3339(arg) {
-                                    tasks.track_at(Timestamp::from(date.to_utc().timestamp() as u64));
-                                } else {
-                                    warn!("Cannot parse {arg}");
+                            Some(arg) =>
+                                if !tasks.track_from(arg) {
+                                    continue;
                                 }
-                            }
                             None => {
                                 println!("{}", tasks.times_tracked());
                                 continue;
                             }
+                            
                         }
+                    
+                    Some(')') => {
+                        tasks.move_to(None);
+                        if let Some(arg) = arg {
+                            if !tasks.track_from(arg) {
+                                continue;
+                            }
+                        }
+                    }
 
                     Some('.') => {
                         let mut dots = 1;
