@@ -121,18 +121,19 @@ Property Filters:
 - `#TAG` - set tag filter (empty: list all used tags)
 - `+TAG` - add tag filter
 - `-TAG` - remove tag filters
-- `?STATE` - filter by state (type or description) - plain `?` to reset, `??` to show all
+- `?STATUS` - filter by status (type or description) - plain `?` to reset, `??` to show all
 
-State descriptions can be used for example for Kanban columns or review flows.
-An active tag or state filter will also set that attribute for newly created tasks.
+Status descriptions can be used for example for Kanban columns or review flows.
+An active tag or status filter will also set that attribute for newly created tasks.
 
 ### Available Columns
 
 - `id`
 - `parentid`
 - `name`
-- `state`
-- `hashtags`
+- `state` - indicator of current progress
+- `status` - pure task status
+- `hashtags` - list of hashtags set for the task
 - `tags` - values of all nostr tags associated with the event, except event tags
 - `desc` - last note on the task
 - `description` - accumulated notes on the task
@@ -180,6 +181,7 @@ The following features are not ready to be implemented
 because they need conceptualization.
 Suggestions welcome!
 
+- What if I want to postpone a procedure, i.e. make it pending, or move it across kanban, does this make sense?
 - Priorities
 - Dependencies (change from tags to properties so they can be added later? or maybe as a state?)
 - Templates
@@ -194,3 +196,8 @@ Suggestions welcome!
 - TUI: Clear terminal? Refresh on empty prompt after timeout?
 - Kanban, GANTT, Calendar
 - Web Interface, Messenger integrations
+
+## Notes
+
+- TBI = To Be Implemented
+- `. TASK` - create and enter a new task even if the name matches an existing one

@@ -4,11 +4,11 @@ use std::collections::{BTreeSet, HashSet};
 use std::fmt;
 use std::string::ToString;
 
-use colored::Colorize;
+use colored::{ColoredString, Colorize};
 use itertools::Either::{Left, Right};
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use nostr_sdk::{Event, EventBuilder, EventId, Kind, Tag, TagStandard, Timestamp};
+use nostr_sdk::{Event, EventId, Kind, Tag, TagStandard, Timestamp};
 
 use crate::helpers::some_non_empty;
 use crate::kinds::{is_hashtag, PROCEDURE_KIND};
@@ -72,7 +72,6 @@ impl Task {
     }
 
     pub(crate) fn get_dependendees(&self) -> Vec<&EventId> {
-        // TODO honor properly
         self.find_refs(MARKER_DEPENDS).collect()
     }
 
@@ -142,17 +141,7 @@ impl Task {
         match property {
             "id" => Some(self.event.id.to_string()),
             "parentid" => self.parent_id().map(|i| i.to_string()),
-            "state" => Some({
-                let state = self.state_or_default();
-                let label = state.get_label();
-                match state.state {
-                    State::Open => label.green(),
-                    State::Done => label.bright_black(),
-                    State::Closed => label.magenta(),
-                    State::Pending => label.yellow(),
-                    State::Procedure => label.blue(),
-                }.to_string()
-            }),
+            "status" => Some(self.state_or_default().get_colored_label().to_string()),
             "name" => Some(self.event.content.clone()),
             "desc" => self.descriptions().last().cloned(),
             "description" => Some(self.descriptions().join(" ")),
@@ -180,7 +169,7 @@ impl Task {
 }
 
 pub(crate) struct TaskState {
-    state: State,
+    pub(crate) state: State,
     name: Option<String>,
     pub(crate) time: Timestamp,
 }
@@ -190,6 +179,9 @@ impl TaskState {
     }
     pub(crate) fn get_label(&self) -> String {
         self.name.clone().unwrap_or_else(|| self.state.to_string())
+    }
+    pub(crate) fn get_colored_label(&self) -> ColoredString {
+        self.state.colorize(&self.get_label())
     }
     pub(crate) fn matches_label(&self, label: &str) -> bool {
         self.name.as_ref().is_some_and(|n| n.eq_ignore_ascii_case(label))
@@ -211,7 +203,7 @@ impl Display for TaskState {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq)]
 pub(crate) enum State {
     Open,
     Done,
@@ -259,6 +251,16 @@ impl State {
             State::Closed => 1632,
             State::Pending => 1633,
             State::Procedure => PROCEDURE_KIND,
+        }
+    }
+
+    pub(crate) fn colorize(&self, str: &str) -> ColoredString {
+        match self {
+            State::Open => str.green(),
+            State::Done => str.bright_black(),
+            State::Closed => str.magenta(),
+            State::Pending => str.yellow(),
+            State::Procedure => str.blue(),
         }
     }
 }

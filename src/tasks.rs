@@ -116,7 +116,6 @@ impl Tasks {
             history: Default::default(),
             properties: vec![
                 "state".into(),
-                "progress".into(),
                 "rtime".into(),
                 "hashtags".into(),
                 "rpath".into(),
@@ -400,9 +399,15 @@ impl Tasks {
             writeln!(lock, "{}", t.descriptions().join("\n"))?;
         }
         // TODO proper column alignment
+        // TODO hide empty columns and sorting
         writeln!(lock, "{}", self.properties.join("\t").bold())?;
         let mut total_time = 0;
         for task in self.current_tasks() {
+            let progress =
+                self
+                    .total_progress(task.get_id())
+                    .filter(|_| task.children.len() > 0);
+            let prog_string = progress.map_or(String::new(), |p| format!("{:2.0}%", p * 100.0));
             writeln!(
                 lock,
                 "{}",
@@ -424,10 +429,18 @@ impl Tasks {
                                 "".to_string()
                             }
                         }
-                        "progress" => self
-                            .total_progress(task.get_id())
-                            .filter(|_| task.children.len() > 0)
-                            .map_or(String::new(), |p| format!("{:2.0}%", p * 100.0)),
+                        "state" => {
+                            if let Some(task) = task.get_dependendees().iter().filter_map(|id| self.get_by_id(id)).find(|t| t.pure_state().is_open()) { 
+                                return format!("Blocked by \"{}\"", task.get_title()).bright_red().to_string()
+                            }
+                            let state = task.state_or_default();
+                            if state.state.is_open() && progress.is_some_and(|p| p > 0.1) {
+                                state.state.colorize(&prog_string)
+                            } else {
+                                state.get_colored_label()
+                            }.to_string()
+                        }
+                        "progress" => prog_string.clone(),
                         "path" => self.get_task_path(Some(task.event.id)),
                         "rpath" => self.relative_path(task.event.id),
                         // TODO format strings configurable
