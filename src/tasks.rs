@@ -30,6 +30,8 @@ pub(crate) struct Tasks {
     history: HashMap<PublicKey, BTreeSet<Event>>,
     /// The task properties currently visible
     properties: Vec<String>,
+    /// The task properties sorted by
+    sorting: Vec<String>,
     /// Negative: Only Leaf nodes
     /// Zero: Only Active node
     /// Positive: Go down the respective level
@@ -120,6 +122,10 @@ impl Tasks {
                 "hashtags".into(),
                 "rpath".into(),
                 "desc".into(),
+            ],
+            sorting: vec![
+                "state".into(),
+                "name".into(),
             ],
             position: None, // TODO persist position
             view: Default::default(),
@@ -399,67 +405,73 @@ impl Tasks {
             writeln!(lock, "{}", t.descriptions().join("\n"))?;
         }
         // TODO proper column alignment
-        // TODO hide empty columns and sorting
+        // TODO hide empty columns
         writeln!(lock, "{}", self.properties.join("\t").bold())?;
         let mut total_time = 0;
-        for task in self.current_tasks() {
-            let progress =
-                self
-                    .total_progress(task.get_id())
-                    .filter(|_| task.children.len() > 0);
-            let prog_string = progress.map_or(String::new(), |p| format!("{:2.0}%", p * 100.0));
+        let mut tasks = self.current_tasks();
+        tasks.sort_by_cached_key(|task| {
+            self.sorting
+                .iter()
+                .map(|p| self.get_property(task, p.as_str()))
+                .collect_vec()
+        });
+        for task in tasks {
             writeln!(
                 lock,
                 "{}",
                 self.properties
                     .iter()
-                    .map(|p| match p.as_str() {
-                        "subtasks" => {
-                            let mut total = 0;
-                            let mut done = 0;
-                            for subtask in task.children.iter().filter_map(|id| self.get_by_id(id))
-                            {
-                                let state = subtask.pure_state();
-                                total += &(state != State::Closed).into();
-                                done += &(state == State::Done).into();
-                            }
-                            if total > 0 {
-                                format!("{done}/{total}")
-                            } else {
-                                "".to_string()
-                            }
-                        }
-                        "state" => {
-                            if let Some(task) = task.get_dependendees().iter().filter_map(|id| self.get_by_id(id)).find(|t| t.pure_state().is_open()) { 
-                                return format!("Blocked by \"{}\"", task.get_title()).bright_red().to_string()
-                            }
-                            let state = task.state_or_default();
-                            if state.state.is_open() && progress.is_some_and(|p| p > 0.1) {
-                                state.state.colorize(&prog_string)
-                            } else {
-                                state.get_colored_label()
-                            }.to_string()
-                        }
-                        "progress" => prog_string.clone(),
-                        "path" => self.get_task_path(Some(task.event.id)),
-                        "rpath" => self.relative_path(task.event.id),
-                        // TODO format strings configurable
-                        "time" => display_time("MMMm", self.time_tracked(*task.get_id())),
-                        "rtime" => {
-                            let time = self.total_time_tracked(*task.get_id());
-                            total_time += time;
-                            display_time("HH:MM", time)
-                        }
-                        prop => task.get(prop).unwrap_or(String::new()),
-                    })
-                    .collect::<Vec<String>>()
+                    .map(|p| self.get_property(task, p.as_str()))
                     .join(" \t")
             )?;
+            total_time += self.total_time_tracked(task.event.id)
         }
         if total_time > 0 {
             writeln!(lock, "{}", display_time("Total time tracked on visible tasks: HHh MMm", total_time))?;
         }
         Ok(())
+    }
+
+    fn get_property(&self, task: &Task, str: &str) -> String {
+        let progress =
+            self
+                .total_progress(task.get_id())
+                .filter(|_| task.children.len() > 0);
+        let prog_string = progress.map_or(String::new(), |p| format!("{:2.0}%", p * 100.0));
+        match str {
+            "subtasks" => {
+                let mut total = 0;
+                let mut done = 0;
+                for subtask in task.children.iter().filter_map(|id| self.get_by_id(id)) {
+                    let state = subtask.pure_state();
+                    total += &(state != State::Closed).into();
+                    done += &(state == State::Done).into();
+                }
+                if total > 0 {
+                    format!("{done}/{total}")
+                } else {
+                    "".to_string()
+                }
+            }
+            "state" => {
+                if let Some(task) = task.get_dependendees().iter().filter_map(|id| self.get_by_id(id)).find(|t| t.pure_state().is_open()) {
+                    return format!("Blocked by \"{}\"", task.get_title()).bright_red().to_string();
+                }
+                let state = task.state_or_default();
+                if state.state.is_open() && progress.is_some_and(|p| p > 0.1) {
+                    state.state.colorize(&prog_string)
+                } else {
+                    state.get_colored_label()
+                }.to_string()
+            }
+            "progress" => prog_string.clone(),
+            "path" => self.get_task_path(Some(task.event.id)),
+            "rpath" => self.relative_path(task.event.id),
+            // TODO format strings configurable
+            "time" => display_time("MMMm", self.time_tracked(*task.get_id())),
+            "rtime" => display_time("HH:MM", self.total_time_tracked(*task.get_id())),
+            prop => task.get(prop).unwrap_or(String::new()),
+        }
     }
 
     // Movement and Selection
