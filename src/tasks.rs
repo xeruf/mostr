@@ -41,6 +41,8 @@ pub(crate) struct Tasks {
     position: Option<EventId>,
     /// Currently active tags
     tags: BTreeSet<Tag>,
+    /// Tags filtered out
+    tags_excluded: BTreeSet<Tag>,
     /// Current active state
     state: StateFilter,
     /// A filtered view of the current tasks
@@ -130,6 +132,7 @@ impl Tasks {
             position: None, // TODO persist position
             view: Default::default(),
             tags: Default::default(),
+            tags_excluded: Default::default(),
             state: Default::default(),
             depth: 1,
             sender,
@@ -265,9 +268,10 @@ impl Tasks {
     }
 
     pub(crate) fn get_prompt_suffix(&self) -> String {
-        self.tags
-            .iter()
+        self.tags.iter()
             .map(|t| format!(" #{}", t.content().unwrap()))
+            .chain(self.tags_excluded.iter()
+                .map(|t| format!(" -#{}", t.content().unwrap())))
             .chain(once(self.state.indicator()))
             .join("")
     }
@@ -364,12 +368,15 @@ impl Tasks {
         self.resolve_tasks(self.children_of(self.position)).into_iter()
             .filter(|t| {
                 // TODO apply filters in transit
-                let state = t.pure_state();
-                self.state.matches(t) && (self.tags.is_empty()
-                    || t.tags.as_ref().map_or(false, |tags| {
-                    let mut iter = tags.iter();
-                    self.tags.iter().all(|tag| iter.any(|t| t == tag))
-                }))
+                self.state.matches(t) &&
+                    t.tags.as_ref().map_or(true, |tags| {
+                        tags.iter().find(|tag| self.tags_excluded.contains(tag)).is_none()
+                    }) &&
+                    (self.tags.is_empty() ||
+                        t.tags.as_ref().map_or(false, |tags| {
+                            let mut iter = tags.iter();
+                            self.tags.iter().all(|tag| iter.any(|t| t == tag))
+                        }))
             })
             .collect()
     }
@@ -483,10 +490,12 @@ impl Tasks {
     pub(crate) fn clear_filter(&mut self) {
         self.view.clear();
         self.tags.clear();
+        self.tags_excluded.clear();
         info!("Removed all filters");
     }
 
     pub(crate) fn set_tag(&mut self, tag: String) {
+        self.tags_excluded.clear();
         self.tags.clear();
         self.add_tag(tag);
     }
@@ -494,7 +503,9 @@ impl Tasks {
     pub(crate) fn add_tag(&mut self, tag: String) {
         self.view.clear();
         info!("Added tag filter for #{tag}");
-        self.tags.insert(Hashtag(tag).into());
+        let tag: Tag = Hashtag(tag).into();
+        self.tags_excluded.remove(&tag);
+        self.tags.insert(tag);
     }
 
     pub(crate) fn remove_tag(&mut self, tag: &str) {
@@ -504,7 +515,8 @@ impl Tasks {
         if self.tags.len() < len {
             info!("Removed tag filters starting with {tag}");
         } else {
-            info!("Found no tag filters starting with {tag} to remove");
+            self.tags_excluded.insert(Hashtag(tag.to_string()).into());
+            info!("Excluding #{tag} from view");
         }
     }
 
