@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::io::{Error, stdout, Write};
 use std::iter::once;
@@ -31,7 +31,7 @@ pub(crate) struct Tasks {
     /// The task properties currently visible
     properties: Vec<String>,
     /// The task properties sorted by
-    sorting: Vec<String>,
+    sorting: VecDeque<String>,
     /// Negative: Only Leaf nodes
     /// Zero: Only Active node
     /// Positive: Go down the respective level
@@ -123,10 +123,10 @@ impl Tasks {
                 "rpath".into(),
                 "desc".into(),
             ],
-            sorting: vec![
+            sorting: VecDeque::from([
                 "state".into(),
                 "name".into(),
-            ],
+            ]),
             position: None, // TODO persist position
             view: Default::default(),
             tags: Default::default(),
@@ -788,29 +788,47 @@ impl Tasks {
         info!("Changed view depth to {depth}");
     }
 
-    pub(crate) fn remove_column(&mut self, index: usize) {
-        let col = self.properties.remove(index);
+    pub(crate) fn get_columns(&mut self) -> &mut Vec<String> {
+        &mut self.properties
+    }
+
+    pub(crate) fn add_sorting_property(&mut self, property: String) {
+        self.sorting.push_front(property);
+        self.sorting.truncate(4);
+        info!("Now sorting by {:?}", self.sorting);
+    }
+}
+
+pub trait PropertyCollection<T> {
+    fn remove_at(&mut self, index: usize);
+    fn add_or_remove(&mut self, value: T);
+    fn add_or_remove_at(&mut self, value: T, index: usize);
+}
+impl <T> PropertyCollection<T> for Vec<T>
+where T: Display, T: Eq, T: Clone {
+     fn remove_at(&mut self, index: usize) {
+        let col = self.remove(index);
         info!("Removed property column \"{col}\"");
     }
 
-    pub(crate) fn add_or_remove_property_column(&mut self, property: &str) {
-        match self.properties.iter().position(|s| s == property) {
+    fn add_or_remove(&mut self, property: T) {
+        match self.iter().position(|s| s == &property) {
             None => {
-                self.properties.push(property.to_string());
                 info!("Added property column \"{property}\"");
+                self.push(property);
             }
             Some(index) => {
-                self.properties.remove(index);
+                self.remove_at(index);
             }
         }
     }
 
-    pub(crate) fn add_or_remove_property_column_at_index(&mut self, property: String, index: usize) {
-        if self.properties.get(index) == Some(&property) {
-            self.properties.remove(index);
+    fn add_or_remove_at(&mut self, property: T, index: usize) {
+        if self.get(index) == Some(&property) {
+            self.remove_at(index);
         } else {
             info!("Added property column \"{property}\" at position {}", index + 1);
-            self.properties.insert(index, property);
+            self.insert(index, property);
         }
     }
 }

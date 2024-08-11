@@ -21,7 +21,7 @@ use xdg::BaseDirectories;
 use crate::helpers::*;
 use crate::kinds::{KINDS, PROPERTY_COLUMNS, TRACKING_KIND};
 use crate::task::State;
-use crate::tasks::{StateFilter, Tasks};
+use crate::tasks::{PropertyCollection, StateFilter, Tasks};
 
 mod helpers;
 mod task;
@@ -277,21 +277,26 @@ async fn main() {
                         tasks.flush()
                     }
 
-                    Some(':') =>
-                        if let Some(digit) = iter.next().and_then(|s| s.to_digit(10)) {
+                    Some(':') => {
+                        let next = iter.next();
+                        if let Some(':') = next {
+                            // TODO reverse order if present
+                            tasks.add_sorting_property(iter.collect())
+                        } else if let Some(digit) = next.and_then(|s| s.to_digit(10)) {
                             let index = (digit as usize).saturating_sub(1);
                             let remaining = iter.collect::<String>().trim().to_string();
                             if remaining.is_empty() {
-                                tasks.remove_column(index);
+                                tasks.get_columns().remove_at(index);
                             } else {
-                                tasks.add_or_remove_property_column_at_index(remaining, index);
+                                tasks.get_columns().add_or_remove_at(remaining, index);
                             }
                         } else if let Some(arg) = arg {
-                            tasks.add_or_remove_property_column(arg);
+                            tasks.get_columns().add_or_remove(arg.to_string());
                         } else {
                             println!("{}", PROPERTY_COLUMNS);
                             continue;
-                        },
+                        }
+                    }
 
                     Some(',') =>
                         match arg {
