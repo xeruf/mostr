@@ -792,7 +792,13 @@ impl Tasks {
         &mut self.properties
     }
 
+    pub(crate) fn set_sorting(&mut self, vec: VecDeque<String>) {
+        self.sorting = vec;
+        info!("Now sorting by {:?}", self.sorting);
+    }
+    
     pub(crate) fn add_sorting_property(&mut self, property: String) {
+        // TODO reverse order if already present
         self.sorting.push_front(property);
         self.sorting.truncate(4);
         info!("Now sorting by {:?}", self.sorting);

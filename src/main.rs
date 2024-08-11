@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::env::{args, var};
 use std::fs;
 use std::fs::File;
@@ -280,8 +280,13 @@ async fn main() {
                     Some(':') => {
                         let next = iter.next();
                         if let Some(':') = next {
-                            // TODO reverse order if present
-                            tasks.add_sorting_property(iter.collect())
+                            let str: String = iter.collect();
+                            let result = str.split_whitespace().map(|s| s.to_string()).collect::<VecDeque<_>>();
+                            if result.len() == 1 {
+                                tasks.add_sorting_property(str.trim().to_string())
+                            } else {
+                                tasks.set_sorting(result)
+                            }
                         } else if let Some(digit) = next.and_then(|s| s.to_digit(10)) {
                             let index = (digit as usize).saturating_sub(1);
                             let remaining = iter.collect::<String>().trim().to_string();
