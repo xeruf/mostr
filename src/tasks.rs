@@ -150,24 +150,22 @@ impl Tasks {
     #[inline]
     pub(crate) fn len(&self) -> usize { self.tasks.len() }
 
-    /// Ids of all recursive subtasks for id, including itself
-    fn get_subtasks(&self, id: EventId) -> Vec<EventId> {
+    /// Ids of all subtasks recursively found for id, including itself
+    fn get_task_tree<'a>(&'a self, id: &'a EventId) -> Vec<&'a EventId> {
         let mut children = Vec::with_capacity(32);
         let mut index = 0;
 
         children.push(id);
         while index < children.len() {
             let id = children[index];
-            if let Some(t) = self.tasks.get(&id) {
-                children.reserve(t.children.len());
-                for child in t.children.iter() {
-                    children.push(child.clone());
-                }
+            if let Some(task) = self.tasks.get(&id) {
+                children.reserve(task.children.len());
+                children.extend(task.children.iter());
             } else {
                 // Unknown task, can still find children
                 for task in self.tasks.values() {
-                    if task.parent_id().is_some_and(|i| i == &id) {
-                        children.push(task.get_id().clone());
+                    if task.parent_id().is_some_and(|i| i == id) {
+                        children.push(task.get_id());
                     }
                 }
             }
@@ -212,7 +210,7 @@ impl Tasks {
                 }
             }
             Some(id) => {
-                let ids = vec![id];
+                let ids = vec![&id];
                 once(format!("Times tracked on {}", self.get_task_title(&id))).chain(
                     self.history.iter().flat_map(|(key, set)| {
                         let mut vec = Vec::with_capacity(set.len() / 2);
@@ -231,7 +229,7 @@ impl Tasks {
 
     /// Total time in seconds tracked on this task by the current user.
     pub(crate) fn time_tracked(&self, id: EventId) -> u64 {
-        TimesTracked::from(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &vec![id]).sum::<Duration>().as_secs()
+        TimesTracked::from(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &vec![&id]).sum::<Duration>().as_secs()
     }
 
 
@@ -239,7 +237,7 @@ impl Tasks {
     fn total_time_tracked(&self, id: EventId) -> u64 {
         let mut total = 0;
 
-        let children = self.get_subtasks(id);
+        let children = self.get_task_tree(&id);
         for user in self.history.values() {
             total += TimesTracked::from(user, &children).into_iter().sum::<Duration>().as_secs();
         }
@@ -896,14 +894,14 @@ pub(crate) fn join_tasks<'a>(
         })
 }
 
-fn matching_tag_id<'a>(event: &'a Event, ids: &'a Vec<EventId>) -> Option<&'a EventId> {
+fn matching_tag_id<'a>(event: &'a Event, ids: &'a Vec<&'a EventId>) -> Option<&'a EventId> {
     event.tags.iter().find_map(|tag| match tag.as_standardized() {
-        Some(TagStandard::Event { event_id, .. }) if ids.contains(event_id) => Some(event_id),
+        Some(TagStandard::Event { event_id, .. }) if ids.contains(&event_id) => Some(event_id),
         _ => None
     })
 }
 
-fn timestamps<'a>(events: impl Iterator<Item=&'a Event>, ids: &'a Vec<EventId>) -> impl Iterator<Item=(&Timestamp, Option<&EventId>)> {
+fn timestamps<'a>(events: impl Iterator<Item=&'a Event>, ids: &'a Vec<&'a EventId>) -> impl Iterator<Item=(&Timestamp, Option<&EventId>)> {
     events.map(|event| (&event.created_at, matching_tag_id(event, ids)))
         .dedup_by(|(_, e1), (_, e2)| e1 == e2)
         .skip_while(|element| element.1 == None)
@@ -913,11 +911,11 @@ fn timestamps<'a>(events: impl Iterator<Item=&'a Event>, ids: &'a Vec<EventId>) 
 /// Expects a sorted iterator
 struct TimesTracked<'a> {
     events: Box<dyn Iterator<Item=&'a Event> + 'a>,
-    ids: &'a Vec<EventId>,
+    ids: &'a Vec<&'a EventId>,
     threshold: Option<Timestamp>,
 }
 impl TimesTracked<'_> {
-    fn from<'b>(events: impl IntoIterator<Item=&'b Event> + 'b, ids: &'b Vec<EventId>) -> TimesTracked<'b> {
+    fn from<'b>(events: impl IntoIterator<Item=&'b Event> + 'b, ids: &'b Vec<&EventId>) -> TimesTracked<'b> {
         TimesTracked {
             events: Box::new(events.into_iter()),
             ids,
@@ -1014,7 +1012,7 @@ mod tasks_test {
         let zero = EventId::all_zeros();
         tasks.move_to(Some(zero));
         tasks.track_at(Timestamp::from(Timestamp::now().as_u64() + 100));
-        assert_eq!(timestamps(tasks.history.values().nth(0).unwrap().into_iter(), &vec![zero]).collect_vec().len(), 2)
+        assert_eq!(timestamps(tasks.history.values().nth(0).unwrap().into_iter(), &vec![&zero]).collect_vec().len(), 2)
         // TODO Does not show both future and current tracking properly, need to split by now
     }
 
