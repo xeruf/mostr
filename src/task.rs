@@ -63,7 +63,7 @@ impl Task {
         &self.event.id
     }
 
-    fn find_refs<'a>(&'a self, marker: &'a str) -> impl Iterator<Item=&'a EventId> {
+    pub(crate) fn find_refs<'a>(&'a self, marker: &'a str) -> impl Iterator<Item=&'a EventId> {
         self.refs.iter().filter_map(move |(str, id)| Some(id).filter(|_| str == marker))
     }
 

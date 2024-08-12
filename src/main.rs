@@ -4,6 +4,7 @@ use std::env::{args, var};
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, stdin, stdout, Write};
+use std::iter::once;
 use std::ops::Sub;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -20,7 +21,7 @@ use xdg::BaseDirectories;
 
 use crate::helpers::*;
 use crate::kinds::{KINDS, PROPERTY_COLUMNS, TRACKING_KIND};
-use crate::task::State;
+use crate::task::{MARKER_DEPENDS, MARKER_PARENT, State};
 use crate::tasks::{PropertyCollection, StateFilter, Tasks};
 
 mod helpers;
@@ -339,15 +340,26 @@ async fn main() {
                                             .map(|t| t.event.id)
                                             .collect()
                                     );
+                                    info!("Filtering for procedures");
                                 }
                                 Some(id) => {
                                     tasks.set_state_for(id, "", State::Procedure);
                                 }
                             },
-                            Some(arg) => {
-                                let id = tasks.make_task(arg);
-                                tasks.set_state_for(id, "", State::Procedure);
-                                tasks.move_to(Some(id));
+                            Some(arg) => 'arm: {
+                                if arg.chars().next() != Some('|') {
+                                    if let Some(pos) = tasks.get_position() {
+                                        tasks.move_up();
+                                        tasks.make_task_with(
+                                            arg,
+                                            once(tasks.make_event_tag_from_id(pos, MARKER_DEPENDS))
+                                                .chain(tasks.parent_tag()),
+                                            true);
+                                        break 'arm;
+                                    }
+                                }
+                                let arg: String = arg.chars().skip_while(|c| c == &'|').collect();
+                                tasks.make_task_and_enter(&arg, State::Procedure);
                             }
                         }
 

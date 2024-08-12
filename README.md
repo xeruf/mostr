@@ -100,7 +100,8 @@ To stop time-tracking completely, simply move to the root of all tasks.
   + no match: create & activate task
 - `.2` - set view depth to `2`, which can be substituted for any number (how many subtask levels to show, default 1)
 - `/[TEXT]` - like `.`, but never creates a task
-- `|[TASK]` - (un)mark current task as procedure or create and activate a new task procedure (where subtasks automatically depend on the previously created task)
+- `||TASK` - create and activate a new task procedure (where subtasks automatically depend on the previously created task)
+- `|[TASK]` - (un)mark current task as procedure or create a sibling task depending on the current one and move up
 
 Dots and slashes can be repeated to move to parent tasks.
 

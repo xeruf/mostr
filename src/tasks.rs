@@ -19,7 +19,7 @@ use TagStandard::Hashtag;
 use crate::{Events, EventSender};
 use crate::helpers::some_non_empty;
 use crate::kinds::*;
-use crate::task::{State, Task, TaskState};
+use crate::task::{MARKER_DEPENDS, MARKER_PARENT, State, Task, TaskState};
 
 type TaskMap = HashMap<EventId, Task>;
 #[derive(Debug, Clone)]
@@ -613,7 +613,6 @@ impl Tasks {
     /// Expects sanitized input
     pub(crate) fn parse_task(&self, input: &str) -> EventBuilder {
         let mut tags: Vec<Tag> = self.tags.iter().cloned().collect();
-        self.position.inspect(|p| tags.push(Tag::event(*p)));
         match input.split_once(": ") {
             None => build_task(input, tags),
             Some(s) => {
@@ -629,34 +628,65 @@ impl Tasks {
         }
     }
 
-    /// Creates a task following the current state
-    /// Sanitizes input
-    pub(crate) fn make_task(&mut self, input: &str) -> EventId {
-        let tag: Option<Tag> = self.get_current_task()
-            .and_then(|t| {
+    pub(crate) fn make_event_tag_from_id(&self, id: EventId, marker: &str) -> Tag {
+        Tag::from(TagStandard::Event {
+            event_id: id,
+            relay_url: self.sender.url.as_ref().map(|url| UncheckedUrl::new(url.as_str())),
+            marker: Some(Marker::Custom(marker.to_string())),
+            public_key: self.get_by_id(&id).map(|e| e.event.pubkey),
+        })
+    }
+
+    pub(crate) fn make_event_tag(&self, event: &Event, marker: &str) -> Tag {
+        Tag::from(TagStandard::Event {
+            event_id: event.id,
+            relay_url: self.sender.url.as_ref().map(|url| UncheckedUrl::new(url.as_str())),
+            marker: Some(Marker::Custom(marker.to_string())),
+            public_key: Some(event.pubkey),
+        })
+    }
+
+    pub(crate) fn parent_tag(&self) -> Option<Tag> {
+        self.position.map(|p| self.make_event_tag_from_id(p, MARKER_PARENT))
+    }
+
+    pub(crate) fn position_tags(&self) -> Vec<Tag> {
+        let mut tags = Vec::with_capacity(2);
+        self.parent_tag().map(|t| tags.push(t));
+        self.get_current_task()
+            .map(|t| {
                 if t.pure_state() == State::Procedure {
                     t.children.iter()
                         .filter_map(|id| self.get_by_id(id))
                         .max()
-                        .map(|t| {
-                            Tag::from(
-                                TagStandard::Event {
-                                    event_id: t.event.id,
-                                    relay_url: self.sender.url.as_ref().map(|url| UncheckedUrl::new(url.as_str())),
-                                    marker: Some(Marker::Custom("depends".to_string())),
-                                    public_key: Some(t.event.pubkey),
-                                }
-                            )
-                        })
-                } else {
-                    None
+                        .map(|t| tags.push(self.make_event_tag(&t.event, MARKER_DEPENDS)));
                 }
             });
+        tags
+    }
+
+    /// Creates a task following the current state
+    /// Sanitizes input
+    pub(crate) fn make_task(&mut self, input: &str) -> EventId {
+        self.make_task_with(input, self.position_tags(), true)
+    }
+
+    pub(crate) fn make_task_and_enter(&mut self, input: &str, state: State) {
+        let id = self.make_task_with(input, self.position_tags(), false);
+        self.set_state_for(id, "", state);
+        self.move_to(Some(id));
+    }
+
+    /// Creates a task
+    /// Sanitizes input
+    pub(crate) fn make_task_with(&mut self, input: &str, tags: impl IntoIterator<Item=Tag>, set_state: bool) -> EventId {
         let id = self.submit(
             self.parse_task(input.trim())
-                .add_tags(tag.into_iter())
+                .add_tags(tags.into_iter())
         );
-        self.state.as_option().inspect(|s| self.set_state_for_with(id, s));
+        if set_state {
+            self.state.as_option().inspect(|s| self.set_state_for_with(id, s));
+        }
         id
     }
 
@@ -730,13 +760,15 @@ impl Tasks {
     }
 
     pub(crate) fn add_task(&mut self, event: Event) {
-        self.referenced_tasks(&event, |t| {
-            t.children.insert(event.id);
-        });
         if self.tasks.contains_key(&event.id) {
             debug!("Did not insert duplicate event {}", event.id); // TODO warn in next sdk version
         } else {
-            self.tasks.insert(event.id, Task::new(event));
+            let id = event.id;
+            let task = Task::new(event);
+            task.find_refs(MARKER_PARENT).for_each(|parent| {
+                self.tasks.get_mut(parent).map(|t| { t.children.insert(id); });
+            });
+            self.tasks.insert(id, task);
         }
     }
 
@@ -968,6 +1000,8 @@ impl<'a> Iterator for ParentIterator<'a> {
 
 #[cfg(test)]
 mod tasks_test {
+    use std::collections::HashSet;
+
     use super::*;
 
     fn stub_tasks() -> Tasks {
@@ -981,6 +1015,18 @@ mod tasks_test {
             keys: Keys::generate(),
             queue: Default::default(),
         })
+    }
+
+    #[test]
+    fn test_procedures() {
+        let mut tasks = stub_tasks();
+        tasks.make_task_and_enter("proc: tags", State::Procedure);
+        let side = tasks.submit(build_task("side", vec![tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)]));
+        assert_eq!(tasks.get_current_task().unwrap().children, HashSet::<EventId>::new());
+        let subid = tasks.make_task("sub");
+        assert_eq!(tasks.get_current_task().unwrap().children, HashSet::from([subid]));
+        let sub = tasks.get_by_id(&subid).unwrap();
+        assert_eq!(sub.get_dependendees(), Vec::<&EventId>::new());
     }
 
     #[test]
