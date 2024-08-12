@@ -150,19 +150,27 @@ impl Tasks {
     #[inline]
     pub(crate) fn len(&self) -> usize { self.tasks.len() }
 
-    /// Ids of all subtasks found for id, including itself
+    /// Ids of all recursive subtasks for id, including itself
     fn get_subtasks(&self, id: EventId) -> Vec<EventId> {
         let mut children = Vec::with_capacity(32);
         let mut index = 0;
 
         children.push(id);
         while index < children.len() {
-            self.tasks.get(&children[index]).map(|t| {
+            let id = children[index];
+            if let Some(t) = self.tasks.get(&id) {
                 children.reserve(t.children.len());
                 for child in t.children.iter() {
                     children.push(child.clone());
                 }
-            });
+            } else {
+                // Unknown task, can still find children
+                for task in self.tasks.values() {
+                    if task.parent_id().is_some_and(|i| i == &id) {
+                        children.push(task.get_id().clone());
+                    }
+                }
+            }
             index += 1;
         }
 
