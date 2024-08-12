@@ -108,9 +108,9 @@ Dots and slashes can be repeated to move to parent tasks.
 - `::[PROP]` - Sort by property PROP (multiple space-separated values allowed)
 - `([TIME]` - insert timetracking with the specified offset in minutes (empty: list tracked times)
 - `)[TIME]` - stop timetracking with the specified offset in minutes - convenience helper to move to root (empty: stop now)
-- `>[TEXT]` - complete active task and move to parent, with optional state description
-- `<[TEXT]` - close active task and move to parent, with optional state description
-- `!TEXT` - set state for current task from text
+- `>[TEXT]` - complete active task and move up, with optional state description
+- `<[TEXT]` - close active task and move up, with optional state description
+- `!TEXT` - set state for current task from text and move up
 - `,TEXT` - add text note (comment / description)
 - TBI: `*[INT]` - set priority - can also be used in task, with any digit
 - `@` - undoes last action (moving in place or upwards or waiting a minute confirms pending actions)

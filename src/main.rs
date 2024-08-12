@@ -364,6 +364,7 @@ async fn main() {
                             None => warn!("First select a task to set its state!"),
                             Some(id) => {
                                 tasks.set_state_for_with(id, arg_default);
+                                tasks.move_up();
                             }
                         }
 
