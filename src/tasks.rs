@@ -151,28 +151,8 @@ impl Tasks {
     pub(crate) fn len(&self) -> usize { self.tasks.len() }
 
     /// Ids of all subtasks recursively found for id, including itself
-    fn get_task_tree<'a>(&'a self, id: &'a EventId) -> Vec<&'a EventId> {
-        let mut children = Vec::with_capacity(32);
-        let mut index = 0;
-
-        children.push(id);
-        while index < children.len() {
-            let id = children[index];
-            if let Some(task) = self.tasks.get(&id) {
-                children.reserve(task.children.len());
-                children.extend(task.children.iter());
-            } else {
-                // Unknown task, can still find children
-                for task in self.tasks.values() {
-                    if task.parent_id().is_some_and(|i| i == id) {
-                        children.push(task.get_id());
-                    }
-                }
-            }
-            index += 1;
-        }
-
-        children
+    pub(crate) fn get_task_tree<'a>(&'a self, id: &'a EventId) -> ChildIterator {
+        ChildIterator::from(&self.tasks, id)
     }
 
     pub(crate) fn all_hashtags(&self) -> impl Iterator<Item=&str> {
@@ -237,7 +217,7 @@ impl Tasks {
     fn total_time_tracked(&self, id: EventId) -> u64 {
         let mut total = 0;
 
-        let children = self.get_task_tree(&id);
+        let children = self.get_task_tree(&id).get_all();
         for user in self.history.values() {
             total += TimesTracked::from(user, &children).into_iter().sum::<Duration>().as_secs();
         }
@@ -975,6 +955,52 @@ impl Iterator for TimesTracked<'_> {
         }
         let now = self.threshold.unwrap_or(Timestamp::now()).as_u64();
         return start.filter(|t| t < &now).map(|stamp| Duration::from_secs(now.saturating_sub(stamp)));
+    }
+}
+
+/// Breadth-First Iterator over Tasks and recursive children
+struct ChildIterator<'a> {
+    tasks: &'a TaskMap,
+    queue: Vec<&'a EventId>,
+    index: usize,
+}
+impl<'a> ChildIterator<'a> {
+    fn from(tasks: &'a TaskMap, id: &'a EventId) -> Self {
+        let mut queue = Vec::with_capacity(30);
+        queue.push(id);
+        ChildIterator {
+            tasks,
+            queue,
+            index: 0,
+        }
+    }
+
+    fn get_all(mut self) -> Vec<&'a EventId> {
+        while self.next().is_some() {}
+        self.queue
+    }
+}
+impl<'a> Iterator for ChildIterator<'a> {
+    type Item = &'a EventId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.queue.len() {
+            return None;
+        }
+        let id = self.queue[self.index];
+        if let Some(task) = self.tasks.get(&id) {
+            self.queue.reserve(task.children.len());
+            self.queue.extend(task.children.iter());
+        } else {
+            // Unknown task, can still find children
+            for task in self.tasks.values() {
+                if task.parent_id().is_some_and(|i| i == id) {
+                    self.queue.push(task.get_id());
+                }
+            }
+        }
+        self.index += 1;
+        Some(id)
     }
 }
 
