@@ -127,6 +127,7 @@ impl Tasks {
             ],
             sorting: VecDeque::from([
                 "state".into(),
+                "rtime".into(),
                 "name".into(),
             ]),
             position: None, // TODO persist position

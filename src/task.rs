@@ -141,7 +141,7 @@ impl Task {
         match property {
             "id" => Some(self.event.id.to_string()),
             "parentid" => self.parent_id().map(|i| i.to_string()),
-            "status" => Some(self.state_or_default().get_colored_label().to_string()),
+            "status" => Some(self.state_or_default().get_label()),
             "name" => Some(self.event.content.clone()),
             "desc" => self.descriptions().last().cloned(),
             "description" => Some(self.descriptions().join(" ")),
