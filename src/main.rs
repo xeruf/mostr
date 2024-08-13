@@ -31,6 +31,9 @@ mod task;
 mod tasks;
 mod kinds;
 
+const UNDO_DELAY: u64 = 60;
+const INACTVITY_DELAY: u64 = 200;
+
 type Events = Vec<Event>;
 
 #[derive(Debug, Clone)]
@@ -54,7 +57,7 @@ impl EventSender {
         {
             // Always flush if oldest event older than a minute or newer than now
             let borrow = self.queue.borrow();
-            let min = Timestamp::now().sub(60u64);
+            let min = Timestamp::now().sub(UNDO_DELAY);
             if borrow.iter().any(|e| e.created_at < min || e.created_at > Timestamp::now()) {
                 drop(borrow);
                 debug!("Flushing event queue because it is older than a minute");
@@ -227,7 +230,7 @@ async fn main() {
 
         loop {
             // TODO invalid acknowledgement from bucket relay slows sending down
-            match rx.recv_timeout(Duration::from_secs(200)) {
+            match rx.recv_timeout(Duration::from_secs(INACTVITY_DELAY)) {
                 Ok((url, mut events)) => {
                     if 1 == 2 {
                         client.connect_relay("").await;
