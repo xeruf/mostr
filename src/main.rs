@@ -482,7 +482,9 @@ async fn main() {
                         }
                         let slice = input[dots..].trim();
 
-                        tasks.move_to(pos);
+                        if pos != tasks.get_position() || slice.is_empty() {
+                            tasks.move_to(pos);
+                        }
                         if slice.is_empty() {
                             if dots > 1 {
                                 info!("Moving up {} tasks", dots - 1)
