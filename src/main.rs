@@ -14,8 +14,9 @@ use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use colored::Colorize;
+use env_logger::Builder;
 use itertools::Itertools;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, LevelFilter, trace, warn};
 use nostr_sdk::prelude::*;
 use regex::Regex;
 use xdg::BaseDirectories;
@@ -101,7 +102,20 @@ impl Drop for EventSender {
 
 #[tokio::main]
 async fn main() {
-    colog::init();
+    let mut args = args().skip(1).peekable();
+    if args.peek().is_some_and(|arg| arg == "--debug") {
+        args.next();
+        Builder::new()
+            .filter(None, LevelFilter::Debug)
+            .filter(Some("mostr"), LevelFilter::Trace)
+            .parse_default_env()
+            .init();
+    } else {
+        colog::default_builder()
+            .filter(Some("nostr-relay-pool"), LevelFilter::Error)
+            //.filter(Some("nostr-relay-pool::relay::internal"), LevelFilter::Off)
+            .init();
+    }
 
     let config_dir = or_print(BaseDirectories::new())
         .and_then(|d| or_print(d.create_config_directory("mostr")))
@@ -254,7 +268,7 @@ async fn main() {
 
     {
         let tasks = selected_relay.as_ref().and_then(|url| relays.get_mut(&url)).unwrap_or_else(|| &mut local_tasks);
-        for argument in args().skip(1) {
+        for argument in args {
             tasks.make_task(&argument);
         }
     }

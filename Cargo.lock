@@ -961,6 +961,7 @@ dependencies = [
  "chrono",
  "colog",
  "colored",
+ "env_logger",
  "itertools",
  "log",
  "nostr-sdk",
