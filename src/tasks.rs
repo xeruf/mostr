@@ -402,6 +402,7 @@ impl Tasks {
         writeln!(lock, "{}", self.properties.join("\t").bold())?;
         let mut total_time = 0;
         let mut tasks = self.current_tasks();
+        let count = tasks.len();
         tasks.sort_by_cached_key(|task| {
             self.sorting
                 .iter()
@@ -412,15 +413,16 @@ impl Tasks {
             writeln!(
                 lock,
                 "{}",
-                self.properties
-                    .iter()
+                self.properties.iter()
                     .map(|p| self.get_property(task, p.as_str()))
                     .join(" \t")
             )?;
-            total_time += self.total_time_tracked(task.event.id)
+            if self.depth < 2 || task.parent_id() == self.position.as_ref() {
+                total_time += self.total_time_tracked(task.event.id)
+            }
         }
         if total_time > 0 {
-            writeln!(lock, "{}", display_time("Total time tracked on visible tasks: HHh MMm", total_time))?;
+            writeln!(lock, "{} visible tasks{}", count, display_time(" tracked a total of HHhMMm", total_time))?;
         }
         Ok(())
     }
