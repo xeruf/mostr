@@ -23,6 +23,7 @@ use xdg::BaseDirectories;
 
 use crate::helpers::*;
 use crate::kinds::{KINDS, PROPERTY_COLUMNS, TRACKING_KIND};
+use crate::MostrMessage::AddTasks;
 use crate::task::{MARKER_DEPENDS, MARKER_PARENT, State};
 use crate::tasks::{PropertyCollection, StateFilter, Tasks};
 
@@ -39,12 +40,12 @@ type Events = Vec<Event>;
 #[derive(Debug, Clone)]
 struct EventSender {
     url: Option<Url>,
-    tx: Sender<(Url, Events)>,
+    tx: Sender<MostrMessage>,
     keys: Keys,
     queue: RefCell<Events>,
 }
 impl EventSender {
-    fn from(url: Option<Url>, tx: &Sender<(Url, Events)>, keys: &Keys) -> Self {
+    fn from(url: Option<Url>, tx: &Sender<MostrMessage>, keys: &Keys) -> Self {
         EventSender {
             url,
             tx: tx.clone(),
@@ -79,7 +80,7 @@ impl EventSender {
         debug!("Flushing {} events from queue", self.queue.borrow().len());
         let values = self.clear();
         self.url.as_ref().map(|url| {
-            or_print(self.tx.send((url.clone(), values)));
+            or_print(self.tx.send(AddTasks(url.clone(), values)));
         });
     }
     /// Sends all pending events if there is a non-tracking event
@@ -101,6 +102,13 @@ impl Drop for EventSender {
         self.force_flush();
         debug!("Dropped {:?}", self);
     }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum MostrMessage {
+    Flush,
+    NewRelay(Url),
+    AddTasks(Url, Vec<Event>),
 }
 
 #[tokio::main]
@@ -201,7 +209,7 @@ async fn main() {
     client.connect().await;
     let mut notifications = client.notifications();
 
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = mpsc::channel::<MostrMessage>();
     let tasks_for_url = |url: Option<Url>| Tasks::from(url, &tx, &keys);
     let mut relays: HashMap<Url, Tasks> =
         client.relays().await.into_keys().map(|url| (url.clone(), tasks_for_url(Some(url)))).collect();
@@ -231,7 +239,7 @@ async fn main() {
         loop {
             // TODO invalid acknowledgement from bucket relay slows sending down
             match rx.recv_timeout(Duration::from_secs(INACTVITY_DELAY)) {
-                Ok((url, mut events)) => {
+                Ok(AddTasks(url, mut events)) => {
                     if 1 == 2 {
                         client.connect_relay("").await;
                     }
@@ -256,7 +264,10 @@ async fn main() {
                     client.batch_event_to(vec![url], events, RelaySendOptions::new()).await;
                     queue = None;
                 }
-                _ => break
+                arg => {
+                    debug!("Finalizing nostr communication thread because of {:?}", arg);
+                    break
+                }
             }
         }
         if let Some((url, events)) = queue {

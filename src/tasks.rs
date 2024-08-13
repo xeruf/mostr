@@ -16,7 +16,7 @@ use nostr_sdk::{Event, EventBuilder, EventId, Keys, Kind, PublicKey, Tag, TagSta
 use nostr_sdk::prelude::Marker;
 use TagStandard::Hashtag;
 
-use crate::{Events, EventSender};
+use crate::{Events, EventSender, MostrMessage};
 use crate::helpers::some_non_empty;
 use crate::kinds::*;
 use crate::task::{MARKER_DEPENDS, MARKER_PARENT, State, Task, TaskState};
@@ -105,7 +105,7 @@ impl Display for StateFilter {
 }
 
 impl Tasks {
-    pub(crate) fn from(url: Option<Url>, tx: &Sender<(Url, Events)>, keys: &Keys) -> Self {
+    pub(crate) fn from(url: Option<Url>, tx: &Sender<MostrMessage>, keys: &Keys) -> Self {
         Self::with_sender(EventSender {
             url,
             tx: tx.clone(),
