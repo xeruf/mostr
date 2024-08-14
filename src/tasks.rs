@@ -128,6 +128,7 @@ impl Tasks {
             ],
             sorting: VecDeque::from([
                 "state".into(),
+                "hashtags".into(),
                 "rtime".into(),
                 "name".into(),
             ]),
@@ -485,10 +486,10 @@ impl Tasks {
         info!("Removed all filters");
     }
 
-    pub(crate) fn set_tag(&mut self, tag: String) {
+    pub(crate) fn set_tags(&mut self, tags: impl IntoIterator<Item=Tag>) {
         self.tags_excluded.clear();
         self.tags.clear();
-        self.add_tag(tag);
+        self.tags.extend(tags);
     }
 
     pub(crate) fn add_tag(&mut self, tag: String) {

@@ -120,9 +120,9 @@ Dots and slashes can be repeated to move to parent tasks.
 
 Property Filters:
 
-- `#TAG` - set tag filter (empty: list all used tags)
+- `#TAG1 TAG2` - set tag filter (empty: list all used tags)
 - `+TAG` - add tag filter
-- `-TAG` - remove tag filters
+- `-TAG` - remove tag filters by prefix
 - `?STATUS` - filter by status (type or description) - plain `?` to reset, `??` to show all
 - `@AUTHOR` - filter by author (`@` for self, id prefix, name prefix)
 - TBI: Filter by time

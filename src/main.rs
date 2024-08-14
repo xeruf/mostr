@@ -18,6 +18,7 @@ use env_logger::Builder;
 use itertools::Itertools;
 use log::{debug, error, info, LevelFilter, trace, warn};
 use nostr_sdk::prelude::*;
+use nostr_sdk::TagStandard::Hashtag;
 use regex::Regex;
 use xdg::BaseDirectories;
 
@@ -456,7 +457,7 @@ async fn main() {
 
                     Some('#') =>
                         match arg {
-                            Some(arg) => tasks.set_tag(arg.to_string()),
+                            Some(arg) => tasks.set_tags(arg.split_whitespace().map(|s| Hashtag(s.to_string()).into())),
                             None => {
                                 println!("Hashtags of all known tasks:\n{}", tasks.all_hashtags().join(" "));
                                 continue;
