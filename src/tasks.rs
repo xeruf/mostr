@@ -384,13 +384,23 @@ impl Tasks {
         let mut lock = stdout().lock();
         if let Some(t) = self.get_current_task() {
             let state = t.state_or_default();
+            let now = &Timestamp::now();
+            let mut tracking_stamp: Option<Timestamp> = None;
+            for elem in
+                timestamps(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &vec![t.get_id()])
+                    .map(|(e, o)| e) {
+                if tracking_stamp.is_some() && elem > now {
+                    break;
+                }
+                tracking_stamp = Some(elem.clone())
+            }
             writeln!(
                 lock,
-                "{} since {} (total tracked time {}m)",
-                // TODO tracking since, scheduled/planned for
+                "Tracking since {} (total tracked time {}m) - {} since {}",
+                tracking_stamp.map_or("?".to_string(), |t| relative_datetimestamp(&t)),
+                self.time_tracked(*t.get_id()) / 60,
                 state.get_label(),
-                relative_datetimestamp(&state.time),
-                self.time_tracked(*t.get_id()) / 60
+                relative_datetimestamp(&state.time)
             )?;
             writeln!(lock, "{}", t.descriptions().join("\n"))?;
         }
@@ -915,6 +925,7 @@ fn matching_tag_id<'a>(event: &'a Event, ids: &'a Vec<&'a EventId>) -> Option<&'
     })
 }
 
+/// Filters out event timestamps to those that start or stop one of the given events
 fn timestamps<'a>(events: impl Iterator<Item=&'a Event>, ids: &'a Vec<&'a EventId>) -> impl Iterator<Item=(&Timestamp, Option<&EventId>)> {
     events.map(|event| (&event.created_at, matching_tag_id(event, ids)))
         .dedup_by(|(_, e1), (_, e2)| e1 == e2)
