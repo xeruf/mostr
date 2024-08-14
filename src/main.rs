@@ -298,6 +298,8 @@ async fn main() {
 
     let mut lines = stdin().lines();
     loop {
+        trace!("All Root Tasks:\n{}", relays.iter().map(|(url, tasks)| 
+            format!("{}: [{}]", url, tasks.children_of(None).map(|id| tasks.get_task_title(id)).join("; "))).join("\n"));
         println!();
         let tasks = selected_relay.as_ref().and_then(|url| relays.get(url)).unwrap_or(&local_tasks);
         print!(
@@ -320,10 +322,13 @@ async fn main() {
                         ..
                     } = notification
                     {
-                        print_event(&event);
+                        debug!(
+                            "At {} found {} kind {} content \"{}\" tags {:?}",
+                            event.created_at, event.id, event.kind, event.content, event.tags.iter().map(|tag| tag.as_vec()).collect_vec()
+                        );
                         match relays.get_mut(&relay_url) {
                             Some(tasks) => tasks.add(*event),
-                            None => warn!("Event received from unknown relay {relay_url}: {:?}", event)
+                            None => warn!("Event received from unknown relay {relay_url}: {:?}", *event)
                         }
                         count += 1;
                     }
@@ -581,11 +586,4 @@ async fn main() {
 
     info!("Submitting pending updates...");
     or_print(sender.await);
-}
-
-fn print_event(event: &Event) {
-    debug!(
-        "At {} found {} kind {} \"{}\" {:?}",
-        event.created_at, event.id, event.kind, event.content, event.tags
-    );
 }

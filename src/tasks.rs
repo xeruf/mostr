@@ -336,7 +336,7 @@ impl Tasks {
         self.position.and_then(|id| self.get_by_id(&id))
     }
 
-    pub(crate) fn children_of(&self, id: Option<EventId>) -> impl IntoIterator<Item=&EventId> + '_ {
+    pub(crate) fn children_of(&self, id: Option<EventId>) -> impl Iterator<Item=&EventId> + '_ {
         self.tasks
             .values()
             .filter(move |t| t.parent_id() == id.as_ref())
@@ -686,7 +686,7 @@ impl Tasks {
         )
     }
 
-    fn get_task_title(&self, id: &EventId) -> String {
+    pub(crate) fn get_task_title(&self, id: &EventId) -> String {
         self.tasks.get(id).map_or(id.to_string(), |t| t.get_title())
     }
 
