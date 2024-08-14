@@ -7,6 +7,7 @@ pub fn some_non_empty(str: &str) -> Option<String> {
     if str.is_empty() { None } else { Some(str.to_string()) }
 }
 
+// TODO as macro so that log comes from appropriate module
 pub fn or_print<T, U: Display>(result: Result<T, U>) -> Option<T> {
     match result {
         Ok(value) => Some(value),

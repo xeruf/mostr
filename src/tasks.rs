@@ -28,6 +28,7 @@ pub(crate) struct Tasks {
     tasks: TaskMap,
     /// History of active tasks by PubKey
     history: HashMap<PublicKey, BTreeSet<Event>>,
+
     /// The task properties currently visible
     properties: Vec<String>,
     /// The task properties sorted by
@@ -349,9 +350,10 @@ impl Tasks {
         }
         let res: Vec<&Task> = self.resolve_tasks(self.view.iter());
         if res.len() > 0 {
-            // Currently ignores filter when it matches nothing
+            // Currently ignores filtered view when it matches nothing
             return res;
         }
+        // TODO use ChildrenIterator
         self.resolve_tasks(self.children_of(self.position)).into_iter()
             .filter(|t| {
                 // TODO apply filters in transit
@@ -705,7 +707,7 @@ impl Tasks {
     }
 
     pub(crate) fn track_at(&mut self, time: Timestamp) -> EventId {
-        info!("{} from {}", self.position.map_or(String::from("Stopping time-tracking"), |id| format!("Tracking \"{}\"", self.get_task_title(&id))), time.to_human_datetime()); // TODO omit seconds
+        info!("{} from {}", self.position.map_or(String::from("Stopping time-tracking"), |id| format!("Tracking \"{}\"", self.get_task_title(&id))), time.to_human_datetime());
         let pos = self.get_position();
         let tracking = build_tracking(pos);
         // TODO this can lead to funny deletions
@@ -723,6 +725,7 @@ impl Tasks {
         self.submit(tracking.custom_created_at(time))
     }
 
+    /// Sign and queue the event to the relay, returning its id
     fn submit(&mut self, builder: EventBuilder) -> EventId {
         let event = self.sender.submit(builder).unwrap();
         let id = event.id;
@@ -829,7 +832,7 @@ impl Tasks {
         self.sorting = vec;
         info!("Now sorting by {:?}", self.sorting);
     }
-    
+
     pub(crate) fn add_sorting_property(&mut self, property: String) {
         // TODO reverse order if already present
         self.sorting.push_front(property);
@@ -843,9 +846,11 @@ pub trait PropertyCollection<T> {
     fn add_or_remove(&mut self, value: T);
     fn add_or_remove_at(&mut self, value: T, index: usize);
 }
-impl <T> PropertyCollection<T> for Vec<T>
-where T: Display, T: Eq, T: Clone {
-     fn remove_at(&mut self, index: usize) {
+impl<T> PropertyCollection<T> for Vec<T>
+where
+    T: Display + Eq + Clone,
+{
+    fn remove_at(&mut self, index: usize) {
         let col = self.remove(index);
         info!("Removed property column \"{col}\"");
     }

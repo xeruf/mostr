@@ -400,7 +400,7 @@ async fn main() {
                         tasks.move_up();
                     }
 
-                    Some('@') => {
+                    Some('@') | Some('&') => {
                         tasks.undo();
                     }
 
