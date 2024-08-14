@@ -470,19 +470,16 @@ async fn main() {
                             None => tasks.clear_filter()
                         }
 
-                    Some('(') =>
-                        match arg {
-                            Some(arg) =>
-                                if !tasks.track_from(arg) {
-                                    continue;
-                                }
-                            None => {
-                                println!("{}", tasks.times_tracked());
+                    Some('(') => {
+                        if let Some(arg) = arg {
+                            if !tasks.track_from(arg) {
                                 continue;
                             }
-                            
                         }
-                    
+                        println!("{}", tasks.times_tracked());
+                        continue;
+                    }
+
                     Some(')') => {
                         tasks.move_to(None);
                         if let Some(arg) = arg {

@@ -698,7 +698,7 @@ impl Tasks {
         } else if let Ok(date) = DateTime::parse_from_rfc3339(str) {
             self.track_at(Timestamp::from(date.to_utc().timestamp() as u64));
         } else {
-            warn!("Cannot parse {str}");
+            warn!("Cannot parse time from  {str}");
             return false;
         }
         true
