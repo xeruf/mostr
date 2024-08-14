@@ -1057,20 +1057,20 @@ mod tasks_test {
         tasks.make_task_and_enter("proc: tags", State::Procedure);
         let side = tasks.submit(build_task("side", vec![tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)]));
         assert_eq!(tasks.get_current_task().unwrap().children, HashSet::<EventId>::new());
-        let subid = tasks.make_task("sub");
-        assert_eq!(tasks.get_current_task().unwrap().children, HashSet::from([subid]));
-        let sub = tasks.get_by_id(&subid).unwrap();
+        let sub_id = tasks.make_task("sub");
+        assert_eq!(tasks.get_current_task().unwrap().children, HashSet::from([sub_id]));
+        assert_eq!(tasks.len(), 3);
+        let sub = tasks.get_by_id(&sub_id).unwrap();
         assert_eq!(sub.get_dependendees(), Vec::<&EventId>::new());
     }
 
     #[test]
     fn test_tracking() {
         let mut tasks = stub_tasks();
+        let zero = EventId::all_zeros();
 
-        //let task = tasks.make_task("task");
         tasks.track_at(Timestamp::from(0));
         assert_eq!(tasks.history.len(), 1);
-        let zero = EventId::all_zeros();
 
         tasks.move_to(Some(zero));
         let now: Timestamp = Timestamp::now() - 2u64;
@@ -1090,10 +1090,11 @@ mod tasks_test {
     fn test_timestamps() {
         let mut tasks = stub_tasks();
         let zero = EventId::all_zeros();
+
         tasks.move_to(Some(zero));
         tasks.track_at(Timestamp::from(Timestamp::now().as_u64() + 100));
         assert_eq!(timestamps(tasks.history.values().nth(0).unwrap().into_iter(), &vec![&zero]).collect_vec().len(), 2)
-        // TODO Does not show both future and current tracking properly, need to split by now
+        // TODO Does not show both future and current tracking properly, need to split by current time
     }
 
 
