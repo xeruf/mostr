@@ -549,8 +549,11 @@ async fn main() {
                             if let Some((url, tasks)) = relays.iter().find(|(key, _)| key.as_str().starts_with(&input)) {
                                 selected_relay = Some(url.clone());
                                 or_print(tasks.print_tasks());
-                            } else if let Some(url) = or_print(Url::parse(&input)) {
-                                match tx.send(MostrMessage::NewRelay(url.clone())) {
+                                continue;
+                            }
+                            match Url::parse(&input) {
+                                Err(e) => warn!("Failed to parse url \"{input}\": {}", e),
+                                Ok(url) => match tx.send(MostrMessage::NewRelay(url.clone())) {
                                     Err(e) => error!("Nostr communication thread failure, cannot add relay \"{url}\": {e}"),
                                     Ok(_) => {
                                         info!("Connecting to {url}");
