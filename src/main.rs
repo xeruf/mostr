@@ -299,17 +299,16 @@ async fn main() {
     let mut lines = stdin().lines();
     loop {
         println!();
-        selected_relay.as_ref().and_then(|url| relays.get(url)).inspect(|tasks| {
-            print!(
-                "{}",
-                format!(
-                    "{} {}{}) ",
-                    selected_relay.as_ref().map_or("local".to_string(), |url| url.to_string()),
-                    tasks.get_task_path(tasks.get_position()),
-                    tasks.get_prompt_suffix()
-                ).italic()
-            );
-        });
+        let tasks = selected_relay.as_ref().and_then(|url| relays.get(url)).unwrap_or(&local_tasks);
+        print!(
+            "{} {}) ",
+            selected_relay.as_ref().map_or("TEMP".to_string(), |url| url.to_string()).bright_black().italic(),
+            format!(
+                "{}{}",
+                tasks.get_task_path(tasks.get_position()),
+                tasks.get_prompt_suffix()
+            ).bold()
+        );
         stdout().flush().unwrap();
         match lines.next() {
             Some(Ok(input)) => {
