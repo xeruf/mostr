@@ -17,7 +17,7 @@ use nostr_sdk::prelude::Marker;
 use TagStandard::Hashtag;
 
 use crate::{Events, EventSender, MostrMessage};
-use crate::helpers::some_non_empty;
+use crate::helpers::{format_stamp, local_datetimestamp, relative_datetimestamp, some_non_empty};
 use crate::kinds::*;
 use crate::task::{MARKER_DEPENDS, MARKER_PARENT, State, Task, TaskState};
 
@@ -183,7 +183,7 @@ impl Tasks {
                             .map(|str| EventId::from_str(str).ok().map_or(str.to_string(), |id| self.get_task_title(&id)))
                             .join(" "));
                         if new != last {
-                            full.push_str(&format!("{} {}\n", event.created_at.to_human_datetime(), new.as_ref().unwrap_or(&"---".to_string())));
+                            full.push_str(&format!("{:>15} {}\n", relative_datetimestamp(&event.created_at), new.as_ref().unwrap_or(&"---".to_string())));
                             last = new;
                         }
                     }
@@ -199,12 +199,21 @@ impl Tasks {
                         let mut vec = Vec::with_capacity(set.len() / 2);
                         let mut iter = timestamps(set.iter(), &ids).tuples();
                         while let Some(((start, _), (end, _))) = iter.next() {
-                            vec.push(format!("{} - {} by {}", start.to_human_datetime(), end.to_human_datetime(), key))
+                            vec.push(format!("{} - {} by {}",
+                                             local_datetimestamp(start),
+                                             // Only use full stamp when ambiguous (>1day)
+                                             if end.as_u64() - start.as_u64() > 86400 {
+                                                 local_datetimestamp(end)
+                                             } else {
+                                                 format_stamp(end, "%H:%M")
+                                             },
+                                             key))
                         }
-                        iter.into_buffer().for_each(|(stamp, _)|
-                        vec.push(format!("{} started by {}", stamp.to_human_datetime(), key)));
+                        iter.into_buffer()
+                            .for_each(|(stamp, _)|
+                            vec.push(format!("{} started by {}", local_datetimestamp(stamp), key)));
                         vec
-                    }).sorted_unstable()
+                    }).sorted_unstable() // TODO sorting depends on timestamp format - needed to interleave different people
                 ).join("\n")
             }
         }
@@ -380,23 +389,7 @@ impl Tasks {
                 "{} since {} (total tracked time {}m)",
                 // TODO tracking since, scheduled/planned for
                 state.get_label(),
-                match Local.timestamp_opt(state.time.as_u64() as i64, 0) {
-                    Single(time) => {
-                        let date = time.date_naive();
-                        let prefix = match Local::now()
-                            .date_naive()
-                            .signed_duration_since(date)
-                            .num_days()
-                        {
-                            0 => "".into(),
-                            1 => "yesterday ".into(),
-                            2..=6 => date.format("%a ").to_string(),
-                            _ => date.format("%y-%m-%d ").to_string(),
-                        };
-                        format!("{}{}", prefix, time.format("%H:%M"))
-                    }
-                    _ => state.time.to_human_datetime(),
-                },
+                relative_datetimestamp(&state.time),
                 self.time_tracked(*t.get_id()) / 60
             )?;
             writeln!(lock, "{}", t.descriptions().join("\n"))?;
@@ -708,7 +701,7 @@ impl Tasks {
     }
 
     pub(crate) fn track_at(&mut self, time: Timestamp) -> EventId {
-        info!("{} from {}", self.position.map_or(String::from("Stopping time-tracking"), |id| format!("Tracking \"{}\"", self.get_task_title(&id))), time.to_human_datetime());
+        info!("{} from {}", self.position.map_or(String::from("Stopping time-tracking"), |id| format!("Tracking \"{}\"", self.get_task_title(&id))), relative_datetimestamp(&time));
         let pos = self.get_position();
         let tracking = build_tracking(pos);
         // TODO this can lead to funny deletions

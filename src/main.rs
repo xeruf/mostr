@@ -384,7 +384,7 @@ async fn main() {
                             None => {
                                 tasks.get_current_task().map_or_else(
                                     || info!("With a task selected, use ,NOTE to attach NOTE and , to list all its notes"),
-                                    |task| println!("{}", task.description_events().map(|e| format!("{} {}", e.created_at.to_human_datetime(), e.content)).join("\n")),
+                                    |task| println!("{}", task.description_events().map(|e| format!("{} {}", local_datetimestamp(&e.created_at), e.content)).join("\n")),
                                 );
                                 continue;
                             }
