@@ -107,13 +107,13 @@ Dot or slash can be repeated to move to parent tasks before acting.
 
 - `:[IND][PROP]` - add property column PROP at IND or end, if it already exists remove property column PROP or IND (1-indexed)
 - `::[PROP]` - Sort by property PROP (multiple space-separated values allowed)
-- `([TIME]` - insert timetracking with the specified offset such as `-1d`, `-15 minutes` or `yesterday 17:20` (empty:
-  list tracked times)
-- `)[TIME]` - stop timetracking with the specified offset - convenience helper to move to root (empty: stop now)
+- `([TIME]` - list tracked times or insert timetracking with the specified offset
+  such as `-1d`, `-15 minutes`, `yesterday 17:20`, `in 2 fortnights`
+- `)[TIME]` - stop timetracking with optional offset - also convenience helper to move to root
 - `>[TEXT]` - complete active task and move up, with optional status description
 - `<[TEXT]` - close active task and move up, with optional status description
-- `!TEXT` - set status for current task from text and move up (empty to open)
-- `,TEXT` - add text note (comment / description)
+- `!TEXT` - set status for current task from text and move up (empty: Open)
+- `,[TEXT]` - list notes or add text note (comment / description)
 - TBI: `*[INT]` - set priority - can also be used in task creation, with any digit
 - TBI: status history and creation with attribution
 - `&` - undo last action (moving in place or upwards confirms pending actions)
@@ -186,6 +186,13 @@ Considering to use Calendar: https://github.com/nostr-protocol/nips/blob/master/
   + Fetch most recent tasks first
   + Relay: compress tracked time for old tasks, filter closed tasks
   + Relay: filter out task status updates within few seconds, also on client side
+
+### Fixes
+
+- New Relay does not load until next is added
+  https://github.com/rust-nostr/nostr/issues/533
+- Handle event sending rejections (e.g. permissions)
+- Recursive filter handling
 
 ### Command
 

@@ -702,10 +702,15 @@ impl Tasks {
     /// Returns false and prints a message if parsing failed
     pub(crate) fn track_from(&mut self, str: &str) -> bool {
         // Using two libraries for better exhaustiveness, see https://github.com/uutils/parse_datetime/issues/84
-        match interim::parse_date_string(&str, Local::now(), interim::Dialect::Uk) {
+        let stripped = str.trim().trim_start_matches('+').trim_start_matches("in ");
+        if let Ok(num) = stripped.parse::<i64>() {
+            self.track_at(Timestamp::from(Timestamp::now().as_u64().saturating_add_signed(num * 60)));
+            return true
+        }
+        match interim::parse_date_string(stripped, Local::now(), interim::Dialect::Us) {
             Ok(date) => Some(date.to_utc()),
             Err(e) => {
-                match parse_datetime::parse_datetime_at_date(Local::now(), str) {
+                match parse_datetime::parse_datetime_at_date(Local::now(), stripped) {
                     Ok(date) => Some(date.to_utc()),
                     Err(_) => {
                         warn!("Could not parse time from {str}: {e}");
