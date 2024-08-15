@@ -713,7 +713,15 @@ impl Tasks {
                     }
                 }
             }
-        }.map(|time| self.track_at(Timestamp::from(time.timestamp() as u64))).is_some()
+        }.filter(|time| {
+            if time.timestamp() > 0 {
+                self.track_at(Timestamp::from(time.timestamp() as u64));
+                true
+            } else {
+                warn!("Can only track times after 1970!");
+                false
+            }
+        }).is_some()
     }
 
     pub(crate) fn track_at(&mut self, time: Timestamp) -> EventId {
