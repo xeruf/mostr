@@ -407,7 +407,7 @@ async fn main() {
                             None => match tasks.get_position() {
                                 None => {
                                     tasks.set_filter(
-                                        tasks.current_tasks().into_iter()
+                                        tasks.filtered_tasks(None)
                                             .filter(|t| t.pure_state() == State::Procedure)
                                             .map(|t| t.event.id)
                                             .collect()
@@ -499,8 +499,8 @@ async fn main() {
                             dots += 1;
                             pos = tasks.get_parent(pos).cloned();
                         }
-                        let slice = input[dots..].trim();
 
+                        let slice = input[dots..].trim();
                         if pos != tasks.get_position() || slice.is_empty() {
                             tasks.move_to(pos);
                         }
@@ -522,21 +522,30 @@ async fn main() {
                             dots += 1;
                             pos = tasks.get_parent(pos).cloned();
                         }
-                        let slice = &input[dots..].trim().to_ascii_lowercase();
 
+                        let slice = input[dots..].trim();
                         if slice.is_empty() {
                             tasks.move_to(pos);
+                            if dots > 1 {
+                                info!("Moving up {} tasks", dots - 1)
+                            }
                         } else if let Ok(depth) = slice.parse::<i8>() {
-                            tasks.move_to(pos);
                             tasks.set_depth(depth);
                         } else {
-                            let filtered = tasks
-                                .children_of(pos)
-                                .into_iter()
-                                .filter_map(|child| tasks.get_by_id(&child))
-                                .filter(|t| t.event.content.to_ascii_lowercase().starts_with(slice))
+                            let mut transform: Box<dyn Fn(&str) -> String> = Box::new(|s: &str| s.to_string());
+                            if slice.chars().find(|c| c.is_ascii_uppercase()).is_none() {
+                                // Smart-case - case-sensitive if any uppercase char is entered
+                                transform = Box::new(|s| s.to_ascii_lowercase());
+                            }
+
+                            let filtered = tasks.filtered_tasks(pos)
+                                .filter(|t| {
+                                    transform(&t.event.content).contains(slice) || t.tags.iter().flatten().any(|tag|
+                                    tag.content().is_some_and(|s| transform(s).contains(slice))
+                                    )
+                                })
                                 .map(|t| t.event.id)
-                                .collect::<Vec<_>>();
+                                .collect_vec();
                             if filtered.len() == 1 {
                                 tasks.move_to(filtered.into_iter().nth(0));
                             } else {

@@ -93,17 +93,17 @@ To stop time-tracking completely, simply move to the root of all tasks.
 `TASK` creation syntax: `NAME: TAG1 TAG2 ...`
 
 - `TASK` - create task (prefix with space if you want a task to start with a command character)
-- `.` - clear filters and reload
+- `.` - clear filters
 - `.TASK`
   + activate task by id
   + match by task name prefix: if one or more tasks match, filter / activate (tries case-sensitive then case-insensitive)
   + no match: create & activate task
-- `.2` - set view depth to `2`, which can be substituted for any number (how many subtask levels to show, default 1)
-- `/[TEXT]` - like `.`, but never creates a task and filters beyond currently visible tasks
+- `.2` - set view depth to the given number (how many subtask levels to show, default is 1)
+- `/[TEXT]` - activate task or filter by smart-case substring match
 - `||TASK` - create and activate a new task procedure (where subtasks automatically depend on the previously created task)
 - `|[TASK]` - (un)mark current task as procedure or create a sibling task depending on the current one and move up
 
-Dots and slashes can be repeated to move to parent tasks.
+Dot or slash can be repeated to move to parent tasks before acting.
 
 - `:[IND][PROP]` - add property column PROP at IND or end, if it already exists remove property column PROP or IND (1-indexed)
 - `::[PROP]` - Sort by property PROP (multiple space-separated values allowed)

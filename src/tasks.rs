@@ -354,17 +354,9 @@ impl Tasks {
             .map(|t| t.get_id())
     }
 
-    pub(crate) fn current_tasks(&self) -> Vec<&Task> {
-        if self.depth == 0 {
-            return self.get_current_task().into_iter().collect();
-        }
-        let res: Vec<&Task> = self.resolve_tasks(self.view.iter());
-        if res.len() > 0 {
-            // Currently ignores filtered view when it matches nothing
-            return res;
-        }
+    pub(crate) fn filtered_tasks(&self, position: Option<EventId>) -> impl Iterator<Item=&Task> {
         // TODO use ChildrenIterator
-        self.resolve_tasks(self.children_of(self.position)).into_iter()
+        self.resolve_tasks(self.children_of(position)).into_iter()
             .filter(|t| {
                 // TODO apply filters in transit
                 self.state.matches(t) &&
@@ -377,7 +369,16 @@ impl Tasks {
                             self.tags.iter().all(|tag| iter.any(|t| t == tag))
                         }))
             })
-            .collect()
+    }
+
+    pub(crate) fn visible_tasks(&self) -> Vec<&Task> {
+        if self.depth == 0 {
+            return self.get_current_task().into_iter().collect();
+        }
+        if self.view.len() > 0 {
+            return self.resolve_tasks(self.view.iter());
+        }
+        self.filtered_tasks(self.position).collect()
     }
 
     pub(crate) fn print_tasks(&self) -> Result<(), Error> {
@@ -408,7 +409,7 @@ impl Tasks {
         // TODO hide empty columns
         writeln!(lock, "{}", self.properties.join("\t").bold())?;
         let mut total_time = 0;
-        let mut tasks = self.current_tasks();
+        let mut tasks = self.visible_tasks();
         let count = tasks.len();
         tasks.sort_by_cached_key(|task| {
             self.sorting
@@ -534,11 +535,10 @@ impl Tasks {
         if let Ok(id) = EventId::parse(arg) {
             return vec![id];
         }
-        let tasks = self.current_tasks();
-        let mut filtered: Vec<EventId> = Vec::with_capacity(tasks.len());
+        let mut filtered: Vec<EventId> = Vec::with_capacity(32);
         let lowercase_arg = arg.to_ascii_lowercase();
-        let mut filtered_more: Vec<EventId> = Vec::with_capacity(tasks.len());
-        for task in tasks {
+        let mut filtered_more: Vec<EventId> = Vec::with_capacity(32);
+        for task in self.filtered_tasks(self.position) {
             let lowercase = task.event.content.to_ascii_lowercase();
             if lowercase == lowercase_arg {
                 return vec![task.event.id];
@@ -1112,59 +1112,59 @@ mod tasks_test {
         assert_eq!(tasks.depth, 1);
         assert_eq!(task1.pure_state(), State::Open);
         debug!("{:?}", tasks);
-        assert_eq!(tasks.current_tasks().len(), 1);
+        assert_eq!(tasks.visible_tasks().len(), 1);
         tasks.depth = 0;
-        assert_eq!(tasks.current_tasks().len(), 0);
+        assert_eq!(tasks.visible_tasks().len(), 0);
 
         tasks.move_to(Some(t1));
         tasks.depth = 2;
-        assert_eq!(tasks.current_tasks().len(), 0);
+        assert_eq!(tasks.visible_tasks().len(), 0);
         let t2 = tasks.make_task("t2");
-        assert_eq!(tasks.current_tasks().len(), 1);
+        assert_eq!(tasks.visible_tasks().len(), 1);
         assert_eq!(tasks.get_task_path(Some(t2)), "t1>t2");
         assert_eq!(tasks.relative_path(t2), "t2");
         let t3 = tasks.make_task("t3");
-        assert_eq!(tasks.current_tasks().len(), 2);
+        assert_eq!(tasks.visible_tasks().len(), 2);
 
         tasks.move_to(Some(t2));
-        assert_eq!(tasks.current_tasks().len(), 0);
+        assert_eq!(tasks.visible_tasks().len(), 0);
         let t4 = tasks.make_task("t4");
-        assert_eq!(tasks.current_tasks().len(), 1);
+        assert_eq!(tasks.visible_tasks().len(), 1);
         assert_eq!(tasks.get_task_path(Some(t4)), "t1>t2>t4");
         assert_eq!(tasks.relative_path(t4), "t4");
         tasks.depth = 2;
-        assert_eq!(tasks.current_tasks().len(), 1);
+        assert_eq!(tasks.visible_tasks().len(), 1);
         tasks.depth = -1;
-        assert_eq!(tasks.current_tasks().len(), 1);
+        assert_eq!(tasks.visible_tasks().len(), 1);
 
         tasks.move_to(Some(t1));
         assert_eq!(tasks.relative_path(t4), "t2>t4");
-        assert_eq!(tasks.current_tasks().len(), 2);
+        assert_eq!(tasks.visible_tasks().len(), 2);
         tasks.depth = 2;
-        assert_eq!(tasks.current_tasks().len(), 3);
+        assert_eq!(tasks.visible_tasks().len(), 3);
         tasks.set_filter(vec![t2]);
-        assert_eq!(tasks.current_tasks().len(), 2);
+        assert_eq!(tasks.visible_tasks().len(), 2);
         tasks.depth = 1;
-        assert_eq!(tasks.current_tasks().len(), 1);
+        assert_eq!(tasks.visible_tasks().len(), 1);
         tasks.depth = -1;
-        assert_eq!(tasks.current_tasks().len(), 1);
+        assert_eq!(tasks.visible_tasks().len(), 1);
         tasks.set_filter(vec![t2, t3]);
-        assert_eq!(tasks.current_tasks().len(), 2);
+        assert_eq!(tasks.visible_tasks().len(), 2);
         tasks.depth = 2;
-        assert_eq!(tasks.current_tasks().len(), 3);
+        assert_eq!(tasks.visible_tasks().len(), 3);
         tasks.depth = 1;
-        assert_eq!(tasks.current_tasks().len(), 2);
+        assert_eq!(tasks.visible_tasks().len(), 2);
 
         tasks.move_to(None);
-        assert_eq!(tasks.current_tasks().len(), 1);
+        assert_eq!(tasks.visible_tasks().len(), 1);
         tasks.depth = 2;
-        assert_eq!(tasks.current_tasks().len(), 3);
+        assert_eq!(tasks.visible_tasks().len(), 3);
         tasks.depth = 3;
-        assert_eq!(tasks.current_tasks().len(), 4);
+        assert_eq!(tasks.visible_tasks().len(), 4);
         tasks.depth = 9;
-        assert_eq!(tasks.current_tasks().len(), 4);
+        assert_eq!(tasks.visible_tasks().len(), 4);
         tasks.depth = -1;
-        assert_eq!(tasks.current_tasks().len(), 2);
+        assert_eq!(tasks.visible_tasks().len(), 2);
     }
 
     #[test]
