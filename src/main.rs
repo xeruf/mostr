@@ -304,13 +304,10 @@ async fn main() {
         println!();
         let tasks = selected_relay.as_ref().and_then(|url| relays.get(url)).unwrap_or(&local_tasks);
         print!(
-            "{} {}) ",
-            selected_relay.as_ref().map_or("TEMP".to_string(), |url| url.to_string()).bright_black().italic(),
-            format!(
-                "{}{}",
-                tasks.get_task_path(tasks.get_position()),
-                tasks.get_prompt_suffix()
-            ).bold()
+            "{} {}{}) ",
+            selected_relay.as_ref().map_or("TEMP".to_string(), |url| url.to_string()).bright_black(),
+            tasks.get_task_path(tasks.get_position()).bold(),
+            tasks.get_prompt_suffix().italic(),
         );
         stdout().flush().unwrap();
         match lines.next() {
