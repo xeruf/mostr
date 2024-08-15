@@ -120,7 +120,7 @@ async fn main() {
         args.next();
         Builder::new()
             .filter(None, LevelFilter::Debug)
-            .filter(Some("mostr"), LevelFilter::Trace)
+            //.filter(Some("mostr"), LevelFilter::Trace)
             .parse_default_env()
             .init();
     } else {
@@ -183,20 +183,7 @@ async fn main() {
     let sub_id = client.subscribe(vec![Filter::new().kinds(KINDS.into_iter().map(|k| Kind::from(k)))], None).await;
     info!("Subscribed with {:?}", sub_id);
 
-    //let proxy = Some(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 9050)));
-    //client
-    //    .add_relay_with_opts(
-    //        "wss://relay.nostr.info",
-    //        RelayOptions::new().proxy(proxy).flags(RelayServiceFlags::default().remove(RelayServiceFlags::WRITE)),
-    //    )
-    //    .await?;
-    //client
-    //    .add_relay_with_opts(
-    //        "ws://jgqaglhautb4k6e6i2g34jakxiemqp6z4wynlirltuukgkft2xuglmqd.onion",
-    //        RelayOptions::new().proxy(proxy),
-    //    )
-    //    .await?;
-
+    // TODO user data from config file or home relay?
     //let metadata = Metadata::new()
     //    .name("username")
     //    .display_name("My Username")
@@ -206,42 +193,22 @@ async fn main() {
     //    .nip05("username@example.com")
     //    .lud16("yuki@getalby.com")
     //    .custom_field("custom_field", "my value");
-
     //client.set_metadata(&metadata).await?;
 
-    client.connect().await;
     let mut notifications = client.notifications();
+    client.connect().await;
 
     let (tx, rx) = mpsc::channel::<MostrMessage>();
     let tasks_for_url = |url: Option<Url>| Tasks::from(url, &tx, &keys);
     let mut relays: HashMap<Url, Tasks> =
         client.relays().await.into_keys().map(|url| (url.clone(), tasks_for_url(Some(url)))).collect();
 
-    /*println!("Finding existing events");
-    let _ = client
-        .get_events_of(vec![Filter::new()], Some(Duration::from_secs(5)))
-        .map_ok(|res| {
-            println!("Found {} events", res.len());
-            let (mut task_events, props): (Vec<Event>, Vec<Event>) =
-                res.into_iter().partition(|e| e.kind.as_u32() == 1621);
-            task_events.sort_unstable();
-            for event in task_events {
-                print_event(&event);
-                tasks.add_task(event);
-            }
-            for event in props {
-                print_event(&event);
-                tasks.add_prop(&event);
-            }
-        })
-        .await;*/
-
     let sender = tokio::spawn(async move {
         let mut queue: Option<(Url, Vec<Event>)> = None;
 
         loop {
-            let result = rx.recv_timeout(Duration::from_secs(INACTVITY_DELAY));
-            match result {
+            let result_received = rx.recv_timeout(Duration::from_secs(INACTVITY_DELAY));
+            match result_received {
                 Ok(MostrMessage::NewRelay(url)) => {
                     if client.add_relay(&url).await.unwrap() {
                         match client.connect_relay(&url).await {
@@ -270,7 +237,7 @@ async fn main() {
                     }
                 }
                 Ok(MostrMessage::Flush) | Err(RecvTimeoutError::Timeout) => if let Some((url, events)) = queue {
-                    info!("Sending {} events to {url} due to {:?}", events.len(), result);
+                    info!("Sending {} events to {url} due to {:?}", events.len(), result_received);
                     client.batch_event_to(vec![url], events, RelaySendOptions::new()).await;
                     queue = None;
                 }
@@ -299,7 +266,7 @@ async fn main() {
 
     let mut lines = stdin().lines();
     loop {
-        trace!("All Root Tasks:\n{}", relays.iter().map(|(url, tasks)| 
+        trace!("All Root Tasks:\n{}", relays.iter().map(|(url, tasks)|
             format!("{}: [{}]", url, tasks.children_of(None).map(|id| tasks.get_task_title(id)).join("; "))).join("\n"));
         println!();
         let tasks = selected_relay.as_ref().and_then(|url| relays.get(url)).unwrap_or(&local_tasks);
