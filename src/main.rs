@@ -406,13 +406,13 @@ async fn main() {
                         match arg {
                             None => match tasks.get_position() {
                                 None => {
+                                    info!("Filtering for Procedures");
                                     tasks.set_filter(
                                         tasks.filtered_tasks(None)
                                             .filter(|t| t.pure_state() == State::Procedure)
                                             .map(|t| t.event.id)
                                             .collect()
                                     );
-                                    info!("Filtering for procedures");
                                 }
                                 Some(id) => {
                                     tasks.set_state_for(id, "", State::Procedure);

@@ -480,6 +480,9 @@ impl Tasks {
     // Movement and Selection
 
     pub(crate) fn set_filter(&mut self, view: Vec<EventId>) {
+        if view.is_empty() {
+            warn!("No match for filter!")
+        }
         self.view = view;
     }
 
@@ -565,7 +568,7 @@ impl Tasks {
                 if arg.len() > 2 {
                     Some(self.make_task(arg))
                 } else {
-                    warn!("Not creating task under 3 chars to avoid silly mistakes");
+                    warn!("Name of a task needs to have at least 3 characters");
                     None
                 }
             }
