@@ -7,8 +7,7 @@ use std::str::FromStr;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
-use chrono::{DateTime, Local, TimeZone};
-use chrono::LocalResult::Single;
+use chrono::Local;
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
@@ -16,7 +15,7 @@ use nostr_sdk::{Event, EventBuilder, EventId, Keys, Kind, PublicKey, Tag, TagSta
 use nostr_sdk::prelude::Marker;
 use TagStandard::Hashtag;
 
-use crate::{Events, EventSender, MostrMessage};
+use crate::{EventSender, MostrMessage};
 use crate::helpers::{format_stamp, local_datetimestamp, relative_datetimestamp, some_non_empty};
 use crate::kinds::*;
 use crate::task::{MARKER_DEPENDS, MARKER_PARENT, State, Task, TaskState};
@@ -700,17 +699,21 @@ impl Tasks {
     }
 
     /// Parse string and set tracking
-    /// Returns false if parsing failed
+    /// Returns false and prints a message if parsing failed
     pub(crate) fn track_from(&mut self, str: &str) -> bool {
-        if let Ok(num) = str.parse::<i64>() {
-            self.track_at(Timestamp::from(Timestamp::now().as_u64().saturating_add_signed(num * 60)));
-        } else if let Ok(date) = DateTime::parse_from_rfc3339(str) {
-            self.track_at(Timestamp::from(date.to_utc().timestamp() as u64));
-        } else {
-            warn!("Cannot parse time from  {str}");
-            return false;
-        }
-        true
+        // Using two libraries for better exhaustiveness, see https://github.com/uutils/parse_datetime/issues/84
+        match interim::parse_date_string(&str, Local::now(), interim::Dialect::Uk) {
+            Ok(date) => Some(date.to_utc()),
+            Err(e) => {
+                match parse_datetime::parse_datetime_at_date(Local::now(), str) {
+                    Ok(date) => Some(date.to_utc()),
+                    Err(_) => {
+                        warn!("Could not parse time from {str}: {e}");
+                        None
+                    }
+                }
+            }
+        }.map(|time| self.track_at(Timestamp::from(time.timestamp() as u64))).is_some()
     }
 
     pub(crate) fn track_at(&mut self, time: Timestamp) -> EventId {

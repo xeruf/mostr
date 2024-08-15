@@ -107,8 +107,9 @@ Dot or slash can be repeated to move to parent tasks before acting.
 
 - `:[IND][PROP]` - add property column PROP at IND or end, if it already exists remove property column PROP or IND (1-indexed)
 - `::[PROP]` - Sort by property PROP (multiple space-separated values allowed)
-- `([TIME]` - insert timetracking with the specified offset in minutes (empty: list tracked times)
-- `)[TIME]` - stop timetracking with the specified offset in minutes - convenience helper to move to root (empty: stop now)
+- `([TIME]` - insert timetracking with the specified offset such as `-1d`, `-15 minutes` or `yesterday 17:20` (empty:
+  list tracked times)
+- `)[TIME]` - stop timetracking with the specified offset - convenience helper to move to root (empty: stop now)
 - `>[TEXT]` - complete active task and move up, with optional status description
 - `<[TEXT]` - close active task and move up, with optional status description
 - `!TEXT` - set status for current task from text and move up (empty to open)
