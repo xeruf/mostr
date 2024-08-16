@@ -107,7 +107,7 @@ impl Drop for EventSender {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-enum MostrMessage {
+pub(crate) enum MostrMessage {
     Flush,
     NewRelay(Url),
     AddTasks(Url, Vec<Event>),
@@ -237,12 +237,13 @@ async fn main() {
                     }
                 }
                 Ok(MostrMessage::Flush) | Err(RecvTimeoutError::Timeout) => if let Some((url, events)) = queue {
-                    info!("Sending {} events to {url} due to {:?}", events.len(), result_received);
+                    info!("Sending {} events to {url} due to {}", events.len(),
+                        result_received.map_or_else(|e| format!("{:?}", e), |m| format!("{:?}", m)));
                     client.batch_event_to(vec![url], events, RelaySendOptions::new()).await;
                     queue = None;
                 }
                 Err(err) => {
-                    debug!("Finalizing nostr communication thread because of {:?}", err);
+                    debug!("Finalizing nostr communication thread because of {:?}: {}", err, err);
                     break;
                 }
             }
