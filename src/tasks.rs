@@ -298,39 +298,35 @@ impl Tasks {
 
     // Helpers
 
-    fn resolve_tasks<'a>(&self, iter: impl IntoIterator<Item=&'a EventId>) -> Vec<&Task> {
+    fn resolve_tasks<'a>(&'a self, iter: impl Iterator<Item=&'a EventId>) -> impl Iterator<Item=&'a Task> {
         self.resolve_tasks_rec(iter, self.depth)
     }
 
     fn resolve_tasks_rec<'a>(
-        &self,
-        iter: impl IntoIterator<Item=&'a EventId>,
+        &'a self,
+        iter: impl Iterator<Item=&'a EventId>,
         depth: i8,
-    ) -> Vec<&Task> {
-        iter.into_iter()
-            .filter_map(|id| self.get_by_id(&id))
-            .flat_map(|task| {
+    ) -> Box<impl Iterator<Item=&'a Task>> {
+        iter.filter_map(|id| self.get_by_id(&id))
+            .flat_map(move |task| {
                 let new_depth = depth - 1;
-                if new_depth < 0 {
-                    let tasks = self
-                        .resolve_tasks_rec(task.children.iter(), new_depth)
-                        .into_iter()
-                        .collect::<Vec<&Task>>();
-                    if tasks.is_empty() {
-                        vec![task]
-                    } else {
-                        tasks
-                    }
-                } else if new_depth > 0 {
-                    self.resolve_tasks_rec(task.children.iter(), new_depth)
-                        .into_iter()
-                        .chain(once(task))
-                        .collect()
-                } else {
+                if new_depth == 0 {
                     vec![task]
+                } else {
+                    let tasks_iter = self.resolve_tasks_rec(task.children.iter(), new_depth);
+                    if new_depth < 0 {
+                        let tasks: Vec<&Task> = tasks_iter.collect();
+                        if tasks.is_empty() {
+                            vec![task]
+                        } else {
+                            tasks
+                        }
+                    } else {
+                        tasks_iter.chain(once(task)).collect()
+                    }
                 }
             })
-            .collect()
+            .into()
     }
 
     pub(crate) fn referenced_tasks<F: Fn(&mut Task)>(&mut self, event: &Event, f: F) {
@@ -354,8 +350,8 @@ impl Tasks {
     }
 
     pub(crate) fn filtered_tasks(&self, position: Option<EventId>) -> impl Iterator<Item=&Task> {
-        // TODO use ChildrenIterator
-        self.resolve_tasks(self.children_of(position)).into_iter()
+        // TODO use ChildIterator
+        self.resolve_tasks(self.children_of(position))
             .filter(|t| {
                 // TODO apply filters in transit
                 self.state.matches(t) &&
@@ -375,7 +371,7 @@ impl Tasks {
             return self.get_current_task().into_iter().collect();
         }
         if self.view.len() > 0 {
-            return self.resolve_tasks(self.view.iter());
+            return self.resolve_tasks(self.view.iter()).collect();
         }
         self.filtered_tasks(self.position).collect()
     }
