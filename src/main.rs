@@ -366,21 +366,31 @@ async fn main() {
                         tasks.move_up();
                     }
 
-                    Some('@') | Some('&') => {
+                    Some('&') => {
                         tasks.undo();
+                    }
+
+                    Some('@') => {
+                        let author = arg.and_then(|a| PublicKey::from_str(a).ok()).unwrap_or_else(|| keys.public_key());
+                        info!("Filtering for events by {author}");
+                        tasks.set_filter(
+                            tasks.filtered_tasks(tasks.get_position())
+                                .filter(|t| t.event.pubkey == author)
+                                .map(|t| t.event.id)
+                                .collect()
+                        )
+                    }
+
+                    Some('*') => {
+                        info!("Setting priority not yet implemented")
                     }
 
                     Some('|') =>
                         match arg {
                             None => match tasks.get_position() {
                                 None => {
-                                    info!("Filtering for Procedures");
-                                    tasks.set_filter(
-                                        tasks.filtered_tasks(None)
-                                            .filter(|t| t.pure_state() == State::Procedure)
-                                            .map(|t| t.event.id)
-                                            .collect()
-                                    );
+                                    tasks.set_state_filter(
+                                        StateFilter::State(State::Procedure.to_string()));
                                 }
                                 Some(id) => {
                                     tasks.set_state_for(id, "", State::Procedure);
