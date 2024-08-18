@@ -10,7 +10,7 @@ use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Event, EventId, Kind, Tag, TagStandard, Timestamp};
 
-use crate::helpers::some_non_empty;
+use crate::helpers::{local_datetimestamp, some_non_empty};
 use crate::kinds::{is_hashtag, PROCEDURE_KIND};
 
 pub static MARKER_PARENT: &str = "parent";
@@ -160,6 +160,8 @@ impl Task {
                 "{:?}",
                 self.descriptions().collect_vec()
             )),
+            "pubkey" => Some(self.event.pubkey.to_string()),
+            "created" => Some(local_datetimestamp(&self.event.created_at)),
             _ => {
                 warn!("Unknown task property {}", property);
                 None
