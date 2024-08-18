@@ -3,18 +3,23 @@ use log::info;
 use nostr_sdk::{Alphabet, EventBuilder, EventId, Kind, Tag, TagStandard};
 use nostr_sdk::TagStandard::Hashtag;
 
+use crate::task::State;
+
 pub const METADATA_KIND: u16 = 0;
 pub const NOTE_KIND: u16 = 1;
 pub const TASK_KIND: u16 = 1621;
-pub const PROCEDURE_KIND: u16 = 1639;
 pub const TRACKING_KIND: u16 = 1650;
 pub const KINDS: [u16; 9] = [
     METADATA_KIND,
     NOTE_KIND,
     TASK_KIND,
     TRACKING_KIND,
-    PROCEDURE_KIND,
-    1630, 1631, 1632, 1633];
+    State::Open as u16,
+    State::Done as u16,
+    State::Closed as u16,
+    State::Pending as u16,
+    State::Procedure as u16
+];
 
 /// Helper for available properties.
 /// TODO: use formatting - bold / heading / italics - and generate from code

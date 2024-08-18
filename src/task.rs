@@ -11,7 +11,7 @@ use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Event, EventId, Kind, Tag, TagStandard, Timestamp};
 
 use crate::helpers::{local_datetimestamp, some_non_empty};
-use crate::kinds::{is_hashtag, PROCEDURE_KIND, TASK_KIND};
+use crate::kinds::{is_hashtag, TASK_KIND};
 
 pub static MARKER_PARENT: &str = "parent";
 pub static MARKER_DEPENDS: &str = "depends";
@@ -219,6 +219,7 @@ impl Display for TaskState {
     }
 }
 
+pub const PROCEDURE_KIND: u16 = 1639;
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq)]
 pub(crate) enum State {
     /// Actionable
@@ -265,14 +266,8 @@ impl State {
         }
     }
 
-    pub(crate) fn kind(&self) -> u16 {
-        match self {
-            State::Open => 1630,
-            State::Done => 1631,
-            State::Closed => 1632,
-            State::Pending => 1633,
-            State::Procedure => PROCEDURE_KIND,
-        }
+    pub(crate) fn kind(self) -> u16 {
+        self as u16
     }
 
     pub(crate) fn colorize(&self, str: &str) -> ColoredString {
