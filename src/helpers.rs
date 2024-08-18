@@ -32,7 +32,8 @@ pub fn prompt(prompt: &str) -> Option<String> {
 
 // For use in format strings but not possible, so need global find-replace
 pub const MAX_TIMESTAMP_WIDTH: u8 = 15;
-/// Format nostr Timestamp relative to local time with optional day specifier or full date if needed
+/// Format nostr Timestamp relative to local time 
+/// with optional day specifier or full date depending on distance to today
 pub fn relative_datetimestamp(stamp: &Timestamp) -> String {
     match Local.timestamp_opt(stamp.as_u64() as i64, 0) {
         Single(time) => {
@@ -54,11 +55,12 @@ pub fn relative_datetimestamp(stamp: &Timestamp) -> String {
     }
 }
 
+/// Format a nostr timestamp in a sensible comprehensive format
 pub fn local_datetimestamp(stamp: &Timestamp) -> String {
     format_stamp(stamp, "%y-%m-%d %a %H:%M")
 }
 
-
+/// Format a nostr timestamp with the given format
 pub fn format_stamp(stamp: &Timestamp, format: &str) -> String {
     match Local.timestamp_opt(stamp.as_u64() as i64, 0) {
         Single(time) => time.format(format).to_string(),

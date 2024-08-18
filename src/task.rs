@@ -205,11 +205,16 @@ impl Display for TaskState {
 
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq)]
 pub(crate) enum State {
-    Open,
+    /// Actionable
+    Open = 1630,
+    /// Completed
     Done,
+    /// Not Actionable (anymore)
     Closed,
+    /// Temporarily not actionable
     Pending,
-    Procedure,
+    /// Actionable ordered task list
+    Procedure = PROCEDURE_KIND as isize,
 }
 impl From<&str> for State {
     fn from(value: &str) -> Self {

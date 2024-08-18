@@ -34,21 +34,22 @@ pub(crate) struct Tasks {
     properties: Vec<String>,
     /// The task properties sorted by
     sorting: VecDeque<String>,
+
+    /// Currently active task
+    position: Option<EventId>,
+    /// A filtered view of the current tasks
+    view: Vec<EventId>,
     /// Negative: Only Leaf nodes
     /// Zero: Only Active node
     /// Positive: Go down the respective level
     depth: i8,
 
-    /// Currently active task
-    position: Option<EventId>,
     /// Currently active tags
     tags: BTreeSet<Tag>,
     /// Tags filtered out
     tags_excluded: BTreeSet<Tag>,
     /// Current active state
     state: StateFilter,
-    /// A filtered view of the current tasks
-    view: Vec<EventId>,
 
     sender: EventSender,
 }
@@ -545,7 +546,7 @@ impl Tasks {
         self.sender.flush();
     }
 
-    /// Returns ids of tasks matching the filter.
+    /// Returns ids of tasks starting with the given string.
     pub(crate) fn get_filtered(&self, arg: &str) -> Vec<EventId> {
         if let Ok(id) = EventId::parse(arg) {
             return vec![id];

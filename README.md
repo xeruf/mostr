@@ -114,8 +114,8 @@ Dot or slash can be repeated to move to parent tasks before acting.
 - `<[TEXT]` - close active task and move up, with optional status description
 - `!TEXT` - set status for current task from text and move up (empty: Open)
 - `,[TEXT]` - list notes or add text note (comment / description)
-- TBI: `*[INT]` - set priority - can also be used in task creation, with any digit
-- TBI: status history and creation with attribution
+- `*[INT]` - set priority - can also be used in task creation, with any digit
+- TBI: show status history and creation with attribution
 - `&` - undo last action (moving in place or upwards confirms pending actions)
 - `wss://...` - switch or subscribe to relay (prefix with space to forcibly add a new one)
 
@@ -126,6 +126,7 @@ Property Filters:
 - `-TAG` - remove tag filters by prefix
 - `?STATUS` - filter by status (type or description) - plain `?` to reset, `??` to show all
 - `@AUTHOR` - filter by author (`@` for self, id prefix, name prefix)
+- TBI: `**INT` - filter by priority
 - TBI: Filter by time
 
 Status descriptions can be used for example for Kanban columns or review flows.
@@ -160,12 +161,13 @@ For debugging: `props`, `alltags`, `descriptions`
 ## Nostr reference
 
 Mostr mainly uses the following NIPs:
-- Kind 1 for task descriptions
+
+- Kind 1 for task descriptions and permanent tasks, can contain task property updates (tags, priority)
 - Issue Tracking: https://github.com/nostr-protocol/nips/blob/master/34.md
-  + Tasks have Kind 1621 (originally: git issue - currently no native markdown support)
-  + Kind 1622 may be used for task comments or replace Kind 1 for descriptions
+  + Tasks have Kind 1621 (originally: git issue - currently no markdown support implemented)
+  + TBI: Kind 1622 for task comments
   + Kind 1630-1633: Task Status (1630 Open, 1631 Done, 1632 Closed, 1633 Pending)
-- Implementing proprietary Kind 1650 for time-tracking
+- Own Kind 1650 for time-tracking
 
 Considering to use Calendar: https://github.com/nostr-protocol/nips/blob/master/52.md
 - Kind 31922 for GANTT, since it has only Date
