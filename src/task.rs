@@ -122,6 +122,13 @@ impl Task {
         self.state().unwrap_or_else(|| self.default_state())
     }
 
+    /// Returns None for a stateless task.
+    pub(crate) fn state_label(&self) -> Option<ColoredString> {
+        self.state()
+            .or_else(|| Some(self.default_state()).filter(|_| self.is_task()))
+            .map(|state| state.get_colored_label())
+    }
+
     fn default_state(&self) -> TaskState {
         TaskState {
             name: None,
@@ -151,7 +158,7 @@ impl Task {
             "pubkey" => Some(self.event.pubkey.to_string()),
             "created" => Some(local_datetimestamp(&self.event.created_at)),
             // Dynamic
-            "status" => Some(self.state_or_default().get_label()),
+            "status" => self.state_label().map(|c| c.to_string()),
             "desc" => self.descriptions().last().cloned(),
             "description" => Some(self.descriptions().join(" ")),
             "hashtags" => self.filter_tags(|tag| { is_hashtag(tag) }),

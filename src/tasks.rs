@@ -468,11 +468,11 @@ impl Tasks {
                 if let Some(task) = task.get_dependendees().iter().filter_map(|id| self.get_by_id(id)).find(|t| t.pure_state().is_open()) {
                     return format!("Blocked by \"{}\"", task.get_title()).bright_red().to_string();
                 }
-                let state = task.state_or_default();
-                if state.state.is_open() && progress.is_some_and(|p| p > 0.1) {
-                    state.state.colorize(&prog_string)
+                let state = task.pure_state();
+                if state.is_open() && progress.is_some_and(|p| p > 0.1) {
+                    state.colorize(&prog_string)
                 } else {
-                    state.get_colored_label()
+                    task.state_label().unwrap_or_default()
                 }.to_string()
             }
             "progress" => prog_string.clone(),
