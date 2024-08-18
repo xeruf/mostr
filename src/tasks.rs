@@ -11,7 +11,7 @@ use chrono::Local;
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use nostr_sdk::{Event, EventBuilder, EventId, Keys, Kind, PublicKey, Tag, TagStandard, Timestamp, UncheckedUrl, Url};
+use nostr_sdk::{Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey, Tag, TagStandard, Timestamp, UncheckedUrl, Url};
 use nostr_sdk::prelude::Marker;
 use TagStandard::Hashtag;
 
@@ -27,6 +27,8 @@ pub(crate) struct Tasks {
     tasks: TaskMap,
     /// History of active tasks by PubKey
     history: HashMap<PublicKey, BTreeSet<Event>>,
+    /// Index of found users with metadata
+    users: HashMap<PublicKey, Metadata>,
 
     /// The task properties currently visible
     properties: Vec<String>,
@@ -118,6 +120,7 @@ impl Tasks {
         Tasks {
             tasks: Default::default(),
             history: Default::default(),
+            users: Default::default(),
             properties: vec![
                 "state".into(),
                 "rtime".into(),
@@ -329,12 +332,19 @@ impl Tasks {
             .into()
     }
 
-    pub(crate) fn referenced_tasks<F: Fn(&mut Task)>(&mut self, event: &Event, f: F) {
+    /// Executes the given function with each task referenced by this event.
+    /// Returns true if any task was found.
+    pub(crate) fn referenced_tasks<F: Fn(&mut Task)>(&mut self, event: &Event, f: F) -> bool {
+        let mut found = false;
         for tag in event.tags.iter() {
             if let Some(TagStandard::Event { event_id, .. }) = tag.as_standardized() {
-                self.tasks.get_mut(event_id).map(|t| f(t));
+                self.tasks.get_mut(event_id).map(|t| {
+                    found = true;
+                    f(t)
+                });
             }
         }
+        found
     }
 
     #[inline]
@@ -462,6 +472,7 @@ impl Tasks {
                     state.get_colored_label()
                 }.to_string()
             }
+            "author" => self.get_author(&task.event.pubkey),
             "progress" => prog_string.clone(),
             "path" => self.get_task_path(Some(task.event.id)),
             "rpath" => self.relative_path(task.event.id),
@@ -470,6 +481,12 @@ impl Tasks {
             "rtime" => display_time("HH:MM", self.total_time_tracked(*task.get_id())),
             prop => task.get(prop).unwrap_or(String::new()),
         }
+    }
+
+    pub(crate) fn get_author(&self, pubkey: &PublicKey) -> String {
+        self.users.get(pubkey)
+            .and_then(|m| m.name.clone())
+            .unwrap_or_else(|| pubkey.to_string())
     }
 
     // Movement and Selection
@@ -760,6 +777,11 @@ impl Tasks {
                     Some(c) => { c.insert(event); }
                     None => { self.history.insert(event.pubkey, BTreeSet::from([event])); }
                 },
+            METADATA_KIND =>
+                match Metadata::from_json(event.content()) {
+                    Ok(metadata) => { self.users.insert(event.pubkey, metadata); }
+                    Err(e) => warn!("Cannot parse metadata: {} from {:?}", e, event)
+                }
             _ => self.add_prop(&event),
         }
     }

@@ -180,20 +180,10 @@ async fn main() {
         },
     }
 
-    let sub_id = client.subscribe(vec![Filter::new().kinds(KINDS.into_iter().map(|k| Kind::from(k)))], None).await;
+    let sub_id = client.subscribe(vec![
+        Filter::new().kinds(KINDS.into_iter().map(|k| Kind::from(k)))
+    ], None).await;
     info!("Subscribed with {:?}", sub_id);
-
-    // TODO user data from config file or home relay?
-    //let metadata = Metadata::new()
-    //    .name("username")
-    //    .display_name("My Username")
-    //    .about("Description")
-    //    .picture(Url::parse("https://example.com/avatar.png")?)
-    //    .banner(Url::parse("https://example.com/banner.png")?)
-    //    .nip05("username@example.com")
-    //    .lud16("yuki@getalby.com")
-    //    .custom_field("custom_field", "my value");
-    //client.set_metadata(&metadata).await?;
 
     let mut notifications = client.notifications();
     client.connect().await;
@@ -207,6 +197,19 @@ async fn main() {
         let mut queue: Option<(Url, Vec<Event>)> = None;
 
         loop {
+            if let Ok(user) = var("USER") {
+                let metadata = Metadata::new()
+                    .name(user);
+                //    .display_name("My Username")
+                //    .about("Description")
+                //    .picture(Url::parse("https://example.com/avatar.png")?)
+                //    .banner(Url::parse("https://example.com/banner.png")?)
+                //    .nip05("username@example.com")
+                //    .lud16("yuki@getalby.com")
+                //    .custom_field("custom_field", "my value");
+                or_print(client.set_metadata(&metadata).await);
+            }
+
             let result_received = rx.recv_timeout(Duration::from_secs(INACTVITY_DELAY));
             match result_received {
                 Ok(MostrMessage::NewRelay(url)) => {
