@@ -15,21 +15,32 @@ pub const KINDS: [u16; 9] = [
     PROCEDURE_KIND,
     1630, 1631, 1632, 1633];
 
-pub const PROPERTY_COLUMNS: &str = "Available properties:
-- `id`
-- `parentid`
-- `name`
-- `state`
-- `hashtags`
+/// Helper for available properties.
+/// TODO: use formatting - bold / heading / italics - and generate from code
+pub const PROPERTY_COLUMNS: &str =
+    "# Available Properties
+Immutable:
+- `id` - unique task id
+- `parentid` - unique task id of the parent, if any
+- `name` - initial name of the task
+- `created` - task creation timestamp
+- `author` - name of the task creator
+Task:
+- `status` - pure task status
+- `hashtags` - list of hashtags set for the task
 - `tags` - values of all nostr tags associated with the event, except event tags
 - `desc` - last note on the task
 - `description` - accumulated notes on the task
-- `path` - name including parent tasks
-- `rpath` - name including parent tasks up to active task
 - `time` - time tracked on this task by you
+Utilities:
+- `state` - indicator of current progress
 - `rtime` - time tracked on this tasks and its subtree by everyone
 - `progress` - recursive subtask completion in percent
-- `subtasks` - how many direct subtasks are complete";
+- `subtasks` - how many direct subtasks are complete
+- `path` - name including parent tasks
+- `rpath` - name including parent tasks up to active task
+- TBI `depends` - list all tasks this task depends on before it becomes actionable
+Debugging: `pubkey`, `props`, `alltags`, `descriptions`";
 
 pub(crate) fn build_tracking<I>(id: I) -> EventBuilder
 where

@@ -105,8 +105,9 @@ To stop time-tracking completely, simply move to the root of all tasks.
 
 Dot or slash can be repeated to move to parent tasks before acting.
 
-- `:[IND][PROP]` - add property column PROP at IND or end, if it already exists remove property column PROP or IND (1-indexed)
-- `::[PROP]` - Sort by property PROP (multiple space-separated values allowed)
+- `:[IND][PROP]` - add property column PROP at IND or end, if it already exists remove property column PROP or IND (
+  1-indexed), empty: list properties
+- `::[PROP]` - sort by property PROP (multiple space-separated values allowed)
 - `([TIME]` - list tracked times or insert timetracking with the specified offset
   such as `-1d`, `-15 minutes`, `yesterday 17:20`, `in 2 fortnights`
 - `)[TIME]` - stop timetracking with optional offset - also convenience helper to move to root
@@ -131,27 +132,6 @@ Property Filters:
 
 Status descriptions can be used for example for Kanban columns or review flows.
 An active tag or status filter will also set that attribute for newly created tasks.
-
-### Available Columns
-
-- `id`
-- `parentid`
-- `name`
-- `state` - indicator of current progress
-- `status` - pure task status
-- `hashtags` - list of hashtags set for the task
-- `tags` - values of all nostr tags associated with the event, except event tags
-- `desc` - last note on the task
-- `description` - accumulated notes on the task
-- `path` - name including parent tasks
-- `rpath` - name including parent tasks up to active task
-- `time` - time tracked on this task
-- `rtime` - time tracked on this tasks and all recursive subtasks
-- `progress` - recursive subtask completion in percent
-- `subtasks` - how many direct subtasks are complete
-- TBI `depends`
-
-For debugging: `props`, `alltags`, `descriptions`
 
 ### Notes
 
@@ -209,6 +189,8 @@ The following features are not ready to be implemented
 because they need conceptualization.
 Suggestions welcome!
 
+- Do not track time on Closed task?
+- Allow adding new parent via description?
 - Special commands: help, exit, tutorial, change log level
 - Duplicate task (subtasks? timetracking?)
 - What if I want to postpone a procedure, i.e. make it pending, or move it across kanban, does this make sense?

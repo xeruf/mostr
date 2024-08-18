@@ -473,8 +473,9 @@ impl Tasks {
                     state.get_colored_label()
                 }.to_string()
             }
-            "author" => self.get_author(&task.event.pubkey),
             "progress" => prog_string.clone(),
+
+            "author" => self.get_author(&task.event.pubkey),
             "path" => self.get_task_path(Some(task.event.id)),
             "rpath" => self.relative_path(task.event.id),
             // TODO format strings configurable
@@ -719,7 +720,7 @@ impl Tasks {
         let stripped = str.trim().trim_start_matches('+').trim_start_matches("in ");
         if let Ok(num) = stripped.parse::<i64>() {
             self.track_at(Timestamp::from(Timestamp::now().as_u64().saturating_add_signed(num * 60)));
-            return true
+            return true;
         }
         match interim::parse_date_string(stripped, Local::now(), interim::Dialect::Us) {
             Ok(date) => Some(date.to_utc()),

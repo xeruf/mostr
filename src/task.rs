@@ -139,10 +139,14 @@ impl Task {
 
     pub(crate) fn get(&self, property: &str) -> Option<String> {
         match property {
+            // Static
             "id" => Some(self.event.id.to_string()),
             "parentid" => self.parent_id().map(|i| i.to_string()),
-            "status" => Some(self.state_or_default().get_label()),
             "name" => Some(self.event.content.clone()),
+            "pubkey" => Some(self.event.pubkey.to_string()),
+            "created" => Some(local_datetimestamp(&self.event.created_at)),
+            // Dynamic
+            "status" => Some(self.state_or_default().get_label()),
             "desc" => self.descriptions().last().cloned(),
             "description" => Some(self.descriptions().join(" ")),
             "hashtags" => self.filter_tags(|tag| { is_hashtag(tag) }),
@@ -160,8 +164,6 @@ impl Task {
                 "{:?}",
                 self.descriptions().collect_vec()
             )),
-            "pubkey" => Some(self.event.pubkey.to_string()),
-            "created" => Some(local_datetimestamp(&self.event.created_at)),
             _ => {
                 warn!("Unknown task property {}", property);
                 None
