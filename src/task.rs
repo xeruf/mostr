@@ -11,7 +11,7 @@ use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Event, EventId, Kind, Tag, TagStandard, Timestamp};
 
 use crate::helpers::{local_datetimestamp, some_non_empty};
-use crate::kinds::{is_hashtag, PROCEDURE_KIND};
+use crate::kinds::{is_hashtag, PROCEDURE_KIND, TASK_KIND};
 
 pub static MARKER_PARENT: &str = "parent";
 pub static MARKER_DEPENDS: &str = "depends";
@@ -93,6 +93,11 @@ impl Task {
 
     pub(crate) fn descriptions(&self) -> impl Iterator<Item=&String> + '_ {
         self.description_events().map(|e| &e.content)
+    }
+
+    pub(crate) fn is_task(&self) -> bool {
+        self.event.kind.as_u16() == TASK_KIND ||
+            self.states().next().is_some()
     }
 
     fn states(&self) -> impl Iterator<Item=TaskState> + '_ {

@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use log::info;
 use nostr_sdk::{Alphabet, EventBuilder, EventId, Kind, Tag, TagStandard};
+use nostr_sdk::TagStandard::Hashtag;
 
 pub const METADATA_KIND: u16 = 0;
 pub const NOTE_KIND: u16 = 1;
@@ -53,9 +54,39 @@ where
     )
 }
 
-pub(crate) fn build_task(name: &str, tags: Vec<Tag>) -> EventBuilder {
-    info!("Created task \"{name}\" with tags [{}]", tags.iter().map(|tag| format_tag(tag)).join(", "));
-    EventBuilder::new(Kind::from(TASK_KIND), name, tags)
+/// Build a task with informational output and optional labeled kind
+pub(crate) fn build_task(name: &str, tags: Vec<Tag>, kind: Option<(&str, Kind)>) -> EventBuilder {
+    info!("Created {}task \"{name}\" with tags [{}]",
+        kind.map(|k| k.0).unwrap_or_default(),
+        tags.iter().map(|tag| format_tag(tag)).join(", "));
+    EventBuilder::new(kind.map(|k| k.1).unwrap_or(Kind::from(TASK_KIND)), name, tags)
+}
+
+pub(crate) fn build_prop(
+    kind: Kind,
+    comment: &str,
+    id: EventId,
+) -> EventBuilder {
+    EventBuilder::new(
+        kind,
+        comment,
+        vec![Tag::event(id)],
+    )
+}
+
+/// Expects sanitized input
+pub(crate) fn extract_tags(input: &str) -> (&str, Vec<Tag>) {
+    match input.split_once(": ") {
+        None => (input, vec![]),
+        Some(s) => {
+            let tags = s
+                .1
+                .split_ascii_whitespace()
+                .map(|t| Hashtag(t.to_string()).into())
+                .collect();
+            (s.0, tags)
+        }
+    }
 }
 
 fn format_tag(tag: &Tag) -> String {

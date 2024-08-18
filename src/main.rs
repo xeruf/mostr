@@ -405,8 +405,7 @@ async fn main() {
                                         tasks.move_up();
                                         tasks.make_task_with(
                                             arg,
-                                            once(tasks.make_event_tag_from_id(pos, MARKER_DEPENDS))
-                                                .chain(tasks.parent_tag()),
+                                            once(tasks.make_event_tag_from_id(pos, MARKER_DEPENDS)),
                                             true);
                                         break 'arm;
                                     }

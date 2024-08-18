@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::io::{Error, stdout, Write};
-use std::iter::once;
+use std::iter::{empty, once};
 use std::ops::{Div, Rem};
 use std::str::FromStr;
 use std::sync::mpsc::Sender;
@@ -333,16 +333,18 @@ impl Tasks {
             .into()
     }
 
-    /// Executes the given function with each task referenced by this event.
+    /// Executes the given function with each task referenced by this event without marker.
     /// Returns true if any task was found.
     pub(crate) fn referenced_tasks<F: Fn(&mut Task)>(&mut self, event: &Event, f: F) -> bool {
         let mut found = false;
         for tag in event.tags.iter() {
-            if let Some(TagStandard::Event { event_id, .. }) = tag.as_standardized() {
-                self.tasks.get_mut(event_id).map(|t| {
-                    found = true;
-                    f(t)
-                });
+            if let Some(TagStandard::Event { event_id, marker, .. }) = tag.as_standardized() {
+                if marker.is_none() {
+                    self.tasks.get_mut(event_id).map(|t| {
+                        found = true;
+                        f(t)
+                    });
+                }
             }
         }
         found
@@ -616,24 +618,6 @@ impl Tasks {
 
     // Updates
 
-    /// Expects sanitized input
-    pub(crate) fn parse_task(&self, input: &str) -> EventBuilder {
-        let mut tags: Vec<Tag> = self.tags.iter().cloned().collect();
-        match input.split_once(": ") {
-            None => build_task(input, tags),
-            Some(s) => {
-                tags.append(
-                    &mut s
-                        .1
-                        .split_ascii_whitespace()
-                        .map(|t| Hashtag(t.to_string()).into())
-                        .collect(),
-                );
-                build_task(s.0, tags)
-            }
-        }
-    }
-
     pub(crate) fn make_event_tag_from_id(&self, id: EventId, marker: &str) -> Tag {
         Tag::from(TagStandard::Event {
             event_id: id,
@@ -674,39 +658,29 @@ impl Tasks {
     /// Creates a task following the current state
     /// Sanitizes input
     pub(crate) fn make_task(&mut self, input: &str) -> EventId {
-        self.make_task_with(input, self.position_tags(), true)
+        self.make_task_with(input, empty(), true)
     }
 
     pub(crate) fn make_task_and_enter(&mut self, input: &str, state: State) {
-        let id = self.make_task_with(input, self.position_tags(), false);
+        let id = self.make_task_with(input, empty(), false);
         self.set_state_for(id, "", state);
         self.move_to(Some(id));
     }
 
-    /// Creates a task
+    /// Creates a task with tags from filter and position
     /// Sanitizes input
     pub(crate) fn make_task_with(&mut self, input: &str, tags: impl IntoIterator<Item=Tag>, set_state: bool) -> EventId {
+        let (input, input_tags) = extract_tags(input.trim());
         let id = self.submit(
-            self.parse_task(input.trim())
+            build_task(input, input_tags, None)
+                .add_tags(self.tags.iter().cloned())
+                .add_tags(self.position_tags())
                 .add_tags(tags.into_iter())
         );
         if set_state {
             self.state.as_option().inspect(|s| self.set_state_for_with(id, s));
         }
         id
-    }
-
-    pub(crate) fn build_prop(
-        &mut self,
-        kind: Kind,
-        comment: &str,
-        id: EventId,
-    ) -> EventBuilder {
-        EventBuilder::new(
-            kind,
-            comment,
-            vec![Tag::event(id)],
-        )
     }
 
     pub(crate) fn get_task_title(&self, id: &EventId) -> String {
@@ -784,7 +758,7 @@ impl Tasks {
                     Ok(metadata) => { self.users.insert(event.pubkey, metadata); }
                     Err(e) => warn!("Cannot parse metadata: {} from {:?}", e, event)
                 }
-            _ => self.add_prop(&event),
+            _ => self.add_prop(event),
         }
     }
 
@@ -801,10 +775,17 @@ impl Tasks {
         }
     }
 
-    fn add_prop(&mut self, event: &Event) {
-        self.referenced_tasks(&event, |t| {
+    fn add_prop(&mut self, event: Event) {
+        let found = self.referenced_tasks(&event, |t| {
             t.props.insert(event.clone());
         });
+        if !found {
+            if event.kind.as_u16() == NOTE_KIND {
+                self.add_task(event);
+                return;
+            }
+            warn!("Unknown event {:?}", event)
+        }
     }
 
     fn get_own_history(&mut self) -> Option<&mut BTreeSet<Event>> {
@@ -836,7 +817,7 @@ impl Tasks {
     }
 
     pub(crate) fn set_state_for(&mut self, id: EventId, comment: &str, state: State) -> EventId {
-        let prop = self.build_prop(
+        let prop = build_prop(
             state.into(),
             comment,
             id,
@@ -851,13 +832,19 @@ impl Tasks {
     }
 
     pub(crate) fn make_note(&mut self, note: &str) {
-        match self.position {
-            None => warn!("Cannot add note \"{}\" without active task", note),
-            Some(id) => {
-                let prop = self.build_prop(Kind::TextNote, note, id);
+        if let Some(id) = self.position {
+            if self.get_by_id(&id).is_some_and(|t| t.is_task()) {
+                let prop = build_prop(Kind::TextNote, note.trim(), id);
                 self.submit(prop);
+                return;
             }
         }
+        let (input, tags) = extract_tags(note.trim());
+        self.submit(
+            build_task(input, tags, Some(("stateless ", Kind::TextNote)))
+                .add_tags(self.parent_tag())
+                .add_tags(self.tags.iter().cloned())
+        );
     }
 
     // Properties
@@ -1099,7 +1086,7 @@ mod tasks_test {
     fn test_procedures() {
         let mut tasks = stub_tasks();
         tasks.make_task_and_enter("proc: tags", State::Procedure);
-        let side = tasks.submit(build_task("side", vec![tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)]));
+        let side = tasks.submit(build_task("side", vec![tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)], None));
         assert_eq!(tasks.get_current_task().unwrap().children, HashSet::<EventId>::new());
         let sub_id = tasks.make_task("sub");
         assert_eq!(tasks.get_current_task().unwrap().children, HashSet::from([sub_id]));
