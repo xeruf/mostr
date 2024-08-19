@@ -179,15 +179,17 @@ impl Tasks {
         match self.get_position_ref() {
             None => {
                 if let Some(set) = self.history.get(&self.sender.pubkey()) {
+                    let mut last = None;
                     let mut full = Vec::with_capacity(set.len());
                     for event in set {
                         let new = some_non_empty(&event.tags.iter()
                             .filter_map(|t| t.content())
                             .map(|str| EventId::from_str(str).ok().map_or(str.to_string(), |id| self.get_task_title(&id)))
                             .join(" "));
-                        if new.as_ref() != full.last() {
-                            // TODO alternating color for days
+                        if new != last {
+                            // TODO alternate color with grey between days
                             full.push(format!("{:>15} {}", relative_datetimestamp(&event.created_at), new.as_ref().unwrap_or(&"---".to_string())));
+                            last = new;
                         }
                     }
                     ("Your Time-Tracking History:".to_string(), Box::from(full.into_iter()))
