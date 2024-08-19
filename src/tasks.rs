@@ -119,19 +119,21 @@ impl Tasks {
             tasks: Default::default(),
             history: Default::default(),
             users: Default::default(),
-            properties: vec![
-                "state".into(),
-                "rtime".into(),
-                "hashtags".into(),
-                "rpath".into(),
-                "desc".into(),
-            ],
-            sorting: VecDeque::from([
-                "state".into(),
-                "hashtags".into(),
-                "rtime".into(),
-                "name".into(),
-            ]),
+            properties: [
+                "author",
+                "state",
+                "rtime",
+                "hashtags",
+                "rpath",
+                "desc",
+            ].into_iter().map(|s| s.to_string()).collect(),
+            sorting: [
+                "author",
+                "state",
+                "hashtags",
+                "rtime",
+                "name",
+            ].into_iter().map(|s| s.to_string()).collect(),
             view: Default::default(),
             tags: Default::default(),
             tags_excluded: Default::default(),
@@ -425,7 +427,7 @@ impl Tasks {
             writeln!(lock, "{}\n{}", label.italic(), times_recent.join("\n"))?;
             return Ok(());
         }
-        
+
         // TODO proper column alignment
         // TODO hide empty columns
         writeln!(lock, "{}", self.properties.join("\t").bold())?;
@@ -502,7 +504,7 @@ impl Tasks {
     pub(crate) fn get_author(&self, pubkey: &PublicKey) -> String {
         self.users.get(pubkey)
             .and_then(|m| m.name.clone())
-            .unwrap_or_else(|| pubkey.to_string())
+            .unwrap_or_else(|| format!("{:.6}", pubkey.to_string()))
     }
 
     // Movement and Selection

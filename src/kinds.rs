@@ -30,7 +30,7 @@ Immutable:
 - `parentid` - unique task id of the parent, if any
 - `name` - initial name of the task
 - `created` - task creation timestamp
-- `author` - name of the task creator
+- `author` - name or abbreviated key of the task creator
 Task:
 - `status` - pure task status
 - `hashtags` - list of hashtags set for the task
