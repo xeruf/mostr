@@ -23,7 +23,7 @@ use regex::Regex;
 use xdg::BaseDirectories;
 
 use crate::helpers::*;
-use crate::kinds::{KINDS, PROPERTY_COLUMNS, TRACKING_KIND};
+use crate::kinds::{KINDS, PROP_KINDS, PROPERTY_COLUMNS, TRACKING_KIND};
 use crate::task::{MARKER_DEPENDS, MARKER_PARENT, State};
 use crate::tasks::{PropertyCollection, StateFilter, Tasks};
 
@@ -180,13 +180,18 @@ async fn main() {
         },
     }
 
-    let sub_id = client.subscribe(vec![
+    let sub1 = client.subscribe(vec![
         Filter::new().kinds(KINDS.into_iter().map(|k| Kind::from(k)))
     ], None).await;
-    info!("Subscribed with {:?}", sub_id);
+    info!("Subscribed to tasks with {:?}", sub1);
 
     let mut notifications = client.notifications();
     client.connect().await;
+
+    let sub2 = client.subscribe(vec![
+        Filter::new().kinds(PROP_KINDS.into_iter().map(|k| Kind::from(k)))
+    ], None).await;
+    info!("Subscribed to updates with {:?}", sub2);
 
     let (tx, rx) = mpsc::channel::<MostrMessage>();
     let tasks_for_url = |url: Option<Url>| Tasks::from(url, &tx, &keys);

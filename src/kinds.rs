@@ -9,10 +9,12 @@ pub const METADATA_KIND: u16 = 0;
 pub const NOTE_KIND: u16 = 1;
 pub const TASK_KIND: u16 = 1621;
 pub const TRACKING_KIND: u16 = 1650;
-pub const KINDS: [u16; 9] = [
+pub const KINDS: [u16; 3] = [
     METADATA_KIND,
     NOTE_KIND,
     TASK_KIND,
+];
+pub const PROP_KINDS: [u16; 6] = [
     TRACKING_KIND,
     State::Open as u16,
     State::Done as u16,
