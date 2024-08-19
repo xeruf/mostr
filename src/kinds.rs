@@ -3,7 +3,7 @@ use log::info;
 use nostr_sdk::{Alphabet, EventBuilder, EventId, Kind, Tag, TagStandard};
 use nostr_sdk::TagStandard::Hashtag;
 
-use crate::task::State;
+use crate::task::{MARKER_PARENT, State};
 
 pub const METADATA_KIND: u16 = 0;
 pub const NOTE_KIND: u16 = 1;
@@ -100,13 +100,16 @@ fn format_tag(tag: &Tag) -> String {
     match tag.as_standardized() {
         Some(TagStandard::Event {
                  event_id,
+                 marker,
                  ..
-             }) => format!("Parent: {}", event_id.to_string()[..8].to_string()),
+             }) => format!("{}: {:.8}", marker.as_ref().map(|m| m.to_string()).unwrap_or(MARKER_PARENT.to_string()), event_id),
         Some(TagStandard::PublicKey {
                  public_key,
+                 alias,
                  ..
-             }) => format!("Key: {}", public_key.to_string()[..8].to_string()),
-        Some(TagStandard::Hashtag(content)) => format!("#{content}"),
+             }) => format!("Key{}: {:.8}", public_key.to_string(), alias.as_ref().map(|s| format!(" {s}")).unwrap_or_default()),
+        Some(TagStandard::Hashtag(content)) =>
+            format!("#{content}"),
         _ => tag.content().map_or_else(
             || format!("Kind {}", tag.kind()),
             |content| content.to_string(),
