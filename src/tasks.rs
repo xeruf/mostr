@@ -598,23 +598,34 @@ impl Tasks {
         }
     }
 
+    /// Returns all recent events from history until the first event at or before the given timestamp.
+    fn history_until(&self, stamp: Timestamp) -> impl Iterator<Item=&Event> {
+        self.history.get(&self.sender.pubkey()).map(|hist| {
+            hist.iter().rev().take_while_inclusive(move |e| e.created_at > stamp)
+        }).into_iter().flatten()
+    }
+
+    const MAX_OFFSET: u64 = 9;
+
     pub(crate) fn move_to(&mut self, id: Option<EventId>) {
         self.view.clear();
-        if id == self.get_position() {
+        let pos = self.get_position();
+        if id == pos {
             debug!("Flushing Tasks because of move in place");
             self.flush();
             return;
         }
 
         let now = Timestamp::now();
-        let offset: u64 = self.get_own_history().map_or(0, |hist| {
-            hist.iter().rev().take_while(|e| e.created_at >= now).skip_while(|e| e.created_at.as_u64() > now.as_u64() + 99).count() as u64
-        });
+        let offset: u64 = self.history_until(Timestamp::now()).skip_while(|e| e.created_at.as_u64() > now.as_u64() + Self::MAX_OFFSET).count() as u64;
+        if offset >= Self::MAX_OFFSET {
+            warn!("Whoa you are moving around quickly! Give me a few seconds to process.")
+        }
         self.submit(
             build_tracking(id)
                 .custom_created_at(Timestamp::from(now.as_u64() + offset))
         );
-        if !id.and_then(|id| self.tasks.get(&id)).is_some_and(|t| t.parent_id() == self.get_position().as_ref()) {
+        if !id.and_then(|id| self.tasks.get(&id)).is_some_and(|t| t.parent_id() == pos.as_ref()) {
             debug!("Flushing Tasks because of move beyond child");
             self.flush();
         }
