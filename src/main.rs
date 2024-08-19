@@ -377,7 +377,7 @@ async fn main() {
                         let author = arg.and_then(|a| PublicKey::from_str(a).ok()).unwrap_or_else(|| keys.public_key());
                         info!("Filtering for events by {author}");
                         tasks.set_filter(
-                            tasks.filtered_tasks(tasks.get_position())
+                            tasks.filtered_tasks(tasks.get_position_ref())
                                 .filter(|t| t.event.pubkey == author)
                                 .map(|t| t.event.id)
                                 .collect()
@@ -477,42 +477,46 @@ async fn main() {
 
                     Some('.') => {
                         let mut dots = 1;
-                        let mut pos = tasks.get_position();
+                        let mut pos = tasks.get_position_ref();
                         for _ in iter.take_while(|c| c == &'.') {
                             dots += 1;
-                            pos = tasks.get_parent(pos).cloned();
+                            pos = tasks.get_parent(pos);
                         }
 
                         let slice = input[dots..].trim();
-                        if pos != tasks.get_position() || slice.is_empty() {
-                            tasks.move_to(pos);
-                        }
                         if slice.is_empty() {
+                            tasks.move_to(pos.cloned());
                             if dots > 1 {
                                 info!("Moving up {} tasks", dots - 1)
                             }
                         } else if let Ok(depth) = slice.parse::<i8>() {
+                            if pos != tasks.get_position_ref() {
+                                tasks.move_to(pos.cloned());
+                            }
                             tasks.set_depth(depth);
                         } else {
-                            tasks.filter_or_create(slice).map(|id| tasks.move_to(Some(id)));
+                            tasks.filter_or_create(pos.cloned().as_ref(), slice).map(|id| tasks.move_to(Some(id)));
                         }
                     }
 
                     Some('/') => {
                         let mut dots = 1;
-                        let mut pos = tasks.get_position();
+                        let mut pos = tasks.get_position_ref();
                         for _ in iter.take_while(|c| c == &'/') {
                             dots += 1;
-                            pos = tasks.get_parent(pos).cloned();
+                            pos = tasks.get_parent(pos);
                         }
 
                         let slice = input[dots..].trim();
                         if slice.is_empty() {
-                            tasks.move_to(pos);
+                            tasks.move_to(pos.cloned());
                             if dots > 1 {
                                 info!("Moving up {} tasks", dots - 1)
                             }
                         } else if let Ok(depth) = slice.parse::<i8>() {
+                            if pos != tasks.get_position_ref() {
+                                tasks.move_to(pos.cloned());
+                            }
                             tasks.set_depth(depth);
                         } else {
                             let mut transform: Box<dyn Fn(&str) -> String> = Box::new(|s: &str| s.to_string());
@@ -532,7 +536,7 @@ async fn main() {
                             if filtered.len() == 1 {
                                 tasks.move_to(filtered.into_iter().nth(0));
                             } else {
-                                tasks.move_to(pos);
+                                tasks.move_to(pos.cloned());
                                 tasks.set_filter(filtered);
                             }
                         }
@@ -559,7 +563,7 @@ async fn main() {
                             }
                             continue;
                         } else {
-                            tasks.filter_or_create(&input);
+                            tasks.filter_or_create(tasks.get_position().as_ref(), &input);
                         }
                 }
                 or_print(tasks.print_tasks());
