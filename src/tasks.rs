@@ -35,8 +35,6 @@ pub(crate) struct Tasks {
     /// The task properties sorted by
     sorting: VecDeque<String>,
 
-    /// Currently active task
-    position: Option<EventId>,
     /// A filtered view of the current tasks
     view: Vec<EventId>,
     /// Negative: Only Leaf nodes
@@ -135,7 +133,6 @@ impl Tasks {
                 "rtime".into(),
                 "name".into(),
             ]),
-            position: None, // TODO persist position
             view: Default::default(),
             tags: Default::default(),
             tags_excluded: Default::default(),
@@ -151,10 +148,14 @@ impl Tasks {
     pub(crate) fn get_by_id(&self, id: &EventId) -> Option<&Task> { self.tasks.get(id) }
 
     #[inline]
-    pub(crate) fn get_position(&self) -> Option<EventId> { self.position }
-
-    #[inline]
     pub(crate) fn len(&self) -> usize { self.tasks.len() }
+
+    pub(crate) fn get_position(&self) -> Option<EventId> {
+        self.history.get(&self.sender.pubkey())
+            .and_then(|tree| tree.last())
+            .and_then(|e| referenced_events(e))
+            .cloned()
+    }
 
     /// Ids of all subtasks recursively found for id, including itself
     pub(crate) fn get_task_tree<'a>(&'a self, id: &'a EventId) -> ChildIterator {
@@ -291,7 +292,7 @@ impl Tasks {
     fn relative_path(&self, id: EventId) -> String {
         join_tasks(
             self.traverse_up_from(Some(id))
-                .take_while(|t| Some(t.event.id) != self.position),
+                .take_while(|t| Some(t.event.id) != self.get_position()),
             false,
         ).unwrap_or(id.to_string())
     }
@@ -348,7 +349,7 @@ impl Tasks {
 
     #[inline]
     pub(crate) fn get_current_task(&self) -> Option<&Task> {
-        self.position.and_then(|id| self.get_by_id(&id))
+        self.get_position().and_then(|id| self.get_by_id(&id))
     }
 
     pub(crate) fn children_of(&self, id: Option<EventId>) -> impl Iterator<Item=&EventId> + '_ {
@@ -382,7 +383,7 @@ impl Tasks {
         if self.view.len() > 0 {
             return self.resolve_tasks(self.view.iter()).collect();
         }
-        self.filtered_tasks(self.position).collect()
+        self.filtered_tasks(self.get_position()).collect()
     }
 
     pub(crate) fn print_tasks(&self) -> Result<(), Error> {
@@ -429,7 +430,7 @@ impl Tasks {
                     .map(|p| self.get_property(task, p.as_str()))
                     .join(" \t")
             )?;
-            if self.depth < 2 || task.parent_id() == self.position.as_ref() {
+            if self.depth < 2 || task.parent_id() == self.get_position().as_ref() {
                 total_time += self.total_time_tracked(task.event.id)
             }
         }
@@ -553,7 +554,7 @@ impl Tasks {
         let mut filtered: Vec<EventId> = Vec::with_capacity(32);
         let lowercase_arg = arg.to_ascii_lowercase();
         let mut filtered_more: Vec<EventId> = Vec::with_capacity(32);
-        for task in self.filtered_tasks(self.position) {
+        for task in self.filtered_tasks(self.get_position()) {
             let lowercase = task.event.content.to_ascii_lowercase();
             if lowercase == lowercase_arg {
                 return vec![task.event.id];
@@ -599,17 +600,24 @@ impl Tasks {
 
     pub(crate) fn move_to(&mut self, id: Option<EventId>) {
         self.view.clear();
-        if id == self.position {
+        if id == self.get_position() {
             debug!("Flushing Tasks because of move in place");
             self.flush();
             return;
         }
-        self.submit(build_tracking(id));
-        if !id.and_then(|id| self.tasks.get(&id)).is_some_and(|t| t.parent_id() == self.position.as_ref()) {
+
+        let now = Timestamp::now();
+        let offset: u64 = self.get_own_history().map_or(0, |hist| {
+            hist.iter().rev().take_while(|e| e.created_at >= now).skip_while(|e| e.created_at.as_u64() > now.as_u64() + 99).count() as u64
+        });
+        self.submit(
+            build_tracking(id)
+                .custom_created_at(Timestamp::from(now.as_u64() + offset))
+        );
+        if !id.and_then(|id| self.tasks.get(&id)).is_some_and(|t| t.parent_id() == self.get_position().as_ref()) {
             debug!("Flushing Tasks because of move beyond child");
             self.flush();
         }
-        self.position = id;
     }
 
     // Updates
@@ -633,7 +641,7 @@ impl Tasks {
     }
 
     pub(crate) fn parent_tag(&self) -> Option<Tag> {
-        self.position.map(|p| self.make_event_tag_from_id(p, MARKER_PARENT))
+        self.get_position().map(|p| self.make_event_tag_from_id(p, MARKER_PARENT))
     }
 
     pub(crate) fn position_tags(&self) -> Vec<Tag> {
@@ -657,10 +665,11 @@ impl Tasks {
         self.make_task_with(input, empty(), true)
     }
 
-    pub(crate) fn make_task_and_enter(&mut self, input: &str, state: State) {
+    pub(crate) fn make_task_and_enter(&mut self, input: &str, state: State) -> EventId {
         let id = self.make_task_with(input, empty(), false);
         self.set_state_for(id, "", state);
         self.move_to(Some(id));
+        id
     }
 
     /// Creates a task with tags from filter and position
@@ -764,7 +773,7 @@ impl Tasks {
     }
 
     fn remove(&mut self, event: &Event) {
-        if let Some(pos) = self.position {
+        if let Some(pos) = self.get_position() {
             if pos == event.id {
                 self.move_up()
             }
@@ -789,12 +798,12 @@ impl Tasks {
     }
 
     pub(crate) fn update_state(&mut self, comment: &str, state: State) {
-        self.position
+        self.get_position()
             .map(|id| self.set_state_for(id, comment, state));
     }
 
     pub(crate) fn make_note(&mut self, note: &str) {
-        if let Some(id) = self.position {
+        if let Some(id) = self.get_position() {
             if self.get_by_id(&id).is_some_and(|t| t.is_task()) {
                 let prop = build_prop(Kind::TextNote, note.trim(), id);
                 self.submit(prop);
@@ -904,6 +913,13 @@ pub(crate) fn join_tasks<'a>(
         .fold(None, |acc, val| {
             Some(acc.map_or_else(|| val.clone(), |cur| format!("{}>{}", val, cur)))
         })
+}
+
+fn referenced_events(event: &Event) -> Option<&EventId> {
+    event.tags.iter().find_map(|tag| match tag.as_standardized() {
+        Some(TagStandard::Event { event_id, .. }) => Some(event_id),
+        _ => None
+    })
 }
 
 fn matching_tag_id<'a>(event: &'a Event, ids: &'a Vec<&'a EventId>) -> Option<&'a EventId> {
@@ -1047,7 +1063,9 @@ mod tasks_test {
     #[test]
     fn test_procedures() {
         let mut tasks = stub_tasks();
-        tasks.make_task_and_enter("proc: tags", State::Procedure);
+        let id = tasks.make_task_and_enter("proc: tags", State::Procedure);
+        assert_eq!(tasks.get_position(), Some(id));
+        assert_eq!(tasks.get_own_history().unwrap().len(), 1);
         let side = tasks.submit(build_task("side", vec![tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)], None));
         assert_eq!(tasks.get_current_task().unwrap().children, HashSet::<EventId>::new());
         let sub_id = tasks.make_task("sub");
@@ -1065,13 +1083,14 @@ mod tasks_test {
         tasks.track_at(Timestamp::from(0), None);
         assert_eq!(tasks.history.len(), 1);
 
-        let now: Timestamp = Timestamp::now() - 2u64;
-        tasks.track_at(Timestamp::from(1), Some(zero));
-        assert!(tasks.time_tracked(zero) > now.as_u64());
+        let almost_now: Timestamp = Timestamp::now() - 12u64;
+        tasks.track_at(Timestamp::from(11), Some(zero));
+        tasks.track_at(Timestamp::from(13), Some(zero));
+        assert!(tasks.time_tracked(zero) > almost_now.as_u64());
 
-        tasks.track_at(Timestamp::from(2), None);
-        assert_eq!(tasks.get_own_history().unwrap().len(), 3);
-        assert_eq!(tasks.time_tracked(zero), 1);
+        tasks.track_at(Timestamp::from(22), None);
+        assert_eq!(tasks.get_own_history().unwrap().len(), 4);
+        assert_eq!(tasks.time_tracked(zero), 11);
 
         // TODO test received events
     }
@@ -1102,6 +1121,7 @@ mod tasks_test {
         assert_eq!(tasks.visible_tasks().len(), 0);
 
         tasks.move_to(Some(t1));
+        assert_eq!(tasks.get_position(), Some(t1));
         tasks.depth = 2;
         assert_eq!(tasks.visible_tasks().len(), 0);
         let t2 = tasks.make_task("t2");
@@ -1112,6 +1132,7 @@ mod tasks_test {
         assert_eq!(tasks.visible_tasks().len(), 2);
 
         tasks.move_to(Some(t2));
+        assert_eq!(tasks.get_position(), Some(t2));
         assert_eq!(tasks.visible_tasks().len(), 0);
         let t4 = tasks.make_task("t4");
         assert_eq!(tasks.visible_tasks().len(), 1);
@@ -1123,6 +1144,8 @@ mod tasks_test {
         assert_eq!(tasks.visible_tasks().len(), 1);
 
         tasks.move_to(Some(t1));
+        assert_eq!(tasks.get_own_history().unwrap().len(), 3);
+        assert_eq!(tasks.get_position(), Some(t1));
         assert_eq!(tasks.relative_path(t4), "t2>t4");
         assert_eq!(tasks.visible_tasks().len(), 2);
         tasks.depth = 2;
