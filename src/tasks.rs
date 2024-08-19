@@ -162,7 +162,7 @@ impl Tasks {
 
     /// Ids of all subtasks recursively found for id, including itself
     pub(crate) fn get_task_tree<'a>(&'a self, id: &'a EventId) -> ChildIterator {
-        ChildIterator::from(&self.tasks, id)
+        ChildIterator::from(self, id)
     }
 
     pub(crate) fn all_hashtags(&self) -> impl Iterator<Item=&str> {
@@ -991,18 +991,33 @@ impl Iterator for TimesTracked<'_> {
 /// Breadth-First Iterator over Tasks and recursive children
 struct ChildIterator<'a> {
     tasks: &'a TaskMap,
+    /// Found Events
     queue: Vec<&'a EventId>,
+    /// Index of the next element in the queue
     index: usize,
+    /// Depth of the next element
+    depth: usize,
+    /// Element with the next depth boundary
+    next_depth_at: usize,
 }
 impl<'a> ChildIterator<'a> {
-    fn from(tasks: &'a TaskMap, id: &'a EventId) -> Self {
+    fn from(tasks: &'a Tasks, id: &'a EventId) -> Self {
         let mut queue = Vec::with_capacity(30);
         queue.push(id);
         ChildIterator {
-            tasks,
+            tasks: &tasks.tasks,
             queue,
             index: 0,
+            depth: 0,
+            next_depth_at: 1,
         }
+    }
+
+    fn get_depth(mut self, depth: usize) -> Vec<&'a EventId> {
+        while self.depth < depth {
+            self.next();
+        }
+        self.queue
     }
 
     fn get_all(mut self) -> Vec<&'a EventId> {
@@ -1022,7 +1037,7 @@ impl<'a> Iterator for ChildIterator<'a> {
             self.queue.reserve(task.children.len());
             self.queue.extend(task.children.iter());
         } else {
-            // Unknown task, can still find children
+            // Unknown task, might still find children, just slower
             for task in self.tasks.values() {
                 if task.parent_id().is_some_and(|i| i == id) {
                     self.queue.push(task.get_id());
@@ -1030,6 +1045,10 @@ impl<'a> Iterator for ChildIterator<'a> {
             }
         }
         self.index += 1;
+        if self.next_depth_at == self.index {
+            self.depth += 1;
+            self.next_depth_at = self.queue.len();
+        }
         Some(id)
     }
 }
@@ -1163,6 +1182,13 @@ mod tasks_test {
         assert_eq!(tasks.visible_tasks().len(), 1);
         tasks.depth = -1;
         assert_eq!(tasks.visible_tasks().len(), 1);
+
+        assert_eq!(ChildIterator::from(&tasks, &EventId::all_zeros()).get_all().len(), 1);
+        assert_eq!(ChildIterator::from(&tasks, &EventId::all_zeros()).get_depth(0).len(), 1);
+        assert_eq!(ChildIterator::from(&tasks, &t1).get_depth(0).len(), 1);
+        assert_eq!(ChildIterator::from(&tasks, &t1).get_depth(1).len(), 3);
+        assert_eq!(ChildIterator::from(&tasks, &t1).get_depth(2).len(), 4);
+        assert_eq!(ChildIterator::from(&tasks, &t1).get_all().len(), 4);
 
         tasks.move_to(Some(t1));
         assert_position!(tasks, t1);
