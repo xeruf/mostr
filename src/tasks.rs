@@ -172,32 +172,28 @@ impl Tasks {
     }
 
     /// Dynamic time tracking overview for current task or current user.
-    pub(crate) fn times_tracked(&self) -> String {
+    pub(crate) fn times_tracked(&self) -> (String, Box<dyn DoubleEndedIterator<Item=String>>) {
         match self.get_position() {
             None => {
-                let hist = self.history.get(&self.sender.pubkey());
-                if let Some(set) = hist {
-                    let mut full = String::with_capacity(set.len() * 40);
-                    let mut last: Option<String> = None;
-                    full.push_str("Your Time Tracking History:\n");
+                if let Some(set) = self.history.get(&self.sender.pubkey()) {
+                    let mut full = Vec::with_capacity(set.len());
                     for event in set {
                         let new = some_non_empty(&event.tags.iter()
                             .filter_map(|t| t.content())
                             .map(|str| EventId::from_str(str).ok().map_or(str.to_string(), |id| self.get_task_title(&id)))
                             .join(" "));
-                        if new != last {
-                            full.push_str(&format!("{:>15} {}\n", relative_datetimestamp(&event.created_at), new.as_ref().unwrap_or(&"---".to_string())));
-                            last = new;
+                        if new.as_ref() != full.last() {
+                            full.push(format!("{:>15} {}", relative_datetimestamp(&event.created_at), new.as_ref().unwrap_or(&"---".to_string())));
                         }
                     }
-                    full
+                    ("Your Time Tracking History:".to_string(), Box::from(full.into_iter()))
                 } else {
-                    String::from("You have nothing tracked yet")
+                    ("You have nothing tracked yet".to_string(), Box::from(empty()))
                 }
             }
             Some(id) => {
                 let ids = vec![&id];
-                once(format!("Times tracked on {}", self.get_task_title(&id))).chain(
+                let history =
                     self.history.iter().flat_map(|(key, set)| {
                         let mut vec = Vec::with_capacity(set.len() / 2);
                         let mut iter = timestamps(set.iter(), &ids).tuples();
@@ -205,7 +201,7 @@ impl Tasks {
                             vec.push(format!("{} - {} by {}",
                                              local_datetimestamp(start),
                                              // Only use full stamp when ambiguous (>1day)
-                                             if end.as_u64() - start.as_u64() > 86400 {
+                                             if end.as_u64() - start.as_u64() > 80_000 {
                                                  local_datetimestamp(end)
                                              } else {
                                                  format_stamp(end, "%H:%M")
@@ -216,8 +212,8 @@ impl Tasks {
                             .for_each(|(stamp, _)|
                             vec.push(format!("{} started by {}", local_datetimestamp(stamp), key)));
                         vec
-                    }).sorted_unstable() // TODO sorting depends on timestamp format - needed to interleave different people
-                ).join("\n")
+                    }).sorted_unstable(); // TODO sorting depends on timestamp format - needed to interleave different people
+                (format!("Times tracked on {}", self.get_task_title(&id)), Box::from(history))
             }
         }
     }
@@ -722,7 +718,7 @@ impl Tasks {
         info!("{} from {}", self.position.map_or(String::from("Stopping time-tracking"), |id| format!("Tracking \"{}\"", self.get_task_title(&id))), relative_datetimestamp(&time));
         let pos = self.get_position();
         let tracking = build_tracking(pos);
-        // TODO this can lead to funny deletions
+        // TODO this can lead to funny omittals
         self.get_own_history().map(|events| {
             if let Some(event) = events.pop_last() {
                 if event.kind.as_u16() == TRACKING_KIND &&

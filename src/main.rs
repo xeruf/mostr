@@ -455,11 +455,14 @@ async fn main() {
 
                     Some('(') => {
                         if let Some(arg) = arg {
-                            if !tasks.track_from(arg) {
-                                continue;
+                            if tasks.track_from(arg) {
+                                let (prefix, tracked) = tasks.times_tracked();
+                                println!("{}\n{}", prefix.bold(), tracked.rev().take(15).join("\n"));
                             }
+                        } else {
+                            let (prefix, mut tracked) = tasks.times_tracked();
+                            println!("{}\n{}", prefix.bold(), tracked.join("\n"));
                         }
-                        println!("{}", tasks.times_tracked());
                         continue;
                     }
 
