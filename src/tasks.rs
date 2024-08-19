@@ -616,6 +616,11 @@ impl Tasks {
             return;
         }
 
+        if !id.and_then(|id| self.tasks.get(&id)).is_some_and(|t| t.parent_id() == pos.as_ref()) {
+            debug!("Flushing Tasks because of move beyond child");
+            self.flush();
+        }
+
         let now = Timestamp::now();
         let offset: u64 = self.history_until(Timestamp::now()).skip_while(|e| e.created_at.as_u64() > now.as_u64() + Self::MAX_OFFSET).count() as u64;
         if offset >= Self::MAX_OFFSET {
@@ -625,10 +630,6 @@ impl Tasks {
             build_tracking(id)
                 .custom_created_at(Timestamp::from(now.as_u64() + offset))
         );
-        if !id.and_then(|id| self.tasks.get(&id)).is_some_and(|t| t.parent_id() == pos.as_ref()) {
-            debug!("Flushing Tasks because of move beyond child");
-            self.flush();
-        }
     }
 
     // Updates
@@ -784,13 +785,10 @@ impl Tasks {
     }
 
     fn remove(&mut self, event: &Event) {
-        if let Some(pos) = self.get_position() {
-            if pos == event.id {
-                self.move_up()
-            }
-        }
         self.tasks.remove(&event.id);
-        self.get_own_history().map(|t| t.remove(event));
+        self.get_own_history().map(
+            |t| t.retain(|e| e != event &&
+                !referenced_events(e).is_some_and(|id| id == &event.id)));
         self.referenced_tasks(event, |t| { t.props.remove(event); });
     }
 
