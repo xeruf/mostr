@@ -214,11 +214,11 @@ impl Tasks {
                                              } else {
                                                  format_stamp(end, "%H:%M")
                                              },
-                                             key))
+                                             self.get_author(key)))
                         }
                         iter.into_buffer()
                             .for_each(|(stamp, _)|
-                            vec.push(format!("{} started by {}", local_datetimestamp(stamp), key)));
+                            vec.push(format!("{} started by {}", local_datetimestamp(stamp), self.get_author(key))));
                         vec
                     }).sorted_unstable(); // TODO sorting depends on timestamp format - needed to interleave different people
                 (format!("Times Tracked on {:?}", self.get_task_title(&id)), Box::from(history))

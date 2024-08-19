@@ -379,11 +379,12 @@ async fn main() {
                     }
 
                     Some('@') => {
-                        let author = arg.and_then(|a| PublicKey::from_str(a).ok()).unwrap_or_else(|| keys.public_key());
+                        let key = arg.and_then(|a| PublicKey::from_str(a).ok()).unwrap_or_else(|| keys.public_key());
+                        let author = tasks.get_author(&key);
                         info!("Filtering for events by {author}");
                         tasks.set_filter(
                             tasks.filtered_tasks(tasks.get_position_ref())
-                                .filter(|t| t.event.pubkey == author)
+                                .filter(|t| t.event.pubkey == key)
                                 .map(|t| t.event.id)
                                 .collect()
                         )
