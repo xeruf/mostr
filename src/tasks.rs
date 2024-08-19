@@ -151,8 +151,8 @@ impl Tasks {
     pub(crate) fn len(&self) -> usize { self.tasks.len() }
 
     pub(crate) fn get_position(&self) -> Option<EventId> {
-        self.history.get(&self.sender.pubkey())
-            .and_then(|tree| tree.last())
+        self.history_until(Timestamp::from(Timestamp::now() + Self::MAX_OFFSET))
+            .last()
             .and_then(|e| referenced_events(e))
             .cloned()
     }
