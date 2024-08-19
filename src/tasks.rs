@@ -37,7 +37,6 @@ pub(crate) struct Tasks {
 
     /// A filtered view of the current tasks
     view: Vec<EventId>,
-    /// Negative: Only Leaf nodes
     /// Zero: Only Active node
     /// Positive: Go down the respective level
     depth: i8,
@@ -187,10 +186,11 @@ impl Tasks {
                             .map(|str| EventId::from_str(str).ok().map_or(str.to_string(), |id| self.get_task_title(&id)))
                             .join(" "));
                         if new.as_ref() != full.last() {
+                            // TODO alternating color for days
                             full.push(format!("{:>15} {}", relative_datetimestamp(&event.created_at), new.as_ref().unwrap_or(&"---".to_string())));
                         }
                     }
-                    ("Your Time Tracking History:".to_string(), Box::from(full.into_iter()))
+                    ("Your Time-Tracking History:".to_string(), Box::from(full.into_iter()))
                 } else {
                     ("You have nothing tracked yet".to_string(), Box::from(empty()))
                 }
@@ -217,14 +217,14 @@ impl Tasks {
                             vec.push(format!("{} started by {}", local_datetimestamp(stamp), key)));
                         vec
                     }).sorted_unstable(); // TODO sorting depends on timestamp format - needed to interleave different people
-                (format!("Times tracked on {}", self.get_task_title(&id)), Box::from(history))
+                (format!("Times Tracked on {:?}", self.get_task_title(&id)), Box::from(history))
             }
         }
     }
 
     /// Total time in seconds tracked on this task by the current user.
     pub(crate) fn time_tracked(&self, id: EventId) -> u64 {
-        TimesTracked::from(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &vec![&id]).sum::<Duration>().as_secs()
+        Durations::from(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &vec![&id]).sum::<Duration>().as_secs()
     }
 
 
@@ -234,7 +234,7 @@ impl Tasks {
 
         let children = self.get_task_tree(&id).get_all();
         for user in self.history.values() {
-            total += TimesTracked::from(user, &children).into_iter().sum::<Duration>().as_secs();
+            total += Durations::from(user, &children).sum::<Duration>().as_secs();
         }
         total
     }
@@ -381,7 +381,7 @@ impl Tasks {
 
     pub(crate) fn visible_tasks(&self) -> Vec<&Task> {
         if self.depth == 0 {
-            return self.get_current_task().into_iter().collect();
+            return vec![];
         }
         if self.view.len() > 0 {
             return self.resolve_tasks(self.view.iter()).collect();
@@ -413,11 +413,21 @@ impl Tasks {
             )?;
             writeln!(lock, "{}", t.descriptions().join("\n"))?;
         }
+
+        let mut tasks = self.visible_tasks();
+        if tasks.is_empty() {
+            let (label, times) = self.times_tracked();
+            let mut times_recent = times.rev().take(6).collect_vec();
+            times_recent.reverse();
+            // TODO Add recent prefix
+            writeln!(lock, "{}\n{}", label.italic(), times_recent.join("\n"))?;
+            return Ok(());
+        }
+        
         // TODO proper column alignment
         // TODO hide empty columns
         writeln!(lock, "{}", self.properties.join("\t").bold())?;
         let mut total_time = 0;
-        let mut tasks = self.visible_tasks();
         let count = tasks.len();
         tasks.sort_by_cached_key(|task| {
             self.sorting
@@ -951,22 +961,21 @@ fn timestamps<'a>(events: impl Iterator<Item=&'a Event>, ids: &'a Vec<&'a EventI
 
 /// Iterates Events to accumulate times tracked
 /// Expects a sorted iterator
-struct TimesTracked<'a> {
+struct Durations<'a> {
     events: Box<dyn Iterator<Item=&'a Event> + 'a>,
     ids: &'a Vec<&'a EventId>,
     threshold: Option<Timestamp>,
 }
-impl TimesTracked<'_> {
-    fn from<'b>(events: impl IntoIterator<Item=&'b Event> + 'b, ids: &'b Vec<&EventId>) -> TimesTracked<'b> {
-        TimesTracked {
+impl Durations<'_> {
+    fn from<'b>(events: impl IntoIterator<Item=&'b Event> + 'b, ids: &'b Vec<&EventId>) -> Durations<'b> {
+        Durations {
             events: Box::new(events.into_iter()),
             ids,
             threshold: Some(Timestamp::now()),
         }
     }
 }
-
-impl Iterator for TimesTracked<'_> {
+impl Iterator for Durations<'_> {
     type Item = Duration;
 
     fn next(&mut self) -> Option<Self::Item> {

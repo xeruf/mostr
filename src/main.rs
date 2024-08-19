@@ -456,12 +456,12 @@ async fn main() {
                     Some('(') => {
                         if let Some(arg) = arg {
                             if tasks.track_from(arg) {
-                                let (prefix, tracked) = tasks.times_tracked();
-                                println!("{}\n{}", prefix.bold(), tracked.rev().take(15).join("\n"));
+                                let (label, times) = tasks.times_tracked();
+                                println!("{}\n{}", label.italic(), times.rev().take(15).join("\n"));
                             }
                         } else {
-                            let (prefix, mut tracked) = tasks.times_tracked();
-                            println!("{}\n{}", prefix.bold(), tracked.join("\n"));
+                            let (label, mut times) = tasks.times_tracked();
+                            println!("{}\n{}", label.italic(), times.join("\n"));
                         }
                         continue;
                     }
