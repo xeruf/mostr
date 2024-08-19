@@ -473,10 +473,13 @@ async fn main() {
                     }
 
                     Some(')') => {
-                        tasks.move_to(None);
-                        if let Some(arg) = arg {
-                            if !tasks.track_from(arg) {
-                                continue;
+                        match arg {
+                            None => tasks.move_to(None),
+                            Some(arg) => {
+                                if parse_tracking_stamp(arg).map(|stamp| tasks.track_at(stamp, None)).is_none() {
+                                    // So the error message is not covered up
+                                    continue
+                                }
                             }
                         }
                     }
