@@ -379,15 +379,49 @@ async fn main() {
                     }
 
                     Some('@') => {
-                        let key = arg.and_then(|a| PublicKey::from_str(a).ok()).unwrap_or_else(|| keys.public_key());
-                        let author = tasks.get_author(&key);
-                        info!("Filtering for events by {author}");
-                        tasks.set_filter(
-                            tasks.filtered_tasks(tasks.get_position_ref())
-                                .filter(|t| t.event.pubkey == key)
-                                .map(|t| t.event.id)
-                                .collect()
-                        )
+                        match arg {
+                            None => {
+                                let today = Timestamp::from(Timestamp::now() - 80_000);
+                                info!("Filtering for tasks from the last 22 hours");
+                                tasks.set_filter(
+                                    tasks.filtered_tasks(tasks.get_position_ref())
+                                        .filter(|t| t.event.created_at > today)
+                                        .map(|t| t.event.id)
+                                        .collect()
+                                );
+                            }
+                            Some(arg) => {
+                                if arg == "@" {
+                                    let key = keys.public_key();
+                                    info!("Filtering for own tasks");
+                                    tasks.set_filter(
+                                        tasks.filtered_tasks(tasks.get_position_ref())
+                                            .filter(|t| t.event.pubkey == key)
+                                            .map(|t| t.event.id)
+                                            .collect()
+                                    )
+                                } else if let Ok(key) = PublicKey::from_str(arg) {
+                                    let author = tasks.get_author(&key);
+                                    info!("Filtering for tasks by {author}");
+                                    tasks.set_filter(
+                                        tasks.filtered_tasks(tasks.get_position_ref())
+                                            .filter(|t| t.event.pubkey == key)
+                                            .map(|t| t.event.id)
+                                            .collect()
+                                    )
+                                } else {
+                                    parse_date(arg).map(|time| {
+                                        info!("Filtering for tasks from {}", time); // TODO localize
+                                        tasks.set_filter(
+                                            tasks.filtered_tasks(tasks.get_position_ref())
+                                                .filter(|t| t.event.created_at.as_u64() as i64 > time.timestamp())
+                                                .map(|t| t.event.id)
+                                                .collect()
+                                        );
+                                    });
+                                }
+                            }
+                        }
                     }
 
                     Some('*') => {

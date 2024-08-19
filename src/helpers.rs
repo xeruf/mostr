@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::io::{stdin, stdout, Write};
 
-use chrono::{Local, NaiveDateTime, TimeZone};
+use chrono::{DateTime, Local, NaiveDateTime, TimeZone, Utc};
 use chrono::LocalResult::Single;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::Timestamp;
@@ -30,24 +30,28 @@ pub fn prompt(prompt: &str) -> Option<String> {
     }
 }
 
+pub fn parse_date(str: &str) -> Option<DateTime<Utc>> {
+    // Using two libraries for better exhaustiveness, see https://github.com/uutils/parse_datetime/issues/84
+    match interim::parse_date_string(str, Local::now(), interim::Dialect::Us) {
+        Ok(date) => Some(date.to_utc()),
+        Err(e) => {
+            match parse_datetime::parse_datetime_at_date(Local::now(), str) {
+                Ok(date) => Some(date.to_utc()),
+                Err(_) => {
+                    warn!("Could not parse date from {str}: {e}");
+                    None
+                }
+            }
+        }
+    }
+}
+
 pub fn parse_tracking_stamp(str: &str) -> Option<Timestamp> {
     let stripped = str.trim().trim_start_matches('+').trim_start_matches("in ");
     if let Ok(num) = stripped.parse::<i64>() {
         return Some(Timestamp::from(Timestamp::now().as_u64().saturating_add_signed(num * 60)));
     }
-    // Using two libraries for better exhaustiveness, see https://github.com/uutils/parse_datetime/issues/84
-    match interim::parse_date_string(stripped, Local::now(), interim::Dialect::Us) {
-        Ok(date) => Some(date.to_utc()),
-        Err(e) => {
-            match parse_datetime::parse_datetime_at_date(Local::now(), stripped) {
-                Ok(date) => Some(date.to_utc()),
-                Err(_) => {
-                    warn!("Could not parse time from {str}: {e}");
-                    None
-                }
-            }
-        }
-    }.and_then(|time| {
+    parse_date(str).and_then(|time| {
         if time.timestamp() > 0 {
             Some(Timestamp::from(time.timestamp() as u64))
         } else {
