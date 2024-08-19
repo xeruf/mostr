@@ -16,7 +16,7 @@ use nostr_sdk::prelude::Marker;
 use TagStandard::Hashtag;
 
 use crate::{EventSender, MostrMessage};
-use crate::helpers::{format_stamp, local_datetimestamp, relative_datetimestamp, some_non_empty};
+use crate::helpers::{format_stamp, local_datetimestamp, parse_tracking_stamp, relative_datetimestamp, some_non_empty};
 use crate::kinds::*;
 use crate::task::{MARKER_DEPENDS, MARKER_PARENT, State, Task, TaskState};
 
@@ -686,51 +686,17 @@ impl Tasks {
     /// Parse string and set tracking
     /// Returns false and prints a message if parsing failed
     pub(crate) fn track_from(&mut self, str: &str) -> bool {
-        // Using two libraries for better exhaustiveness, see https://github.com/uutils/parse_datetime/issues/84
-        let stripped = str.trim().trim_start_matches('+').trim_start_matches("in ");
-        if let Ok(num) = stripped.parse::<i64>() {
-            self.track_at(Timestamp::from(Timestamp::now().as_u64().saturating_add_signed(num * 60)));
-            return true;
-        }
-        match interim::parse_date_string(stripped, Local::now(), interim::Dialect::Us) {
-            Ok(date) => Some(date.to_utc()),
-            Err(e) => {
-                match parse_datetime::parse_datetime_at_date(Local::now(), stripped) {
-                    Ok(date) => Some(date.to_utc()),
-                    Err(_) => {
-                        warn!("Could not parse time from {str}: {e}");
-                        None
-                    }
-                }
-            }
-        }.filter(|time| {
-            if time.timestamp() > 0 {
-                self.track_at(Timestamp::from(time.timestamp() as u64));
-                true
-            } else {
-                warn!("Can only track times after 1970!");
-                false
-            }
-        }).is_some()
+        parse_tracking_stamp(str)
+            .map(|stamp| self.track_at(stamp, self.get_position()))
+            .is_some()
     }
 
-    pub(crate) fn track_at(&mut self, time: Timestamp) -> EventId {
-        info!("{} from {}", self.position.map_or(String::from("Stopping time-tracking"), |id| format!("Tracking \"{}\"", self.get_task_title(&id))), relative_datetimestamp(&time));
-        let pos = self.get_position();
-        let tracking = build_tracking(pos);
-        // TODO this can lead to funny omittals
-        self.get_own_history().map(|events| {
-            if let Some(event) = events.pop_last() {
-                if event.kind.as_u16() == TRACKING_KIND &&
-                    (pos == None && event.tags.is_empty()) ||
-                    event.tags.iter().all(|t| t.content().map(|str| str.to_string()) == pos.map(|id| id.to_string())) {
-                    // Replace last for easier calculation
-                } else {
-                    events.insert(event);
-                }
-            }
-        });
-        self.submit(tracking.custom_created_at(time))
+    pub(crate) fn track_at(&mut self, time: Timestamp, task: Option<EventId>) -> EventId {
+        info!("{} from {}", task.map_or(String::from("Stopping time-tracking"), |id| format!("Tracking \"{}\"", self.get_task_title(&id))), relative_datetimestamp(&time));
+        self.submit(
+            build_tracking(task)
+                .custom_created_at(time)
+        )
     }
 
     /// Sign and queue the event to the relay, returning its id
@@ -1096,16 +1062,14 @@ mod tasks_test {
         let mut tasks = stub_tasks();
         let zero = EventId::all_zeros();
 
-        tasks.track_at(Timestamp::from(0));
+        tasks.track_at(Timestamp::from(0), None);
         assert_eq!(tasks.history.len(), 1);
 
-        tasks.move_to(Some(zero));
         let now: Timestamp = Timestamp::now() - 2u64;
-        tasks.track_at(Timestamp::from(1));
+        tasks.track_at(Timestamp::from(1), Some(zero));
         assert!(tasks.time_tracked(zero) > now.as_u64());
 
-        tasks.move_to(None);
-        tasks.track_at(Timestamp::from(2));
+        tasks.track_at(Timestamp::from(2), None);
         assert_eq!(tasks.get_own_history().unwrap().len(), 3);
         assert_eq!(tasks.time_tracked(zero), 1);
 
@@ -1118,8 +1082,7 @@ mod tasks_test {
         let mut tasks = stub_tasks();
         let zero = EventId::all_zeros();
 
-        tasks.move_to(Some(zero));
-        tasks.track_at(Timestamp::from(Timestamp::now().as_u64() + 100));
+        tasks.track_at(Timestamp::from(Timestamp::now().as_u64() + 100), Some(zero));
         assert_eq!(timestamps(tasks.history.values().nth(0).unwrap().into_iter(), &vec![&zero]).collect_vec().len(), 2)
         // TODO Does not show both future and current tracking properly, need to split by current time
     }

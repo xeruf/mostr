@@ -30,6 +30,33 @@ pub fn prompt(prompt: &str) -> Option<String> {
     }
 }
 
+pub fn parse_tracking_stamp(str: &str) -> Option<Timestamp> {
+    let stripped = str.trim().trim_start_matches('+').trim_start_matches("in ");
+    if let Ok(num) = stripped.parse::<i64>() {
+        return Some(Timestamp::from(Timestamp::now().as_u64().saturating_add_signed(num * 60)));
+    }
+    // Using two libraries for better exhaustiveness, see https://github.com/uutils/parse_datetime/issues/84
+    match interim::parse_date_string(stripped, Local::now(), interim::Dialect::Us) {
+        Ok(date) => Some(date.to_utc()),
+        Err(e) => {
+            match parse_datetime::parse_datetime_at_date(Local::now(), stripped) {
+                Ok(date) => Some(date.to_utc()),
+                Err(_) => {
+                    warn!("Could not parse time from {str}: {e}");
+                    None
+                }
+            }
+        }
+    }.and_then(|time| {
+        if time.timestamp() > 0 {
+            Some(Timestamp::from(time.timestamp() as u64))
+        } else {
+            warn!("Can only track times after 1970!");
+            None
+        }
+    })
+}
+
 // For use in format strings but not possible, so need global find-replace
 pub const MAX_TIMESTAMP_WIDTH: u8 = 15;
 /// Format nostr Timestamp relative to local time 
