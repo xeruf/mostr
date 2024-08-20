@@ -115,7 +115,8 @@ Dot or slash can be repeated to move to parent tasks before acting.
 - `<[TEXT]` - close active task and move up, with optional status description
 - `!TEXT` - set status for current task from text and move up (empty: Open)
 - `,[TEXT]` - list notes or add text note (comment / description)
-- `*[INT]` - set priority - can also be used in task creation, with any digit
+- TBI: `*[INT]` - set priority - can also be used in task creation, with any digit
+- TBI: `;[TEXT]` - list comments or comment on task
 - TBI: show status history and creation with attribution
 - `&` - undo last action (moving in place or upwards confirms pending actions)
 - `wss://...` - switch or subscribe to relay (prefix with space to forcibly add a new one)
@@ -126,7 +127,7 @@ Property Filters:
 - `+TAG` - add tag filter
 - `-TAG` - remove tag filters by prefix
 - `?STATUS` - filter by status (type or description) - plain `?` to reset, `??` to show all
-- `@AUTHOR` - filter by author (`@` for self, id prefix, name prefix)
+- `@AUTHOR` - filter by time or author (pubkey, or `@` for self, TBI: id prefix, name prefix)
 - TBI: `**INT` - filter by priority
 - TBI: Filter by time
 
@@ -181,7 +182,6 @@ Considering to use Calendar: https://github.com/nostr-protocol/nips/blob/master/
 - Open Command characters: `_^\=$%~'"`, `{}[]`
 - Remove colon from task creation syntax
 - reassign undo to `&` and use `@` for people
-- maybe use `;` for sorting instead of `::`
   
 ### Conceptual
 
@@ -189,7 +189,7 @@ The following features are not ready to be implemented
 because they need conceptualization.
 Suggestions welcome!
 
-- Do not track time on Closed task?
+- Queueing tasks
 - Allow adding new parent via description?
 - Special commands: help, exit, tutorial, change log level
 - Duplicate task (subtasks? timetracking?)

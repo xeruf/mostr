@@ -48,7 +48,7 @@ Utilities:
 - `path` - name including parent tasks
 - `rpath` - name including parent tasks up to active task
 - TBI `depends` - list all tasks this task depends on before it becomes actionable
-Debugging: `pubkey`, `props`, `alltags`, `descriptions`";
+Debugging: `kind`, `pubkey`, `props`, `alltags`, `descriptions`";
 
 pub(crate) fn build_tracking<I>(id: I) -> EventBuilder
 where

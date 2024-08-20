@@ -157,6 +157,7 @@ impl Task {
             "name" => Some(self.event.content.clone()),
             "pubkey" => Some(self.event.pubkey.to_string()),
             "created" => Some(local_datetimestamp(&self.event.created_at)),
+            "kind" => Some(self.event.kind.to_string()),
             // Dynamic
             "status" => self.state_label().map(|c| c.to_string()),
             "desc" => self.descriptions().last().cloned(),
