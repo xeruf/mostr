@@ -38,7 +38,7 @@ const INACTVITY_DELAY: u64 = 200;
 
 /// Turn a Result into an Option, showing a warning on error with optional prefix
 macro_rules! or_warn {
-    ($result:expr $(,)?) => {
+    ($result:expr) => {
         match $result {
             Ok(value) => Some(value),
             Err(error) => {
@@ -47,15 +47,15 @@ macro_rules! or_warn {
             }
         }
     };
-    ($result:expr, $msg:expr $(,)?) => {
+    ($result:expr, $msg:expr $(, $($arg:tt)*)?) => {
         match $result {
             Ok(value) => Some(value),
             Err(error) => {
-                warn!("{}: {}", $msg, error);
+                warn!("{}: {}", format!($msg, $($($arg)*)?), error);
                 None
             }
         }
-    };
+    }
 }
 
 type Events = Vec<Event>;
@@ -153,7 +153,7 @@ async fn main() {
             .init();
     }
 
-    let config_dir = or_warn!(BaseDirectories::new(), "Could not obtain config directory")
+    let config_dir = or_warn!(BaseDirectories::new(), "Could not determine config directory")
         .and_then(|d| or_warn!(d.create_config_directory("mostr"), "Could not create config directory"))
         .unwrap_or(PathBuf::new());
     let keysfile = config_dir.join("key");
@@ -163,9 +163,12 @@ async fn main() {
         Ok(Ok(key)) => key,
         _ => {
             warn!("Could not read keys from {}", keysfile.to_string_lossy());
-            let keys = prompt("Secret Key?")
+            let keys = prompt("Secret key?")
                 .and_then(|s| or_warn!(Keys::from_str(&s)))
-                .unwrap_or_else(|| Keys::generate());
+                .unwrap_or_else(|| {
+                    info!("Generating and persisting new key");
+                    Keys::generate()
+                });
             or_warn!(fs::write(&keysfile, keys.secret_key().unwrap().to_string()));
             keys
         }
@@ -609,9 +612,8 @@ async fn main() {
                                 or_warn!(tasks.print_tasks());
                                 continue;
                             }
-                            match Url::parse(&input) {
-                                Err(e) => warn!("Failed to parse url \"{input}\": {}", e),
-                                Ok(url) => match tx.send(MostrMessage::NewRelay(url.clone())).await {
+                            or_warn!(Url::parse(&input), "Failed to parse url {}", input).map(|url| {
+                                match tx.try_send(MostrMessage::NewRelay(url.clone())) {
                                     Err(e) => error!("Nostr communication thread failure, cannot add relay \"{url}\": {e}"),
                                     Ok(_) => {
                                         info!("Connecting to {url}");
@@ -619,7 +621,7 @@ async fn main() {
                                         relays.insert(url.clone(), tasks_for_url(Some(url)));
                                     }
                                 }
-                            }
+                            });
                             continue;
                         } else {
                             tasks.filter_or_create(tasks.get_position().as_ref(), &input);
