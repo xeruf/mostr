@@ -180,13 +180,13 @@ async fn main() {
         },
     }
 
+    let mut notifications = client.notifications();
+    client.connect().await;
+
     let sub1 = client.subscribe(vec![
         Filter::new().kinds(KINDS.into_iter().map(|k| Kind::from(k)))
     ], None).await;
     info!("Subscribed to tasks with {:?}", sub1);
-
-    let mut notifications = client.notifications();
-    client.connect().await;
 
     let sub2 = client.subscribe(vec![
         Filter::new().kinds(PROP_KINDS.into_iter().map(|k| Kind::from(k)))
@@ -201,20 +201,13 @@ async fn main() {
     let sender = tokio::spawn(async move {
         let mut queue: Option<(Url, Vec<Event>)> = None;
 
-        loop {
-            if let Ok(user) = var("USER") {
-                let metadata = Metadata::new()
-                    .name(user);
-                //    .display_name("My Username")
-                //    .about("Description")
-                //    .picture(Url::parse("https://example.com/avatar.png")?)
-                //    .banner(Url::parse("https://example.com/banner.png")?)
-                //    .nip05("username@example.com")
-                //    .lud16("yuki@getalby.com")
-                //    .custom_field("custom_field", "my value");
-                or_print(client.set_metadata(&metadata).await);
-            }
+        if let Ok(user) = var("USER") {
+            let metadata = Metadata::new()
+                .name(user);
+            or_print(client.set_metadata(&metadata).await);
+        }
 
+        loop {
             let result_received = rx.recv_timeout(Duration::from_secs(INACTVITY_DELAY));
             match result_received {
                 Ok(MostrMessage::NewRelay(url)) => {
