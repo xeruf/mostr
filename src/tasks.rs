@@ -595,7 +595,7 @@ impl Tasks {
                 // No match, new task
                 self.view.clear();
                 if arg.len() > 2 {
-                    Some(self.make_task(arg))
+                    Some(self.make_task_with(arg, self.position_tags_for(position), true))
                 } else {
                     warn!("Name of a task needs to have at least 3 characters");
                     None
@@ -674,41 +674,47 @@ impl Tasks {
     }
 
     pub(crate) fn position_tags(&self) -> Vec<Tag> {
-        let mut tags = Vec::with_capacity(2);
-        self.parent_tag().map(|t| tags.push(t));
-        self.get_current_task()
-            .map(|t| {
-                if t.pure_state() == State::Procedure {
-                    t.children.iter()
-                        .filter_map(|id| self.get_by_id(id))
-                        .max()
-                        .map(|t| tags.push(self.make_event_tag(&t.event, MARKER_DEPENDS)));
-                }
-            });
-        tags
+        self.position_tags_for(self.get_position_ref())
+    }
+
+    pub(crate) fn position_tags_for(&self, position: Option<&EventId>) -> Vec<Tag> {
+        position.map_or(vec![], |pos| {
+            let mut tags = Vec::with_capacity(2);
+            tags.push(self.make_event_tag_from_id(*pos, MARKER_PARENT));
+            self.get_by_id(pos)
+                .map(|t| {
+                    if t.pure_state() == State::Procedure {
+                        t.children.iter()
+                            .filter_map(|id| self.get_by_id(id))
+                            .max()
+                            .map(|t| tags.push(self.make_event_tag(&t.event, MARKER_DEPENDS)));
+                    }
+                });
+            tags
+        })
     }
 
     /// Creates a task following the current state
+    ///
     /// Sanitizes input
     pub(crate) fn make_task(&mut self, input: &str) -> EventId {
-        self.make_task_with(input, empty(), true)
+        self.make_task_with(input, self.position_tags(), true)
     }
 
-    pub(crate) fn make_task_and_enter(&mut self, input: &str, state: State) -> EventId {
-        let id = self.make_task_with(input, empty(), false);
+    pub(crate) fn make_task_and_enter(&mut self, input: &str, state: State) {
+        let id = self.make_task_with(input, self.position_tags(), false);
         self.set_state_for(id, "", state);
         self.move_to(Some(id));
-        id
     }
 
-    /// Creates a task with tags from filter and position
+    /// Creates a task including current tag filters
+    ///
     /// Sanitizes input
     pub(crate) fn make_task_with(&mut self, input: &str, tags: impl IntoIterator<Item=Tag>, set_state: bool) -> EventId {
         let (input, input_tags) = extract_tags(input.trim());
         let id = self.submit(
             build_task(input, input_tags, None)
                 .add_tags(self.tags.iter().cloned())
-                .add_tags(self.position_tags())
                 .add_tags(tags.into_iter())
         );
         if set_state {
@@ -1104,19 +1110,16 @@ mod tasks_test {
         })
     }
 
-
     macro_rules! assert_position {
         ($left:expr, $right:expr $(,)?) => {
             assert_eq!($left.get_position_ref(), Some(&$right))
-            //assert_eq!($left, $right)
         };
     }
 
     #[test]
     fn test_procedures() {
         let mut tasks = stub_tasks();
-        let id = tasks.make_task_and_enter("proc: tags", State::Procedure);
-        assert_position!(tasks, id);
+        tasks.make_task_and_enter("proc: tags", State::Procedure);
         assert_eq!(tasks.get_own_history().unwrap().len(), 1);
         let side = tasks.submit(build_task("side", vec![tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)], None));
         assert_eq!(tasks.get_current_task().unwrap().children, HashSet::<EventId>::new());
@@ -1125,6 +1128,31 @@ mod tasks_test {
         assert_eq!(tasks.len(), 3);
         let sub = tasks.get_by_id(&sub_id).unwrap();
         assert_eq!(sub.get_dependendees(), Vec::<&EventId>::new());
+    }
+
+    #[test]
+    fn test_filter_or_create() {
+        let mut tasks = stub_tasks();
+        let zeros = EventId::all_zeros();
+        let zero = Some(&zeros);
+
+        let id1 = tasks.filter_or_create(zero, "new");
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks.visible_tasks().len(), 0);
+        assert_eq!(tasks.get_by_id(&id1.unwrap()).unwrap().parent_id(), zero);
+
+        tasks.move_to(zero.cloned());
+        assert_eq!(tasks.visible_tasks().len(), 1);
+        let sub = tasks.make_task("test");
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks.visible_tasks().len(), 2);
+        assert_eq!(tasks.get_by_id(&sub).unwrap().parent_id(), zero);
+
+        let id2 = tasks.filter_or_create(None, "new");
+        assert_eq!(tasks.len(), 3);
+        assert_eq!(tasks.visible_tasks().len(), 2);
+        let new2 = tasks.get_by_id(&id2.unwrap()).unwrap();
+        assert_eq!(new2.props, Default::default());
     }
 
     #[test]
@@ -1138,6 +1166,7 @@ mod tasks_test {
         let almost_now: Timestamp = Timestamp::now() - 12u64;
         tasks.track_at(Timestamp::from(11), Some(zero));
         tasks.track_at(Timestamp::from(13), Some(zero));
+        assert_position!(tasks, zero);
         assert!(tasks.time_tracked(zero) > almost_now.as_u64());
 
         tasks.track_at(Timestamp::from(22), None);
@@ -1260,7 +1289,7 @@ mod tasks_test {
         assert_eq!(tasks.relative_path(dangling), "test");
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // #[test]
     fn test_itertools() {
         use itertools::Itertools;
         assert_eq!(
