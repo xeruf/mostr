@@ -36,6 +36,28 @@ mod kinds;
 const UNDO_DELAY: u64 = 60;
 const INACTVITY_DELAY: u64 = 200;
 
+/// Turn a Result into an Option, showing a warning on error with optional prefix
+macro_rules! or_warn {
+    ($result:expr $(,)?) => {
+        match $result {
+            Ok(value) => Some(value),
+            Err(error) => {
+                warn!("{}", error);
+                None
+            }
+        }
+    };
+    ($result:expr, $msg:expr $(,)?) => {
+        match $result {
+            Ok(value) => Some(value),
+            Err(error) => {
+                warn!("{}: {}", $msg, error);
+                None
+            }
+        }
+    };
+}
+
 type Events = Vec<Event>;
 
 #[derive(Debug, Clone)]
@@ -131,8 +153,8 @@ async fn main() {
             .init();
     }
 
-    let config_dir = or_print(BaseDirectories::new())
-        .and_then(|d| or_print(d.create_config_directory("mostr")))
+    let config_dir = or_warn!(BaseDirectories::new(), "Could not obtain config directory")
+        .and_then(|d| or_warn!(d.create_config_directory("mostr"), "Could not create config directory"))
         .unwrap_or(PathBuf::new());
     let keysfile = config_dir.join("key");
     let relayfile = config_dir.join("relays");
@@ -142,9 +164,9 @@ async fn main() {
         _ => {
             warn!("Could not read keys from {}", keysfile.to_string_lossy());
             let keys = prompt("Secret Key?")
-                .and_then(|s| or_print(Keys::from_str(&s)))
+                .and_then(|s| or_warn!(Keys::from_str(&s)))
                 .unwrap_or_else(|| Keys::generate());
-            or_print(fs::write(&keysfile, keys.secret_key().unwrap().to_string()));
+            or_warn!(fs::write(&keysfile, keys.secret_key().unwrap().to_string()));
             keys
         }
     };
@@ -155,12 +177,12 @@ async fn main() {
     // TODO use NewRelay message for all relays
     match var("MOSTR_RELAY") {
         Ok(relay) => {
-            or_print(client.add_relay(relay).await);
+            or_warn!(client.add_relay(relay).await);
         }
         _ => match File::open(&relayfile).map(|f| BufReader::new(f).lines().flatten()) {
             Ok(lines) => {
                 for line in lines {
-                    or_print(client.add_relay(line).await);
+                    or_warn!(client.add_relay(line).await);
                 }
             }
             Err(e) => {
@@ -171,9 +193,9 @@ async fn main() {
                     } else {
                         "wss://".to_string() + &line
                     };
-                    or_print(client.add_relay(url.clone()).await).map(|bool| {
+                    or_warn!(client.add_relay(url.clone()).await).map(|bool| {
                         if bool {
-                            or_print(fs::write(&relayfile, url));
+                            or_warn!(fs::write(&relayfile, url));
                         }
                     });
                 };
@@ -205,7 +227,7 @@ async fn main() {
         if let Ok(user) = var("USER") {
             let metadata = Metadata::new()
                 .name(user);
-            or_print(client.set_metadata(&metadata).await);
+            or_warn!(client.set_metadata(&metadata).await);
         }
 
         loop {
@@ -584,7 +606,7 @@ async fn main() {
                             tasks.move_to(None);
                             if let Some((url, tasks)) = relays.iter().find(|(key, _)| key.as_str().starts_with(&input)) {
                                 selected_relay = Some(url.clone());
-                                or_print(tasks.print_tasks());
+                                or_warn!(tasks.print_tasks());
                                 continue;
                             }
                             match Url::parse(&input) {
@@ -603,7 +625,7 @@ async fn main() {
                             tasks.filter_or_create(tasks.get_position().as_ref(), &input);
                         }
                 }
-                or_print(tasks.print_tasks());
+                or_warn!(tasks.print_tasks());
             }
             Some(Err(e)) => warn!("{}", e),
             None => break,
@@ -616,5 +638,5 @@ async fn main() {
     drop(relays);
 
     info!("Submitting pending updates...");
-    or_print(sender.await);
+    or_warn!(sender.await);
 }
