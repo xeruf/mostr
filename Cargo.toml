@@ -21,7 +21,7 @@ colog = "1.3"
 colored = "2.1"
 parse_datetime = "0.5.0"
 interim = { version = "0.1", features = ["chrono"] }
-nostr-sdk = "0.33" # { git = "https://github.com/rust-nostr/nostr" }
+nostr-sdk = "0.34" # { git = "https://github.com/rust-nostr/nostr" }
 tokio = { version = "1.37", features = ["rt", "rt-multi-thread", "macros"] }
 regex = "1.10.5"
 

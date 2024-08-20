@@ -765,7 +765,7 @@ impl Tasks {
 
     pub(crate) fn add_task(&mut self, event: Event) {
         if self.tasks.contains_key(&event.id) {
-            debug!("Did not insert duplicate event {}", event.id); // TODO warn in next sdk version
+            warn!("Did not insert duplicate event {}", event.id);
         } else {
             let id = event.id;
             let task = Task::new(event);
