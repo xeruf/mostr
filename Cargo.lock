@@ -304,6 +304,12 @@ dependencies = [
 
 [[package]]
 name = "bitflags"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8dead7461c1127cf637931a1e50934eb6eee8bff2f74433ac7909e9afcee04a3"
+
+[[package]]
+name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
@@ -1198,6 +1204,7 @@ dependencies = [
  "parse_datetime",
  "regex",
  "rustyline",
+ "rustylinez",
  "tokio",
  "xdg",
 ]
@@ -1215,6 +1222,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77a5d83df9f36fe23f0c3648c6bbb8b0298bb5f1939c8f2704431371f4b84d43"
 dependencies = [
  "smallvec",
+]
+
+[[package]]
+name = "nix"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfb3ddedaa14746434a02041940495bf11325c22f6d36125d3bdd56090d50a79"
+dependencies = [
+ "bitflags 0.4.0",
+ "libc",
 ]
 
 [[package]]
@@ -1812,6 +1829,16 @@ dependencies = [
  "unicode-width",
  "utf8parse",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "rustylinez"
+version = "0.2.2"
+source = "git+https://github.com/xeruf/rustylinez?rev=c2cd6178#c2cd617830fb15bd5c95c6f17809e91b95660889"
+dependencies = [
+ "libc",
+ "nix 0.5.1",
+ "unicode-width",
 ]
 
 [[package]]

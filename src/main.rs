@@ -3,7 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use std::env::{args, var};
 use std::fs;
 use std::fs::File;
-use std::io::{BufRead, BufReader, stdin, stdout, Write};
+use std::io::{BufRead, BufReader};
 use std::iter::once;
 use std::ops::Sub;
 use std::path::PathBuf;
@@ -11,12 +11,14 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use colored::Colorize;
-use env_logger::Builder;
+use env_logger::{Builder, Target, WriteStyle};
 use itertools::Itertools;
 use log::{debug, error, info, LevelFilter, trace, warn};
 use nostr_sdk::prelude::*;
 use nostr_sdk::TagStandard::Hashtag;
 use regex::Regex;
+use rustylinez::Editor;
+use rustylinez::error::ReadlineError;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::error::Elapsed;
@@ -138,20 +140,22 @@ pub(crate) enum MostrMessage {
 
 #[tokio::main]
 async fn main() {
+    let mut rl = Editor::new();
+
     let mut args = args().skip(1).peekable();
     if args.peek().is_some_and(|arg| arg == "--debug") {
         args.next();
-        Builder::new()
-            .filter(None, LevelFilter::Debug)
+        let mut builder = Builder::new();
+        builder.filter(None, LevelFilter::Debug)
             //.filter(Some("mostr"), LevelFilter::Trace)
-            .parse_default_env()
-            .init();
+            .parse_default_env();
+        builder
     } else {
-        colog::default_builder()
-            .filter(Some("nostr-relay-pool"), LevelFilter::Error)
+        let mut builder = colog::default_builder();
+        builder.filter(Some("nostr-relay-pool"), LevelFilter::Error);
             //.filter(Some("nostr-relay-pool::relay::internal"), LevelFilter::Off)
-            .init();
-    }
+        builder
+    }.write_style(WriteStyle::Always).target(Target::Pipe(Box::new(rl.get_printer()))).init();
 
     let config_dir = or_warn!(BaseDirectories::new(), "Could not determine config directory")
         .and_then(|d| or_warn!(d.create_config_directory("mostr"), "Could not create config directory"))
@@ -292,21 +296,19 @@ async fn main() {
         }
     }
 
-    let mut lines = stdin().lines();
     loop {
         trace!("All Root Tasks:\n{}", relays.iter().map(|(url, tasks)|
             format!("{}: [{}]", url, tasks.children_of(None).map(|id| tasks.get_task_title(id)).join("; "))).join("\n"));
         println!();
         let tasks = selected_relay.as_ref().and_then(|url| relays.get(url)).unwrap_or(&local_tasks);
-        print!(
+        let prompt = format!(
             "{} {}{}) ",
             selected_relay.as_ref().map_or("TEMP".to_string(), |url| url.to_string()).bright_black(),
             tasks.get_task_path(tasks.get_position()).bold(),
             tasks.get_prompt_suffix().italic(),
         );
-        stdout().flush().unwrap();
-        match lines.next() {
-            Some(Ok(input)) => {
+        match rl.readline(&prompt) {
+            Ok(input) => {
                 let mut count = 0;
                 while let Ok(notification) = notifications.try_recv() {
                     if let RelayPoolNotification::Event {
@@ -629,8 +631,9 @@ async fn main() {
                 }
                 or_warn!(tasks.print_tasks());
             }
-            Some(Err(e)) => warn!("{}", e),
-            None => break,
+            Err(ReadlineError::Eof) => break,
+            Err(ReadlineError::Interrupted) => break, // TODO exit if prompt was empty, or clear
+            Err(e) => warn!("{}", e),
         }
     }
     println!();

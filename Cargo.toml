@@ -24,6 +24,7 @@ interim = { version = "0.1", features = ["chrono"] }
 nostr-sdk = "0.34" # { git = "https://github.com/rust-nostr/nostr" }
 tokio = { version = "1.37", features = ["rt", "rt-multi-thread", "macros"] }
 regex = "1.10.5"
+rustylinez = { git = "https://github.com/xeruf/rustylinez", rev = "c2cd6178" }
 
 [dev-dependencies]
 chrono-english = "0.1"
