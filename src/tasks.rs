@@ -4,7 +4,6 @@ use std::io::{Error, stdout, Write};
 use std::iter::{empty, once};
 use std::ops::{Div, Rem};
 use std::str::FromStr;
-use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use chrono::Local;
@@ -105,7 +104,7 @@ impl Display for StateFilter {
 }
 
 impl Tasks {
-    pub(crate) fn from(url: Option<Url>, tx: &Sender<MostrMessage>, keys: &Keys) -> Self {
+    pub(crate) fn from(url: Option<Url>, tx: &tokio::sync::mpsc::Sender<MostrMessage>, keys: &Keys) -> Self {
         Self::with_sender(EventSender {
             url,
             tx: tx.clone(),
@@ -1093,10 +1092,10 @@ mod tasks_test {
     use super::*;
 
     fn stub_tasks() -> Tasks {
-        use std::sync::mpsc;
+        use tokio::sync::mpsc;
         use nostr_sdk::Keys;
 
-        let (tx, _rx) = mpsc::channel();
+        let (tx, _rx) = mpsc::channel(16);
         Tasks::with_sender(EventSender {
             url: None,
             tx,

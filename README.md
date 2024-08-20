@@ -172,8 +172,6 @@ Considering to use Calendar: https://github.com/nostr-protocol/nips/blob/master/
 
 ### Fixes
 
-- New Relay does not load until next is added
-  https://github.com/rust-nostr/nostr/issues/533
 - Handle event sending rejections (e.g. permissions)
 - Recursive filter handling
 
