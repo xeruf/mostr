@@ -1,7 +1,7 @@
-use std::fmt::Display;
 use std::io::{stdin, stdout, Write};
+use std::ops::Sub;
 
-use chrono::{DateTime, Local, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, Local, TimeDelta, TimeZone, Utc};
 use chrono::LocalResult::Single;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::Timestamp;
@@ -17,6 +17,22 @@ pub fn prompt(prompt: &str) -> Option<String> {
         Some(Ok(line)) => Some(line),
         _ => None,
     }
+}
+
+/// Parses the hour from a plain number in the String,
+/// with max of max_future hours into the future.
+pub fn parse_hour(str: &str, max_future: i64) -> Option<DateTime<Local>> {
+    str.parse::<u32>().ok().and_then(|hour| {
+        let now = Local::now();
+        #[allow(deprecated)]
+        now.date().and_hms_opt(hour, 0, 0).map(|time| {
+            if time - now > TimeDelta::hours(max_future) {
+                time.sub(TimeDelta::days(1))
+            } else {
+                time
+            }
+        })
+    })
 }
 
 pub fn parse_date(str: &str) -> Option<DateTime<Utc>> {

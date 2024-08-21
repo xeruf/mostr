@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
+use chrono::Local;
 use colored::Colorize;
 use env_logger::{Builder, Target, WriteStyle};
 use itertools::Itertools;
@@ -27,7 +28,7 @@ use xdg::BaseDirectories;
 
 use crate::helpers::*;
 use crate::kinds::{KINDS, PROP_KINDS, PROPERTY_COLUMNS, TRACKING_KIND};
-use crate::task::{MARKER_DEPENDS, MARKER_PARENT, State};
+use crate::task::{MARKER_DEPENDS, State};
 use crate::tasks::{PropertyCollection, StateFilter, Tasks};
 
 mod helpers;
@@ -403,7 +404,7 @@ async fn main() {
                         match arg {
                             None => {
                                 let today = Timestamp::from(Timestamp::now() - 80_000);
-                                info!("Filtering for tasks from the last 22 hours");
+                                info!("Filtering for tasks created in the last 22 hours");
                                 tasks.set_filter(
                                     tasks.filtered_tasks(tasks.get_position_ref())
                                         .filter(|t| t.event.created_at > today)
@@ -431,15 +432,17 @@ async fn main() {
                                             .collect()
                                     )
                                 } else {
-                                    parse_date(arg).map(|time| {
-                                        info!("Filtering for tasks from {}", time); // TODO localize
-                                        tasks.set_filter(
-                                            tasks.filtered_tasks(tasks.get_position_ref())
-                                                .filter(|t| t.event.created_at.as_u64() as i64 > time.timestamp())
-                                                .map(|t| t.event.id)
-                                                .collect()
-                                        );
-                                    });
+                                    parse_hour(arg, 1)
+                                        .or_else(|| parse_date(arg).map(|utc| utc.with_timezone(&Local)))
+                                        .map(|time| {
+                                            info!("Filtering for tasks created after {}", time);
+                                            tasks.set_filter(
+                                                tasks.filtered_tasks(tasks.get_position_ref())
+                                                    .filter(|t| t.event.created_at.as_u64() as i64 > time.to_utc().timestamp())
+                                                    .map(|t| t.event.id)
+                                                    .collect()
+                                            );
+                                        });
                                 }
                             }
                         }
