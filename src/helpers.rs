@@ -10,15 +10,6 @@ pub fn some_non_empty(str: &str) -> Option<String> {
     if str.is_empty() { None } else { Some(str.to_string()) }
 }
 
-pub fn prompt(prompt: &str) -> Option<String> {
-    print!("{} ", prompt);
-    stdout().flush().unwrap();
-    match stdin().lines().next() {
-        Some(Ok(line)) => Some(line),
-        _ => None,
-    }
-}
-
 /// Parses the hour from a plain number in the String,
 /// with max of max_future hours into the future.
 pub fn parse_hour(str: &str, max_future: i64) -> Option<DateTime<Local>> {

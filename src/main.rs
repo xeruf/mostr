@@ -168,7 +168,7 @@ async fn main() {
         Ok(Ok(key)) => key,
         _ => {
             warn!("Could not read keys from {}", keysfile.to_string_lossy());
-            let keys = prompt("Secret key?")
+            let keys = or_warn!(rl.readline("Secret key? "))
                 .and_then(|s| or_warn!(Keys::from_str(&s)))
                 .unwrap_or_else(|| {
                     info!("Generating and persisting new key");
@@ -195,7 +195,7 @@ async fn main() {
             }
             Err(e) => {
                 warn!("Could not read relays file: {}", e);
-                if let Some(line) = prompt("Relay?") {
+                if let Ok(line) = rl.readline("Relay? ") {
                     let url = if line.contains("://") {
                         line
                     } else {
