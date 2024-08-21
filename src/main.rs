@@ -38,6 +38,7 @@ mod kinds;
 
 const UNDO_DELAY: u64 = 60;
 const INACTVITY_DELAY: u64 = 200;
+const LOCAL_RELAY_NAME: &str = "TEMP";
 
 /// Turn a Result into an Option, showing a warning on error with optional prefix
 macro_rules! or_warn {
@@ -239,8 +240,8 @@ async fn main() -> Result<()> {
 
     let (tx, mut rx) = mpsc::channel::<MostrMessage>(64);
     let tasks_for_url = |url: Option<Url>| Tasks::from(url, &tx, &keys);
-    let mut relays: HashMap<Url, Tasks> =
-        client.relays().await.into_keys().map(|url| (url.clone(), tasks_for_url(Some(url)))).collect();
+    let mut relays: HashMap<Option<Url>, Tasks> =
+        client.relays().await.into_keys().map(|url| (Some(url.clone()), tasks_for_url(Some(url)))).collect();
 
     let sender = tokio::spawn(async move {
         let mut queue: Option<(Url, Vec<Event>)> = None;
@@ -300,11 +301,15 @@ async fn main() -> Result<()> {
         info!("Shutting down nostr communication thread");
     });
 
-    let mut local_tasks = Tasks::from(None, &tx, &keys);
-    let mut selected_relay: Option<Url> = relays.keys().nth(0).cloned();
+    if relays.is_empty() {
+        relays.insert(None, tasks_for_url(None));
+    }
+    let mut selected_relay: Option<Url> = relays.keys()
+        .find_or_first(|url| url.as_ref().is_some_and(|u| u.scheme() == "wss"))
+        .unwrap().clone();
 
     {
-        let tasks = selected_relay.as_ref().and_then(|url| relays.get_mut(&url)).unwrap_or_else(|| &mut local_tasks);
+        let tasks = relays.get_mut(&selected_relay).unwrap();
         for argument in args {
             tasks.make_task(&argument);
         }
@@ -312,12 +317,14 @@ async fn main() -> Result<()> {
 
     loop {
         trace!("All Root Tasks:\n{}", relays.iter().map(|(url, tasks)|
-            format!("{}: [{}]", url, tasks.children_of(None).map(|id| tasks.get_task_title(id)).join("; "))).join("\n"));
+            format!("{}: [{}]", 
+                url.as_ref().map(ToString::to_string).unwrap_or(LOCAL_RELAY_NAME.to_string()), 
+                tasks.children_of(None).map(|id| tasks.get_task_title(id)).join("; "))).join("\n"));
         println!();
-        let tasks = selected_relay.as_ref().and_then(|url| relays.get(url)).unwrap_or(&local_tasks);
+        let tasks = relays.get(&selected_relay).unwrap();
         let prompt = format!(
             "{} {}{}) ",
-            selected_relay.as_ref().map_or("TEMP".to_string(), |url| url.to_string()).bright_black(),
+            selected_relay.as_ref().map_or(LOCAL_RELAY_NAME.to_string(), |url| url.to_string()).bright_black(),
             tasks.get_task_path(tasks.get_position()).bold(),
             tasks.get_prompt_suffix().italic(),
         );
@@ -335,7 +342,7 @@ async fn main() -> Result<()> {
                             "At {} found {} kind {} content \"{}\" tags {:?}",
                             event.created_at, event.id, event.kind, event.content, event.tags.iter().map(|tag| tag.as_vec()).collect_vec()
                         );
-                        match relays.get_mut(&relay_url) {
+                        match relays.get_mut(&Some(relay_url.clone())) {
                             Some(tasks) => tasks.add(*event),
                             None => warn!("Event received from unknown relay {relay_url}: {:?}", *event)
                         }
@@ -354,7 +361,7 @@ async fn main() -> Result<()> {
                     None
                 };
                 let arg_default = arg.unwrap_or("");
-                let tasks = selected_relay.as_ref().and_then(|url| relays.get_mut(&url)).unwrap_or_else(|| &mut local_tasks);
+                let tasks = relays.get_mut(&selected_relay).unwrap();
                 match op {
                     None => {
                         debug!("Flushing Tasks because of empty command");
@@ -608,9 +615,9 @@ async fn main() -> Result<()> {
 
                             let filtered = tasks.filtered_tasks(pos)
                                 .filter(|t| {
-                                    transform(&t.event.content).contains(slice) || t.tags.iter().flatten().any(|tag|
-                                    tag.content().is_some_and(|s| transform(s).contains(slice))
-                                    )
+                                    transform(&t.event.content).contains(slice) ||
+                                        t.tags.iter().flatten().any(
+                                            |tag| tag.content().is_some_and(|s| transform(s).contains(slice)))
                                 })
                                 .map(|t| t.event.id)
                                 .collect_vec();
@@ -626,8 +633,8 @@ async fn main() -> Result<()> {
                     _ =>
                         if Regex::new("^wss?://").unwrap().is_match(&input.trim()) {
                             tasks.move_to(None);
-                            if let Some((url, tasks)) = relays.iter().find(|(key, _)| key.as_str().starts_with(&input)) {
-                                selected_relay = Some(url.clone());
+                            if let Some((url, tasks)) = relays.iter().find(|(key, _)| key.as_ref().is_some_and(|url| url.as_str().starts_with(&input))) {
+                                selected_relay = url.clone();
                                 or_warn!(tasks.print_tasks());
                                 continue;
                             }
@@ -637,7 +644,7 @@ async fn main() -> Result<()> {
                                     Ok(_) => {
                                         info!("Connecting to {url}");
                                         selected_relay = Some(url.clone());
-                                        relays.insert(url.clone(), tasks_for_url(Some(url)));
+                                        relays.insert(selected_relay.clone(), tasks_for_url(selected_relay.clone()));
                                     }
                                 }
                             });
@@ -656,7 +663,6 @@ async fn main() -> Result<()> {
     println!();
 
     drop(tx);
-    drop(local_tasks);
     drop(relays);
 
     info!("Submitting pending updates...");
