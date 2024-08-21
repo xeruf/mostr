@@ -238,18 +238,20 @@ async fn main() -> Result<()> {
     ], None).await;
     info!("Subscribed to updates with {:?}", sub2);
 
+    let metadata = var("USER").ok().map(
+        |user| Metadata::new().name(user));
+    let myMeta = metadata.clone();
+
     let (tx, mut rx) = mpsc::channel::<MostrMessage>(64);
-    let tasks_for_url = |url: Option<Url>| Tasks::from(url, &tx, &keys);
+    let tasks_for_url = |url: Option<Url>| Tasks::from(url, &tx, &keys, metadata.clone());
     let mut relays: HashMap<Option<Url>, Tasks> =
         client.relays().await.into_keys().map(|url| (Some(url.clone()), tasks_for_url(Some(url)))).collect();
 
     let sender = tokio::spawn(async move {
         let mut queue: Option<(Url, Vec<Event>)> = None;
 
-        if let Ok(user) = var("USER") {
-            let metadata = Metadata::new()
-                .name(user);
-            or_warn!(client.set_metadata(&metadata).await);
+        if let Some(meta) = myMeta.as_ref() {
+            or_warn!(client.set_metadata(meta).await, "Unable to set metadata");
         }
 
         loop {

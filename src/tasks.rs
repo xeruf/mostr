@@ -103,13 +103,15 @@ impl Display for StateFilter {
 }
 
 impl Tasks {
-    pub(crate) fn from(url: Option<Url>, tx: &tokio::sync::mpsc::Sender<MostrMessage>, keys: &Keys) -> Self {
-        Self::with_sender(EventSender {
+    pub(crate) fn from(url: Option<Url>, tx: &tokio::sync::mpsc::Sender<MostrMessage>, keys: &Keys, metadata: Option<Metadata>) -> Self {
+        let mut new = Self::with_sender(EventSender {
             url,
             tx: tx.clone(),
             keys: keys.clone(),
             queue: Default::default(),
-        })
+        });
+        metadata.map(|m| new.users.insert(keys.public_key(), m));
+        new
     }
 
     pub(crate) fn with_sender(sender: EventSender) -> Self {
