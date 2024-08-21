@@ -10,7 +10,7 @@ use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Event, EventId, Kind, Tag, TagStandard, Timestamp};
 
-use crate::helpers::{local_datetimestamp, some_non_empty};
+use crate::helpers::{format_timestamp_local, some_non_empty};
 use crate::kinds::{is_hashtag, TASK_KIND};
 
 pub static MARKER_PARENT: &str = "parent";
@@ -156,7 +156,7 @@ impl Task {
             "parentid" => self.parent_id().map(|i| i.to_string()),
             "name" => Some(self.event.content.clone()),
             "pubkey" => Some(self.event.pubkey.to_string()),
-            "created" => Some(local_datetimestamp(&self.event.created_at)),
+            "created" => Some(format_timestamp_local(&self.event.created_at)),
             "kind" => Some(self.event.kind.to_string()),
             // Dynamic
             "status" => self.state_label().map(|c| c.to_string()),

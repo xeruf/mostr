@@ -6,7 +6,6 @@ use std::ops::{Div, Rem};
 use std::str::FromStr;
 use std::time::Duration;
 
-use chrono::Local;
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
@@ -15,7 +14,7 @@ use nostr_sdk::prelude::Marker;
 use TagStandard::Hashtag;
 
 use crate::{EventSender, MostrMessage};
-use crate::helpers::{format_stamp, local_datetimestamp, parse_tracking_stamp, relative_datetimestamp, some_non_empty};
+use crate::helpers::{format_timestamp_local, format_timestamp_relative, format_timestamp_relative_to, parse_tracking_stamp, some_non_empty};
 use crate::kinds::*;
 use crate::task::{MARKER_DEPENDS, MARKER_PARENT, State, Task, TaskState};
 
@@ -189,7 +188,7 @@ impl Tasks {
                             .join(" "));
                         if new != last {
                             // TODO alternate color with grey between days
-                            full.push(format!("{:>15} {}", relative_datetimestamp(&event.created_at), new.as_ref().unwrap_or(&"---".to_string())));
+                            full.push(format!("{} {}", format_timestamp_local(&event.created_at), new.as_ref().unwrap_or(&"---".to_string())));
                             last = new;
                         }
                     }
@@ -206,18 +205,13 @@ impl Tasks {
                         let mut iter = timestamps(set.iter(), &ids).tuples();
                         while let Some(((start, _), (end, _))) = iter.next() {
                             vec.push(format!("{} - {} by {}",
-                                             local_datetimestamp(start),
-                                             // Only use full stamp when ambiguous (>1day)
-                                             if end.as_u64() - start.as_u64() > 80_000 {
-                                                 local_datetimestamp(end)
-                                             } else {
-                                                 format_stamp(end, "%H:%M")
-                                             },
+                                             format_timestamp_local(start),
+                                             format_timestamp_relative_to(end, start),
                                              self.get_author(key)))
                         }
                         iter.into_buffer()
                             .for_each(|(stamp, _)|
-                            vec.push(format!("{} started by {}", local_datetimestamp(stamp), self.get_author(key))));
+                            vec.push(format!("{} started by {}", format_timestamp_local(stamp), self.get_author(key))));
                         vec
                     }).sorted_unstable(); // TODO sorting depends on timestamp format - needed to interleave different people
                 (format!("Times Tracked on {:?}", self.get_task_title(&id)), Box::from(history))
@@ -409,10 +403,10 @@ impl Tasks {
             writeln!(
                 lock,
                 "Tracking since {} (total tracked time {}m) - {} since {}",
-                tracking_stamp.map_or("?".to_string(), |t| relative_datetimestamp(&t)),
+                tracking_stamp.map_or("?".to_string(), |t| format_timestamp_relative(&t)),
                 self.time_tracked(*t.get_id()) / 60,
                 state.get_label(),
-                relative_datetimestamp(&state.time)
+                format_timestamp_relative(&state.time)
             )?;
             writeln!(lock, "{}", t.descriptions().join("\n"))?;
         }
@@ -736,7 +730,7 @@ impl Tasks {
     }
 
     pub(crate) fn track_at(&mut self, time: Timestamp, task: Option<EventId>) -> EventId {
-        info!("{} from {}", task.map_or(String::from("Stopping time-tracking"), |id| format!("Tracking \"{}\"", self.get_task_title(&id))), relative_datetimestamp(&time));
+        info!("{} from {}", task.map_or(String::from("Stopping time-tracking"), |id| format!("Tracking \"{}\"", self.get_task_title(&id))), format_timestamp_relative(&time));
         self.submit(
             build_tracking(task)
                 .custom_created_at(time)

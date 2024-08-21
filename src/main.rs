@@ -392,7 +392,7 @@ async fn main() -> Result<()> {
                             None => {
                                 tasks.get_current_task().map_or_else(
                                     || info!("With a task selected, use ,NOTE to attach NOTE and , to list all its notes"),
-                                    |task| println!("{}", task.description_events().map(|e| format!("{} {}", local_datetimestamp(&e.created_at), e.content)).join("\n")),
+                                    |task| println!("{}", task.description_events().map(|e| format!("{} {}", format_timestamp_local(&e.created_at), e.content)).join("\n")),
                                 );
                                 continue;
                             }
@@ -448,10 +448,11 @@ async fn main() -> Result<()> {
                                     parse_hour(arg, 1)
                                         .or_else(|| parse_date(arg).map(|utc| utc.with_timezone(&Local)))
                                         .map(|time| {
-                                            info!("Filtering for tasks created after {}", time);
+                                            info!("Filtering for tasks created after {}", format_datetime_relative(time));
+                                            let threshold = time.to_utc().timestamp();
                                             tasks.set_filter(
                                                 tasks.filtered_tasks(tasks.get_position_ref())
-                                                    .filter(|t| t.event.created_at.as_u64() as i64 > time.to_utc().timestamp())
+                                                    .filter(|t| t.event.created_at.as_u64() as i64 > threshold)
                                                     .map(|t| t.event.id)
                                                     .collect()
                                             );

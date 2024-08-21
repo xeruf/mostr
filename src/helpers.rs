@@ -57,41 +57,60 @@ pub fn parse_tracking_stamp(str: &str) -> Option<Timestamp> {
     })
 }
 
-// For use in format strings but not possible, so need global find-replace
-pub const MAX_TIMESTAMP_WIDTH: u8 = 15;
-/// Format nostr Timestamp relative to local time 
-/// with optional day specifier or full date depending on distance to today
-pub fn relative_datetimestamp(stamp: &Timestamp) -> String {
+/// Format DateTime easily comprehensible for human but unambiguous.
+/// Length may vary.
+pub fn format_datetime_relative(time: DateTime<Local>) -> String {
+    let date = time.date_naive();
+    let prefix =
+        match Local::now()
+            .date_naive()
+            .signed_duration_since(date)
+            .num_days() {
+            -1 => "tomorrow ".into(),
+            0 => "".into(),
+            1 => "yesterday ".into(),
+            -3..=3 => date.format("%a ").to_string(),
+            //-10..=10 => date.format("%d. %a ").to_string(),
+            -100..=100 => date.format("%b %d ").to_string(),
+            _ => date.format("%y-%m-%d ").to_string(),
+        };
+    format!("{}{}", prefix, time.format("%H:%M"))
+}
+
+/// Format a nostr timestamp with the given formatting function.
+pub fn format_as_datetime<F>(stamp: &Timestamp, formatter: F) -> String
+where
+    F: Fn(DateTime<Local>) -> String,
+{
     match Local.timestamp_opt(stamp.as_u64() as i64, 0) {
-        Single(time) => {
-            let date = time.date_naive();
-            let prefix = match Local::now()
-                .date_naive()
-                .signed_duration_since(date)
-                .num_days()
-            {
-                -1 => "tomorrow ".into(),
-                0 => "".into(),
-                1 => "yesterday ".into(),
-                2..=6 => date.format("last %a ").to_string(),
-                _ => date.format("%y-%m-%d ").to_string(),
-            };
-            format!("{}{}", prefix, time.format("%H:%M"))
-        }
+        Single(time) => formatter(time),
         _ => stamp.to_human_datetime(),
     }
 }
 
-/// Format a nostr timestamp in a sensible comprehensive format
-pub fn local_datetimestamp(stamp: &Timestamp) -> String {
-    format_stamp(stamp, "%y-%m-%d %a %H:%M")
+/// Format nostr Timestamp relative to local time
+/// with optional day specifier or full date depending on distance to today.
+pub fn format_timestamp_relative(stamp: &Timestamp) -> String {
+    format_as_datetime(stamp, format_datetime_relative)
 }
 
-/// Format a nostr timestamp with the given format
-pub fn format_stamp(stamp: &Timestamp, format: &str) -> String {
-    match Local.timestamp_opt(stamp.as_u64() as i64, 0) {
-        Single(time) => time.format(format).to_string(),
-        _ => stamp.to_human_datetime(),
+/// Format nostr timestamp with the given format.
+pub fn format_timestamp(stamp: &Timestamp, format: &str) -> String {
+    format_as_datetime(stamp, |time| time.format(format).to_string())
+}
+
+/// Format nostr timestamp in a sensible comprehensive format with consistent length and consistent sorting.
+///
+/// Currently: 18 characters
+pub fn format_timestamp_local(stamp: &Timestamp) -> String {
+    format_timestamp(stamp, "%y-%m-%d %a %H:%M")
+}
+
+pub fn format_timestamp_relative_to(stamp: &Timestamp, reference: &Timestamp) -> String {
+    // Rough difference in days
+    match (stamp.as_u64() as i64 - reference.as_u64() as i64) / 80_000 {
+        0 => format_timestamp(stamp, "%H:%M"),
+        -3..=3 => format_timestamp(stamp, "%a %H:%M"),
+        _ => format_timestamp_local(stamp),
     }
 }
-
