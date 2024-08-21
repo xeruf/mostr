@@ -156,7 +156,7 @@ async fn main() -> Result<()> {
     } else {
         let mut builder = colog::default_builder();
         builder.filter(Some("nostr-relay-pool"), LevelFilter::Error);
-            //.filter(Some("nostr-relay-pool::relay::internal"), LevelFilter::Off)
+        //.filter(Some("nostr-relay-pool::relay::internal"), LevelFilter::Off)
         builder
     }.write_style(WriteStyle::Always).target(Target::Pipe(Box::new(rl.get_printer()))).init();
 
@@ -319,8 +319,8 @@ async fn main() -> Result<()> {
 
     loop {
         trace!("All Root Tasks:\n{}", relays.iter().map(|(url, tasks)|
-            format!("{}: [{}]", 
-                url.as_ref().map(ToString::to_string).unwrap_or(LOCAL_RELAY_NAME.to_string()), 
+            format!("{}: [{}]",
+                url.as_ref().map(ToString::to_string).unwrap_or(LOCAL_RELAY_NAME.to_string()),
                 tasks.children_of(None).map(|id| tasks.get_task_title(id)).join("; "))).join("\n"));
         println!();
         let tasks = relays.get(&selected_relay).unwrap();
@@ -546,6 +546,7 @@ async fn main() -> Result<()> {
                                 let (label, times) = tasks.times_tracked();
                                 println!("{}\n{}", label.italic(), times.rev().take(15).join("\n"));
                             }
+                            // TODO show history from author / pubkey
                         } else {
                             let (label, mut times) = tasks.times_tracked();
                             println!("{}\n{}", label.italic(), times.join("\n"));
@@ -559,7 +560,7 @@ async fn main() -> Result<()> {
                             Some(arg) => {
                                 if parse_tracking_stamp(arg).map(|stamp| tasks.track_at(stamp, None)).is_none() {
                                     // So the error message is not covered up
-                                    continue
+                                    continue;
                                 }
                             }
                         }

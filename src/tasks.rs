@@ -396,7 +396,7 @@ impl Tasks {
             let mut tracking_stamp: Option<Timestamp> = None;
             for elem in
                 timestamps(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &vec![t.get_id()])
-                    .map(|(e, o)| e) {
+                    .map(|(e, _)| e) {
                 if tracking_stamp.is_some() && elem > now {
                     break;
                 }

@@ -1,6 +1,7 @@
 /target
 /examples
 
+/.idea
 relays
 keys
 *.html
