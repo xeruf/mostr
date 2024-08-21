@@ -3,7 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use std::env::{args, var};
 use std::fs;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::iter::once;
 use std::ops::Sub;
 use std::path::PathBuf;
@@ -140,7 +140,8 @@ pub(crate) enum MostrMessage {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
+    // TODO preserve prompt lines
     let mut rl = Editor::new();
 
     let mut args = args().skip(1).peekable();
@@ -164,19 +165,31 @@ async fn main() {
     let keysfile = config_dir.join("key");
     let relayfile = config_dir.join("relays");
 
-    let keys = match fs::read_to_string(&keysfile).map(|s| Keys::from_str(&s)) {
-        Ok(Ok(key)) => key,
-        _ => {
-            warn!("Could not read keys from {}", keysfile.to_string_lossy());
-            let keys = or_warn!(rl.readline("Secret key? "))
-                .and_then(|s| or_warn!(Keys::from_str(&s)))
-                .unwrap_or_else(|| {
-                    info!("Generating and persisting new key");
-                    Keys::generate()
-                });
-            or_warn!(fs::write(&keysfile, keys.secret_key().unwrap().to_string()));
-            keys
-        }
+    let keys = if let Ok(Ok(key)) = fs::read_to_string(&keysfile).map(|s| Keys::from_str(&s)) {
+        key
+    } else {
+        warn!("Could not read keys from {}", keysfile.to_string_lossy());
+        let line = rl.readline("Secret key? (leave blank to generate and save a new keypair) ")?;
+        let keys = if line.is_empty() {
+            info!("Generating and persisting new key");
+            Keys::generate()
+        } else {
+            Keys::from_str(&line).inspect_err(|_| eprintln!())?
+        };
+        let mut file = match File::create_new(&keysfile) {
+            Ok(file) => file,
+            Err(e) => {
+                let line = rl.readline(&format!("Overwrite {}? (enter anything to abort) ", keysfile.to_string_lossy()))?;
+                if line.is_empty() {
+                    File::create(&keysfile)?
+                } else {
+                    eprintln!();
+                    Err(e)?
+                }
+            }
+        };
+        file.write_all(keys.secret_key().unwrap().to_string().as_bytes())?;
+        keys
     };
 
     let client = Client::new(&keys);
@@ -647,4 +660,6 @@ async fn main() {
 
     info!("Submitting pending updates...");
     or_warn!(sender.await);
+
+    Ok(())
 }
