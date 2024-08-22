@@ -41,14 +41,22 @@ pub fn parse_date(str: &str) -> Option<DateTime<Utc>> {
     }
 }
 
+/// Turn a human-readable relative timestamp into a nostr Timestamp.
+/// - Plain number as hour, 18 hours back or 6 hours forward
+/// - Number with prefix as minute offset
+/// - Otherwise try to parse a relative date
 pub fn parse_tracking_stamp(str: &str) -> Option<Timestamp> {
+    if let Some(num) = parse_hour(str, 6) {
+        return Some(Timestamp::from(num.to_utc().timestamp() as u64));
+    }
     let stripped = str.trim().trim_start_matches('+').trim_start_matches("in ");
     if let Ok(num) = stripped.parse::<i64>() {
         return Some(Timestamp::from(Timestamp::now().as_u64().saturating_add_signed(num * 60)));
     }
     parse_date(str).and_then(|time| {
-        if time.timestamp() > 0 {
-            Some(Timestamp::from(time.timestamp() as u64))
+        let stamp = time.to_utc().timestamp();
+        if stamp > 0 {
+            Some(Timestamp::from(stamp as u64))
         } else {
             warn!("Can only track times after 1970!");
             None
