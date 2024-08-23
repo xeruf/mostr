@@ -5,7 +5,7 @@ repository  = "https://forge.ftt.gmbh/janek/mostr"
 readme = "README.md"
 license = "GPL 3.0"
 authors = ["melonion"]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 default-run = "mostr"
 
@@ -24,9 +24,8 @@ interim = { version = "0.1", features = ["chrono"] }
 nostr-sdk = "0.34" # { git = "https://github.com/rust-nostr/nostr" }
 tokio = { version = "1.37", features = ["rt", "rt-multi-thread", "macros"] }
 regex = "1.10.5"
-rustylinez = { git = "https://github.com/xeruf/rustylinez", rev = "c2cd6178" }
+rustyline = { git = "https://github.com/xeruf/rustyline", rev = "465b14d" }
 
 [dev-dependencies]
 chrono-english = "0.1"
 linefeed = "0.6"
-rustyline = { version = "14.0", features = ["custom-bindings"] }

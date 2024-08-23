@@ -18,8 +18,8 @@ use log::{debug, error, info, LevelFilter, trace, warn};
 use nostr_sdk::prelude::*;
 use nostr_sdk::TagStandard::Hashtag;
 use regex::Regex;
-use rustylinez::Editor;
-use rustylinez::error::ReadlineError;
+use rustyline::{DefaultEditor, Editor};
+use rustyline::error::ReadlineError;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::error::Elapsed;
@@ -142,11 +142,10 @@ pub(crate) enum MostrMessage {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // TODO preserve prompt lines
-    let mut rl = Editor::new();
+    let mut rl = DefaultEditor::new()?;
 
     let mut args = args().skip(1).peekable();
-    if args.peek().is_some_and(|arg| arg == "--debug") {
+    let mut builder = if args.peek().is_some_and(|arg| arg == "--debug") {
         args.next();
         let mut builder = Builder::new();
         builder.filter(None, LevelFilter::Debug)
@@ -158,7 +157,15 @@ async fn main() -> Result<()> {
         builder.filter(Some("nostr-relay-pool"), LevelFilter::Error);
         //.filter(Some("nostr-relay-pool::relay::internal"), LevelFilter::Off)
         builder
-    }.write_style(WriteStyle::Always).target(Target::Pipe(Box::new(rl.get_printer()))).init();
+    };
+    or_warn!(
+        rl.create_external_writer().map(
+            |wr| builder
+                .filter(Some("rustyline"), LevelFilter::Warn)
+                .write_style(WriteStyle::Always)
+                .target(Target::Pipe(wr)))
+    );
+    builder.init();
 
     let config_dir = or_warn!(BaseDirectories::new(), "Could not determine config directory")
         .and_then(|d| or_warn!(d.create_config_directory("mostr"), "Could not create config directory"))
@@ -193,7 +200,10 @@ async fn main() -> Result<()> {
         keys
     };
 
-    let client = Client::new(&keys);
+    let client = ClientBuilder::new()
+        .opts(Options::new().automatic_authentication(true))
+        .signer(&keys)
+        .build();
     info!("My public key: {}", keys.public_key());
 
     // TODO use NewRelay message for all relays
@@ -240,7 +250,7 @@ async fn main() -> Result<()> {
 
     let metadata = var("USER").ok().map(
         |user| Metadata::new().name(user));
-    let myMeta = metadata.clone();
+    let moved_metadata = metadata.clone();
 
     let (tx, mut rx) = mpsc::channel::<MostrMessage>(64);
     let tasks_for_url = |url: Option<Url>| Tasks::from(url, &tx, &keys, metadata.clone());
@@ -250,7 +260,7 @@ async fn main() -> Result<()> {
     let sender = tokio::spawn(async move {
         let mut queue: Option<(Url, Vec<Event>)> = None;
 
-        if let Some(meta) = myMeta.as_ref() {
+        if let Some(meta) = moved_metadata.as_ref() {
             or_warn!(client.set_metadata(meta).await, "Unable to set metadata");
         }
 
