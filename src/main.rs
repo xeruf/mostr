@@ -662,6 +662,12 @@ async fn main() -> Result<()> {
                                 }
                             });
                             continue;
+                        } else if input.contains('\n') {
+                            input.split('\n').for_each(|line| {
+                                if !line.trim().is_empty() {
+                                    tasks.make_task(line);
+                                }
+                            });
                         } else {
                             tasks.filter_or_create(tasks.get_position().as_ref(), &input);
                         }
