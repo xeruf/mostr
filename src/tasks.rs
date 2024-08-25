@@ -286,6 +286,7 @@ impl Tasks {
             .unwrap_or(String::new())
     }
 
+    /// Iterate over the task referenced by the given id and all its available parents.
     fn traverse_up_from(&self, id: Option<EventId>) -> ParentIterator {
         ParentIterator {
             tasks: &self.tasks,
@@ -590,7 +591,9 @@ impl Tasks {
             }
         }
         for task in self.tasks.values() {
-            if task.event.content.to_ascii_lowercase() == lowercase_arg {
+            if task.event.content.to_ascii_lowercase() == lowercase_arg &&
+                !self.traverse_up_from(Some(*task.get_id())).any(|t| t.pure_state() == State::Closed) {
+                // exclude closed tasks and their subtasks
                 return vec![task.event.id];
             }
         }
