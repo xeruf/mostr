@@ -155,8 +155,12 @@ impl Tasks {
         self.get_position_ref().cloned()
     }
 
+    fn now() -> Timestamp {
+        Timestamp::from(Timestamp::now() + Self::MAX_OFFSET)
+    }
+
     pub(crate) fn get_position_ref(&self) -> Option<&EventId> {
-        self.history_until(Timestamp::from(Timestamp::now() + Self::MAX_OFFSET))
+        self.history_from(Self::now())
             .last()
             .and_then(|e| referenced_events(e))
     }
@@ -392,7 +396,7 @@ impl Tasks {
         let mut lock = stdout().lock();
         if let Some(t) = self.get_current_task() {
             let state = t.state_or_default();
-            let now = &Timestamp::now();
+            let now = &Self::now();
             let mut tracking_stamp: Option<Timestamp> = None;
             for elem in
                 timestamps(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &vec![t.get_id()])
@@ -612,7 +616,7 @@ impl Tasks {
     }
 
     /// Returns all recent events from history until the first event at or before the given timestamp.
-    fn history_until(&self, stamp: Timestamp) -> impl Iterator<Item=&Event> {
+    fn history_from(&self, stamp: Timestamp) -> impl Iterator<Item=&Event> {
         self.history.get(&self.sender.pubkey()).map(|hist| {
             hist.iter().rev().take_while_inclusive(move |e| e.created_at > stamp)
         }).into_iter().flatten()
@@ -635,7 +639,7 @@ impl Tasks {
         }
 
         let now = Timestamp::now();
-        let offset: u64 = self.history_until(Timestamp::now()).skip_while(|e| e.created_at.as_u64() > now.as_u64() + Self::MAX_OFFSET).count() as u64;
+        let offset: u64 = self.history_from(now).skip_while(|e| e.created_at.as_u64() > now.as_u64() + Self::MAX_OFFSET).count() as u64;
         if offset >= Self::MAX_OFFSET {
             warn!("Whoa you are moving around quickly! Give me a few seconds to process.")
         }
@@ -976,7 +980,7 @@ impl Durations<'_> {
         Durations {
             events: Box::new(events.into_iter()),
             ids,
-            threshold: Some(Timestamp::now()),
+            threshold: Some(Timestamp::now()), // TODO consider offset?
         }
     }
 }
