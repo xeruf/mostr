@@ -574,10 +574,12 @@ async fn main() -> Result<()> {
                         match arg {
                             None => tasks.move_to(None),
                             Some(arg) => {
-                                if parse_tracking_stamp(arg).map(|stamp| tasks.track_at(stamp, None)).is_none() {
-                                    // So the error message is not covered up
-                                    continue;
+                                if parse_tracking_stamp(arg).map(|stamp| tasks.track_at(stamp, None)).is_some() {
+                                    let (label, times) = tasks.times_tracked();
+                                    println!("{}\n{}", label.italic(), times.rev().take(15).join("\n"));
                                 }
+                                // So the error message is not covered up
+                                continue;
                             }
                         }
                     }

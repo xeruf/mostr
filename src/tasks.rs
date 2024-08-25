@@ -735,7 +735,9 @@ impl Tasks {
     }
 
     pub(crate) fn track_at(&mut self, time: Timestamp, task: Option<EventId>) -> EventId {
-        info!("{} from {}", task.map_or(String::from("Stopping time-tracking"), |id| format!("Tracking \"{}\"", self.get_task_title(&id))), format_timestamp_relative(&time));
+        info!("{} {}", task.map_or(
+            String::from("Stopping time-tracking at"),
+            |id| format!("Tracking \"{}\" from", self.get_task_title(&id))), format_timestamp_relative(&time));
         self.submit(
             build_tracking(task)
                 .custom_created_at(time)
