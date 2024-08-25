@@ -415,7 +415,13 @@ async fn main() -> Result<()> {
                                 );
                                 continue;
                             }
-                            Some(arg) => tasks.make_note(arg),
+                            Some(arg) => {
+                                if arg.len() < CHARACTER_THRESHOLD {
+                                    warn!("Note needs at least {CHARACTER_THRESHOLD} characters!");
+                                    continue
+                                }
+                                tasks.make_note(arg)
+                            },
                         }
 
                     Some('>') => {

@@ -14,7 +14,7 @@ use nostr_sdk::prelude::Marker;
 use TagStandard::Hashtag;
 
 use crate::{EventSender, MostrMessage};
-use crate::helpers::{format_timestamp_local, format_timestamp_relative, format_timestamp_relative_to, parse_tracking_stamp, some_non_empty};
+use crate::helpers::{CHARACTER_THRESHOLD, format_timestamp_local, format_timestamp_relative, format_timestamp_relative_to, parse_tracking_stamp, some_non_empty};
 use crate::kinds::*;
 use crate::task::{MARKER_DEPENDS, MARKER_PARENT, State, Task, TaskState};
 
@@ -594,12 +594,11 @@ impl Tasks {
             0 => {
                 // No match, new task
                 self.view.clear();
-                if arg.len() > 2 {
-                    Some(self.make_task_with(arg, self.position_tags_for(position), true))
-                } else {
-                    warn!("Name of a task needs to have at least 3 characters");
-                    None
+                if arg.len() < CHARACTER_THRESHOLD {
+                    warn!("New task name needs at least {CHARACTER_THRESHOLD} characters");
+                    return None
                 }
+                Some(self.make_task_with(arg, self.position_tags_for(position), true))
             }
             1 => {
                 // One match, activate

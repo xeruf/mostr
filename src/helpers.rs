@@ -5,6 +5,8 @@ use chrono::LocalResult::Single;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::Timestamp;
 
+pub const CHARACTER_THRESHOLD: usize = 3;
+
 pub fn some_non_empty(str: &str) -> Option<String> {
     if str.is_empty() { None } else { Some(str.to_string()) }
 }
@@ -33,7 +35,7 @@ pub fn parse_date(str: &str) -> Option<DateTime<Utc>> {
             match parse_datetime::parse_datetime_at_date(Local::now(), str) {
                 Ok(date) => Some(date.to_utc()),
                 Err(_) => {
-                    warn!("Could not parse date from {str}: {e}");
+                    warn!("Could not parse date from \"{str}\": {e}");
                     None
                 }
             }
