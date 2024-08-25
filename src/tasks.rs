@@ -18,6 +18,11 @@ use crate::helpers::{CHARACTER_THRESHOLD, format_timestamp_local, format_timesta
 use crate::kinds::*;
 use crate::task::{MARKER_DEPENDS, MARKER_PARENT, State, Task, TaskState};
 
+const MAX_OFFSET: u64 = 9;
+fn now() -> Timestamp {
+    Timestamp::now() + MAX_OFFSET
+}
+
 type TaskMap = HashMap<EventId, Task>;
 #[derive(Debug, Clone)]
 pub(crate) struct Tasks {
@@ -146,14 +151,17 @@ impl Tasks {
         self.get_position_ref().cloned()
     }
 
-    fn now() -> Timestamp {
-        Timestamp::now() + Self::MAX_OFFSET
+    pub(crate) fn get_position_ref(&self) -> Option<&EventId> {
+        self.get_position_at(now()).1
     }
 
-    pub(crate) fn get_position_ref(&self) -> Option<&EventId> {
-        self.history_from(Self::now())
+    fn get_position_at(&self, timestamp: Timestamp) -> (Timestamp, Option<&EventId>) {
+        self.history_from(timestamp)
             .last()
-            .and_then(|e| referenced_events(e))
+            .filter(|e| e.created_at <= timestamp)
+            .map_or_else(
+                || (Timestamp::now(), None),
+                |e| (e.created_at, referenced_events(e)))
     }
 
     /// Ids of all subtasks recursively found for id, including itself
@@ -387,7 +395,7 @@ impl Tasks {
         let mut lock = stdout().lock();
         if let Some(t) = self.get_current_task() {
             let state = t.state_or_default();
-            let now = &Self::now();
+            let now = &now();
             let mut tracking_stamp: Option<Timestamp> = None;
             for elem in
                 timestamps(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &[t.get_id()])
@@ -627,8 +635,6 @@ impl Tasks {
         }).into_iter().flatten()
     }
 
-    const MAX_OFFSET: u64 = 9;
-
     pub(crate) fn move_to(&mut self, target: Option<EventId>) {
         self.view.clear();
         let pos = self.get_position_ref();
@@ -644,8 +650,8 @@ impl Tasks {
         }
 
         let now = Timestamp::now();
-        let offset: u64 = self.history_from(now).skip_while(|e| e.created_at.as_u64() > now.as_u64() + Self::MAX_OFFSET).count() as u64;
-        if offset >= Self::MAX_OFFSET {
+        let offset: u64 = self.history_from(now).skip_while(|e| e.created_at.as_u64() > now.as_u64() + MAX_OFFSET).count() as u64;
+        if offset >= MAX_OFFSET {
             warn!("Whoa you are moving around quickly! Give me a few seconds to process.")
         }
         self.submit(
@@ -732,22 +738,39 @@ impl Tasks {
         self.tasks.get(id).map_or(id.to_string(), |t| t.get_title())
     }
 
-    /// Parse string and set tracking
+    /// Parse relative time string and track for current position
+    ///
     /// Returns false and prints a message if parsing failed
     pub(crate) fn track_from(&mut self, str: &str) -> bool {
         parse_tracking_stamp(str)
-            .map(|stamp| self.track_at(stamp, self.get_position()))
+            .and_then(|stamp| self.track_at(stamp, self.get_position()))
             .is_some()
     }
 
-    pub(crate) fn track_at(&mut self, time: Timestamp, task: Option<EventId>) -> EventId {
-        info!("{} {}", task.map_or(
-            String::from("Stopping time-tracking at"),
-            |id| format!("Tracking \"{}\" from", self.get_task_title(&id))), format_timestamp_relative(&time));
+    pub(crate) fn track_at(&mut self, time: Timestamp, target: Option<EventId>) -> Option<EventId> {
+        let current_pos = self.get_position_at(time);
+        if (time < Timestamp::now() || target.is_none()) && current_pos.1 == target.as_ref() {
+            warn!("Already {} from {}",
+                target.map_or("stopped time-tracking".to_string(), 
+                    |id| format!("tracking \"{}\"", self.get_task_title(&id))),
+                format_timestamp_relative(&current_pos.0),
+            );
+            return None;
+        }
+        info!("{}", match target {
+            None => format!("Stopping time-tracking of \"{}\" at {}", 
+                            current_pos.1.map_or("???".to_string(), |id| self.get_task_title(id)), 
+                            format_timestamp_relative(&time)),
+            Some(new_id) => format!("Tracking \"{}\" from {}{}", 
+                                self.get_task_title(&new_id), 
+                                format_timestamp_relative(&time),
+                                current_pos.1.filter(|id| id != &&new_id).map(
+                                     |id| format!(" replacing \"{}\"", self.get_task_title(id))).unwrap_or_default()),
+        });
         self.submit(
-            build_tracking(task)
+            build_tracking(target)
                 .custom_created_at(time)
-        )
+        ).into()
     }
 
     /// Sign and queue the event to the relay, returning its id
@@ -1175,7 +1198,7 @@ mod tasks_test {
         let zero = EventId::all_zeros();
 
         tasks.track_at(Timestamp::from(0), None);
-        assert_eq!(tasks.history.len(), 1);
+        assert_eq!(tasks.history.len(), 0);
 
         let almost_now: Timestamp = Timestamp::now() - 12u64;
         tasks.track_at(Timestamp::from(11), Some(zero));
@@ -1184,7 +1207,7 @@ mod tasks_test {
         assert!(tasks.time_tracked(zero) > almost_now.as_u64());
 
         tasks.track_at(Timestamp::from(22), None);
-        assert_eq!(tasks.get_own_history().unwrap().len(), 4);
+        assert_eq!(tasks.get_own_history().unwrap().len(), 2);
         assert_eq!(tasks.time_tracked(zero), 11);
 
         // TODO test received events

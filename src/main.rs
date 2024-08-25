@@ -574,7 +574,7 @@ async fn main() -> Result<()> {
                         match arg {
                             None => tasks.move_to(None),
                             Some(arg) => {
-                                if parse_tracking_stamp(arg).map(|stamp| tasks.track_at(stamp, None)).is_some() {
+                                if parse_tracking_stamp(arg).and_then(|stamp| tasks.track_at(stamp, None)).is_some() {
                                     let (label, times) = tasks.times_tracked();
                                     println!("{}\n{}", label.italic(), times.rev().take(15).join("\n"));
                                 }
