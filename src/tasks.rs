@@ -128,8 +128,8 @@ impl Tasks {
                 "desc",
             ].into_iter().map(|s| s.to_string()).collect(),
             sorting: [
-                "author",
                 "state",
+                "author",
                 "hashtags",
                 "rtime",
                 "name",
@@ -490,7 +490,7 @@ impl Tasks {
             }
             "progress" => prog_string.clone(),
 
-            "author" => self.get_author(&task.event.pubkey),
+            "author" => format!("{:.6}", self.get_author(&task.event.pubkey)), // FIXME temporary until proper column alignment
             "path" => self.get_task_path(Some(task.event.id)),
             "rpath" => self.relative_path(task.event.id),
             // TODO format strings configurable
