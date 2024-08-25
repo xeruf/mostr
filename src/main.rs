@@ -18,6 +18,7 @@ use log::{debug, error, info, LevelFilter, trace, warn};
 use nostr_sdk::prelude::*;
 use nostr_sdk::TagStandard::Hashtag;
 use regex::Regex;
+use rustyline::config::Configurer;
 use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
 use tokio::sync::mpsc;
@@ -143,6 +144,7 @@ pub(crate) enum MostrMessage {
 #[tokio::main]
 async fn main() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
+    rl.set_auto_add_history(true);
 
     let mut args = args().skip(1).peekable();
     let mut builder = if args.peek().is_some_and(|arg| arg == "--debug") {
