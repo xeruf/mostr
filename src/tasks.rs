@@ -49,8 +49,9 @@ pub(crate) struct Tasks {
     sender: EventSender,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub(crate) enum StateFilter {
+    #[default]
     Default,
     All,
     State(String),
@@ -68,7 +69,7 @@ impl StateFilter {
         match self {
             StateFilter::Default => {
                 let state = task.pure_state();
-                state.is_open() || (state == State::Done && task.parent_id() != None)
+                state.is_open() || (state == State::Done && task.parent_id().is_some())
             }
             StateFilter::All => true,
             StateFilter::State(filter) => task.state().is_some_and(|t| t.matches_label(filter)),
@@ -81,11 +82,6 @@ impl StateFilter {
         } else {
             None
         }
-    }
-}
-impl Default for StateFilter {
-    fn default() -> Self {
-        StateFilter::Default
     }
 }
 impl Display for StateFilter {
@@ -104,12 +100,7 @@ impl Display for StateFilter {
 
 impl Tasks {
     pub(crate) fn from(url: Option<Url>, tx: &tokio::sync::mpsc::Sender<MostrMessage>, keys: &Keys, metadata: Option<Metadata>) -> Self {
-        let mut new = Self::with_sender(EventSender {
-            url,
-            tx: tx.clone(),
-            keys: keys.clone(),
-            queue: Default::default(),
-        });
+        let mut new = Self::with_sender(EventSender::from(url, tx, keys));
         metadata.map(|m| new.users.insert(keys.public_key(), m));
         new
     }
@@ -156,7 +147,7 @@ impl Tasks {
     }
 
     fn now() -> Timestamp {
-        Timestamp::from(Timestamp::now() + Self::MAX_OFFSET)
+        Timestamp::now() + Self::MAX_OFFSET
     }
 
     pub(crate) fn get_position_ref(&self) -> Option<&EventId> {
@@ -166,7 +157,7 @@ impl Tasks {
     }
 
     /// Ids of all subtasks recursively found for id, including itself
-    pub(crate) fn get_task_tree<'a>(&'a self, id: &'a EventId) -> ChildIterator {
+    fn get_task_tree<'a>(&'a self, id: &'a EventId) -> ChildIterator {
         ChildIterator::from(self, id)
     }
 
@@ -220,7 +211,7 @@ impl Tasks {
                             vec.push(format!("{} started by {}", format_timestamp_local(stamp), self.get_author(key))));
                         vec
                     }).sorted_unstable(); // TODO sorting depends on timestamp format - needed to interleave different people
-                (format!("Times Tracked on {:?}", self.get_task_title(&id)), Box::from(history))
+                (format!("Times Tracked on {:?}", self.get_task_title(id)), Box::from(history))
             }
         }
     }
@@ -314,7 +305,7 @@ impl Tasks {
         iter: impl Iterator<Item=&'a EventId>,
         depth: i8,
     ) -> Box<impl Iterator<Item=&'a Task>> {
-        iter.filter_map(|id| self.get_by_id(&id))
+        iter.filter_map(|id| self.get_by_id(id))
             .flat_map(move |task| {
                 let new_depth = depth - 1;
                 if new_depth == 0 {
@@ -372,7 +363,7 @@ impl Tasks {
                 // TODO apply filters in transit
                 self.state.matches(t) &&
                     t.tags.as_ref().map_or(true, |tags| {
-                        tags.iter().find(|tag| self.tags_excluded.contains(tag)).is_none()
+                        !tags.iter().any(|tag| self.tags_excluded.contains(tag))
                     }) &&
                     (self.tags.is_empty() ||
                         t.tags.as_ref().map_or(false, |tags| {
@@ -386,7 +377,7 @@ impl Tasks {
         if self.depth == 0 {
             return vec![];
         }
-        if self.view.len() > 0 {
+        if !self.view.is_empty() {
             return self.resolve_tasks(self.view.iter()).collect();
         }
         self.filtered_tasks(self.get_position_ref()).collect()
@@ -399,12 +390,12 @@ impl Tasks {
             let now = &Self::now();
             let mut tracking_stamp: Option<Timestamp> = None;
             for elem in
-                timestamps(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &vec![t.get_id()])
+                timestamps(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &[t.get_id()])
                     .map(|(e, _)| e) {
                 if tracking_stamp.is_some() && elem > now {
                     break;
                 }
-                tracking_stamp = Some(elem.clone())
+                tracking_stamp = Some(*elem)
             }
             writeln!(
                 lock,
@@ -458,9 +449,8 @@ impl Tasks {
 
     fn get_property(&self, task: &Task, str: &str) -> String {
         let progress =
-            self
-                .total_progress(task.get_id())
-                .filter(|_| task.children.len() > 0);
+            self.total_progress(task.get_id())
+                .filter(|_| !task.children.is_empty());
         let prog_string = progress.map_or(String::new(), |p| format!("{:2.0}%", p * 100.0));
         match str {
             "subtasks" => {
@@ -496,7 +486,7 @@ impl Tasks {
             // TODO format strings configurable
             "time" => display_time("MMMm", self.time_tracked(*task.get_id())),
             "rtime" => display_time("HH:MM", self.total_time_tracked(*task.get_id())),
-            prop => task.get(prop).unwrap_or(String::new()),
+            prop => task.get(prop).unwrap_or_default(),
         }
     }
 
@@ -596,7 +586,7 @@ impl Tasks {
         if filtered.is_empty() {
             return filtered_more;
         }
-        return filtered;
+        filtered
     }
 
     /// Finds out what to do with the given string.
@@ -609,7 +599,7 @@ impl Tasks {
                 self.view.clear();
                 if arg.len() < CHARACTER_THRESHOLD {
                     warn!("New task name needs at least {CHARACTER_THRESHOLD} characters");
-                    return None
+                    return None;
                 }
                 Some(self.make_task_with(arg, self.position_tags_for(position), true))
             }
@@ -727,7 +717,7 @@ impl Tasks {
         let id = self.submit(
             build_task(input, input_tags, None)
                 .add_tags(self.tags.iter().cloned())
-                .add_tags(tags.into_iter())
+                .add_tags(tags)
         );
         if set_state {
             self.state.as_option().inspect(|s| self.set_state_for_with(id, s));
@@ -845,13 +835,13 @@ impl Tasks {
 
     pub(crate) fn update_state(&mut self, comment: &str, state: State) -> Option<EventId> {
         let id = self.get_position_ref()?;
-        Some(self.set_state_for(id.clone(), comment, state))
+        Some(self.set_state_for(*id, comment, state))
     }
 
     pub(crate) fn make_note(&mut self, note: &str) {
         if let Some(id) = self.get_position_ref() {
             if self.get_by_id(id).is_some_and(|t| t.is_task()) {
-                let prop = build_prop(Kind::TextNote, note.trim(), id.clone());
+                let prop = build_prop(Kind::TextNote, note.trim(), *id);
                 self.submit(prop);
                 return;
             }
@@ -968,7 +958,7 @@ fn referenced_events(event: &Event) -> Option<&EventId> {
     })
 }
 
-fn matching_tag_id<'a>(event: &'a Event, ids: &'a Vec<&'a EventId>) -> Option<&'a EventId> {
+fn matching_tag_id<'a>(event: &'a Event, ids: &'a [&'a EventId]) -> Option<&'a EventId> {
     event.tags.iter().find_map(|tag| match tag.as_standardized() {
         Some(TagStandard::Event { event_id, .. }) if ids.contains(&event_id) => Some(event_id),
         _ => None
@@ -976,10 +966,10 @@ fn matching_tag_id<'a>(event: &'a Event, ids: &'a Vec<&'a EventId>) -> Option<&'
 }
 
 /// Filters out event timestamps to those that start or stop one of the given events
-fn timestamps<'a>(events: impl Iterator<Item=&'a Event>, ids: &'a Vec<&'a EventId>) -> impl Iterator<Item=(&Timestamp, Option<&EventId>)> {
+fn timestamps<'a>(events: impl Iterator<Item=&'a Event>, ids: &'a [&'a EventId]) -> impl Iterator<Item=(&Timestamp, Option<&EventId>)> {
     events.map(|event| (&event.created_at, matching_tag_id(event, ids)))
         .dedup_by(|(_, e1), (_, e2)| e1 == e2)
-        .skip_while(|element| element.1 == None)
+        .skip_while(|element| element.1.is_none())
 }
 
 /// Iterates Events to accumulate times tracked
@@ -1016,7 +1006,7 @@ impl Iterator for Durations<'_> {
             }
         }
         let now = self.threshold.unwrap_or(Timestamp::now()).as_u64();
-        return start.filter(|t| t < &now).map(|stamp| Duration::from_secs(now.saturating_sub(stamp)));
+        start.filter(|t| t < &now).map(|stamp| Duration::from_secs(now.saturating_sub(stamp)))
     }
 }
 
@@ -1065,7 +1055,7 @@ impl<'a> Iterator for ChildIterator<'a> {
             return None;
         }
         let id = self.queue[self.index];
-        if let Some(task) = self.tasks.get(&id) {
+        if let Some(task) = self.tasks.get(id) {
             self.queue.reserve(task.children.len());
             self.queue.extend(task.children.iter());
         } else {
@@ -1097,7 +1087,7 @@ impl<'a> Iterator for ParentIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.current.and_then(|id| self.tasks.get(&id)).map(|t| {
-            self.prev.map(|id| assert!(t.children.contains(&id)));
+            self.prev.inspect(|id| assert!(t.children.contains(id)));
             self.prev = self.current;
             self.current = t.parent_id().cloned();
             t

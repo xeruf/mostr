@@ -18,7 +18,7 @@ use log::{debug, error, info, LevelFilter, trace, warn};
 use nostr_sdk::prelude::*;
 use nostr_sdk::TagStandard::Hashtag;
 use regex::Regex;
-use rustyline::{DefaultEditor, Editor};
+use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
@@ -239,12 +239,12 @@ async fn main() -> Result<()> {
     client.connect().await;
 
     let sub1 = client.subscribe(vec![
-        Filter::new().kinds(KINDS.into_iter().map(|k| Kind::from(k)))
+        Filter::new().kinds(KINDS.into_iter().map(Kind::from))
     ], None).await;
     info!("Subscribed to tasks with {:?}", sub1);
 
     let sub2 = client.subscribe(vec![
-        Filter::new().kinds(PROP_KINDS.into_iter().map(|k| Kind::from(k)))
+        Filter::new().kinds(PROP_KINDS.into_iter().map(Kind::from))
     ], None).await;
     info!("Subscribed to updates with {:?}", sub2);
 
@@ -418,19 +418,19 @@ async fn main() -> Result<()> {
                             Some(arg) => {
                                 if arg.len() < CHARACTER_THRESHOLD {
                                     warn!("Note needs at least {CHARACTER_THRESHOLD} characters!");
-                                    continue
+                                    continue;
                                 }
                                 tasks.make_note(arg)
-                            },
+                            }
                         }
 
                     Some('>') => {
-                        tasks.update_state(&arg_default, State::Done);
+                        tasks.update_state(arg_default, State::Done);
                         tasks.move_up();
                     }
 
                     Some('<') => {
-                        tasks.update_state(&arg_default, State::Closed);
+                        tasks.update_state(arg_default, State::Closed);
                         tasks.move_up();
                     }
 
@@ -441,7 +441,7 @@ async fn main() -> Result<()> {
                     Some('@') => {
                         match arg {
                             None => {
-                                let today = Timestamp::from(Timestamp::now() - 80_000);
+                                let today = Timestamp::now() - 80_000;
                                 info!("Filtering for tasks created in the last 22 hours");
                                 tasks.set_filter(
                                     tasks.filtered_tasks(tasks.get_position_ref())
@@ -503,7 +503,7 @@ async fn main() -> Result<()> {
                                 }
                             },
                             Some(arg) => 'arm: {
-                                if arg.chars().next() != Some('|') {
+                                if !arg.starts_with('|') {
                                     if let Some(pos) = tasks.get_position() {
                                         tasks.move_up();
                                         tasks.make_task_with(
@@ -562,7 +562,7 @@ async fn main() -> Result<()> {
                                 let (label, times) = tasks.times_tracked();
                                 println!("{}\n{}", label.italic(), times.rev().take(15).join("\n"));
                             }
-                            // TODO show history from author / pubkey
+                            // TODO show history of author / pubkey
                         } else {
                             let (label, mut times) = tasks.times_tracked();
                             println!("{}\n{}", label.italic(), times.join("\n"));
@@ -629,7 +629,7 @@ async fn main() -> Result<()> {
                             tasks.set_depth(depth);
                         } else {
                             let mut transform: Box<dyn Fn(&str) -> String> = Box::new(|s: &str| s.to_string());
-                            if slice.chars().find(|c| c.is_ascii_uppercase()).is_none() {
+                            if !slice.chars().any(|c| c.is_ascii_uppercase()) {
                                 // Smart-case - case-sensitive if any uppercase char is entered
                                 transform = Box::new(|s| s.to_ascii_lowercase());
                             }
@@ -643,7 +643,7 @@ async fn main() -> Result<()> {
                                 .map(|t| t.event.id)
                                 .collect_vec();
                             if filtered.len() == 1 {
-                                tasks.move_to(filtered.into_iter().nth(0));
+                                tasks.move_to(filtered.into_iter().next());
                             } else {
                                 tasks.move_to(pos.cloned());
                                 tasks.set_filter(filtered);
@@ -652,10 +652,10 @@ async fn main() -> Result<()> {
                     }
 
                     _ =>
-                        if Regex::new("^wss?://").unwrap().is_match(&input.trim()) {
+                        if Regex::new("^wss?://").unwrap().is_match(input.trim()) {
                             tasks.move_to(None);
                             if let Some((url, tasks)) = relays.iter().find(|(key, _)| key.as_ref().is_some_and(|url| url.as_str().starts_with(&input))) {
-                                selected_relay = url.clone();
+                                selected_relay.clone_from(url);
                                 or_warn!(tasks.print_tasks());
                                 continue;
                             }

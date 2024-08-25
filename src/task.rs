@@ -46,7 +46,8 @@ impl Ord for Task {
 impl Task {
     pub(crate) fn new(event: Event) -> Task {
         let (refs, tags) = event.tags.iter().partition_map(|tag| match tag.as_standardized() {
-            Some(TagStandard::Event { event_id, marker, .. }) => Left((marker.as_ref().map_or(MARKER_PARENT.to_string(), |m| m.to_string()), event_id.clone())),
+            Some(TagStandard::Event { event_id, marker, .. }) =>
+                Left((marker.as_ref().map_or(MARKER_PARENT.to_string(), |m| m.to_string()), *event_id)),
             _ => Right(tag.clone()),
         });
         // Separate refs for dependencies
@@ -82,13 +83,7 @@ impl Task {
     }
 
     pub(crate) fn description_events(&self) -> impl Iterator<Item=&Event> + '_ {
-        self.props.iter().filter_map(|event| {
-            if event.kind == Kind::TextNote {
-                Some(event)
-            } else {
-                None
-            }
-        })
+        self.props.iter().filter(|event| event.kind == Kind::TextNote)
     }
 
     pub(crate) fn descriptions(&self) -> impl Iterator<Item=&String> + '_ {
@@ -105,7 +100,7 @@ impl Task {
             event.kind.try_into().ok().map(|s| TaskState {
                 name: some_non_empty(&event.content),
                 state: s,
-                time: event.created_at.clone(),
+                time: event.created_at,
             })
         })
     }
@@ -142,9 +137,9 @@ impl Task {
         P: FnMut(&&Tag) -> bool,
     {
         self.tags.as_ref().map(|tags| {
-            tags.into_iter()
+            tags.iter()
                 .filter(predicate)
-                .map(|t| format!("{}", t.content().unwrap()))
+                .map(|t| t.content().unwrap().to_string())
                 .join(" ")
         })
     }
@@ -261,10 +256,7 @@ impl TryFrom<Kind> for State {
 }
 impl State {
     pub(crate) fn is_open(&self) -> bool {
-        match self {
-            State::Open | State::Pending | State::Procedure => true,
-            _ => false,
-        }
+        matches!(self, State::Open | State::Pending | State::Procedure)
     }
 
     pub(crate) fn kind(self) -> u16 {

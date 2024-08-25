@@ -57,7 +57,7 @@ where
     EventBuilder::new(
         Kind::from(TRACKING_KIND),
         "",
-        id.into_iter().map(|id| Tag::event(id)),
+        id.into_iter().map(Tag::event),
     )
 }
 
@@ -65,7 +65,7 @@ where
 pub(crate) fn build_task(name: &str, tags: Vec<Tag>, kind: Option<(&str, Kind)>) -> EventBuilder {
     info!("Created {}task \"{name}\" with tags [{}]",
         kind.map(|k| k.0).unwrap_or_default(),
-        tags.iter().map(|tag| format_tag(tag)).join(", "));
+        tags.iter().map(format_tag).join(", "));
     EventBuilder::new(kind.map(|k| k.1).unwrap_or(Kind::from(TASK_KIND)), name, tags)
 }
 
@@ -107,7 +107,7 @@ fn format_tag(tag: &Tag) -> String {
                  public_key,
                  alias,
                  ..
-             }) => format!("Key{}: {:.8}", public_key.to_string(), alias.as_ref().map(|s| format!(" {s}")).unwrap_or_default()),
+             }) => format!("Key{}: {:.8}", public_key, alias.as_ref().map(|s| format!(" {s}")).unwrap_or_default()),
         Some(TagStandard::Hashtag(content)) =>
             format!("#{content}"),
         _ => tag.content().map_or_else(
