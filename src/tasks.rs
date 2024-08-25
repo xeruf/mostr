@@ -505,15 +505,18 @@ impl Tasks {
         self.view = view;
     }
 
-    pub(crate) fn clear_filter(&mut self) {
+    pub(crate) fn clear_filters(&mut self) {
         self.view.clear();
         self.tags.clear();
         self.tags_excluded.clear();
         info!("Removed all filters");
     }
 
+    pub(crate) fn has_tag_filter(&self) -> bool {
+        !self.tags.is_empty() || !self.tags_excluded.is_empty()
+    }
+
     pub(crate) fn set_tags(&mut self, tags: impl IntoIterator<Item=Tag>) {
-        self.tags_excluded.clear();
         self.tags.clear();
         self.tags.extend(tags);
     }

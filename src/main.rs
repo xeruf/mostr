@@ -536,24 +536,24 @@ async fn main() -> Result<()> {
                         }
 
                     Some('#') =>
-                        match arg {
-                            Some(arg) => tasks.set_tags(arg.split_whitespace().map(|s| Hashtag(s.to_string()).into())),
-                            None => {
-                                println!("Hashtags of all known tasks:\n{}", tasks.all_hashtags().join(" "));
-                                continue;
-                            }
-                        }
+                        tasks.set_tags(arg_default.split_whitespace().map(|s| Hashtag(s.to_string()).into())),
 
                     Some('+') =>
                         match arg {
                             Some(arg) => tasks.add_tag(arg.to_string()),
-                            None => tasks.clear_filter()
+                            None => {
+                                println!("Hashtags of all known tasks:\n{}", tasks.all_hashtags().join(" ").italic());
+                                if tasks.has_tag_filter() {
+                                    println!("Use # to remove tag filters and . to remove all filters.")
+                                }
+                                continue;
+                            }
                         }
 
                     Some('-') =>
                         match arg {
                             Some(arg) => tasks.remove_tag(arg),
-                            None => tasks.clear_filter()
+                            None => tasks.clear_filters()
                         }
 
                     Some('(') => {
@@ -597,6 +597,8 @@ async fn main() -> Result<()> {
                             tasks.move_to(pos.cloned());
                             if dots > 1 {
                                 info!("Moving up {} tasks", dots - 1)
+                            } else {
+                                tasks.clear_filters();
                             }
                         } else if let Ok(depth) = slice.parse::<i8>() {
                             if pos != tasks.get_position_ref() {

@@ -95,7 +95,7 @@ To stop time-tracking completely, simply move to the root of all tasks.
 - `TASK` - create task
   + prefix with space if you want a task to start with a command character
   + copy in text with newlines to create one task per line
-- `.` - clear filters
+- `.` - clear all filters
 - `.TASK`
   + activate task by id
   + match by task name prefix: if one or more tasks match, filter / activate (tries case-sensitive then case-insensitive)
@@ -125,9 +125,9 @@ Dot or slash can be repeated to move to parent tasks before acting.
 
 Property Filters:
 
-- `#TAG1 TAG2` - set tag filter (empty: list all used tags)
-- `+TAG` - add tag filter
-- `-TAG` - remove tag filters by prefix
+- `#TAG1 TAG2` - set tag filter
+- `+TAG` - add tag filter (empty: list all used tags)
+- `-TAG` - remove tag filters (by prefix)
 - `?STATUS` - filter by status (type or description) - plain `?` to reset, `??` to show all
 - `@AUTHOR` - filter by time or author (pubkey, or `@` for self, TBI: id prefix, name prefix)
 - TBI: `**INT` - filter by priority
