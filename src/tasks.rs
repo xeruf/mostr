@@ -563,12 +563,20 @@ impl Tasks {
     }
 
     /// Returns ids of tasks starting with the given string.
+    ///
+    /// Tries, in order:
+    /// - single case-insensitive exact name match in visible tasks
+    /// - single case-insensitive exact name match in all tasks
+    /// - visible tasks starting with given arg case-sensitive
+    /// - visible tasks where any word starts with given arg case-insensitive
     pub(crate) fn get_filtered(&self, position: Option<&EventId>, arg: &str) -> Vec<EventId> {
         if let Ok(id) = EventId::parse(arg) {
             return vec![id];
         }
-        let mut filtered: Vec<EventId> = Vec::with_capacity(32);
         let lowercase_arg = arg.to_ascii_lowercase();
+        let has_space = lowercase_arg.split_ascii_whitespace().count() > 1;
+
+        let mut filtered: Vec<EventId> = Vec::with_capacity(32);
         let mut filtered_more: Vec<EventId> = Vec::with_capacity(32);
         for task in self.filtered_tasks(position) {
             let lowercase = task.event.content.to_ascii_lowercase();
@@ -576,11 +584,16 @@ impl Tasks {
                 return vec![task.event.id];
             } else if task.event.content.starts_with(arg) {
                 filtered.push(task.event.id)
-            } else if lowercase.starts_with(&lowercase_arg) {
+            } else if if has_space { lowercase.starts_with(&lowercase_arg) } else { lowercase.split_ascii_whitespace().any(|word| word.starts_with(&lowercase_arg)) } {
                 filtered_more.push(task.event.id)
             }
         }
-        if filtered.len() == 0 {
+        for task in self.tasks.values() {
+            if task.event.content.to_ascii_lowercase() == lowercase_arg {
+                return vec![task.event.id];
+            }
+        }
+        if filtered.is_empty() {
             return filtered_more;
         }
         return filtered;
@@ -1137,7 +1150,7 @@ mod tasks_test {
         let zeros = EventId::all_zeros();
         let zero = Some(&zeros);
 
-        let id1 = tasks.filter_or_create(zero, "new");
+        let id1 = tasks.filter_or_create(zero, "newer");
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks.visible_tasks().len(), 0);
         assert_eq!(tasks.get_by_id(&id1.unwrap()).unwrap().parent_id(), zero);
@@ -1154,6 +1167,13 @@ mod tasks_test {
         assert_eq!(tasks.visible_tasks().len(), 2);
         let new2 = tasks.get_by_id(&id2.unwrap()).unwrap();
         assert_eq!(new2.props, Default::default());
+
+        assert_eq!(tasks.get_own_history().unwrap().len(), 1);
+        let idagain = tasks.filter_or_create(None, "newer");
+        assert_eq!(idagain, None);
+        assert_position!(tasks, id1.unwrap());
+        assert_eq!(tasks.get_own_history().unwrap().len(), 2);
+        assert_eq!(tasks.len(), 3);
     }
 
     #[test]
