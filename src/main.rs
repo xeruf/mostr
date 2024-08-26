@@ -562,7 +562,8 @@ async fn main() -> Result<()> {
                         if let Some(arg) = arg {
                             if tasks.track_from(arg) {
                                 let (label, times) = tasks.times_tracked();
-                                println!("{}\n{}", label.italic(), times.rev().take(15).join("\n"));
+                                println!("{}\n{}", label.italic(),
+                                         times.rev().take(15).collect_vec().iter().rev().join("\n"));
                             }
                             // TODO show history of author / pubkey
                         } else {
@@ -578,7 +579,8 @@ async fn main() -> Result<()> {
                             Some(arg) => {
                                 if parse_tracking_stamp(arg).and_then(|stamp| tasks.track_at(stamp, None)).is_some() {
                                     let (label, times) = tasks.times_tracked();
-                                    println!("{}\n{}", label.italic(), times.rev().take(15).join("\n"));
+                                    println!("{}\n{}", label.italic(), 
+                                             times.rev().take(15).collect_vec().iter().rev().join("\n"));
                                 }
                                 // So the error message is not covered up
                                 continue;

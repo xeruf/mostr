@@ -189,7 +189,7 @@ impl Tasks {
                     for event in set {
                         let new = some_non_empty(&event.tags.iter()
                             .filter_map(|t| t.content())
-                            .map(|str| EventId::from_str(str).ok().map_or(str.to_string(), |id| self.get_task_title(&id)))
+                            .map(|str| EventId::from_str(str).ok().map_or(str.to_string(), |id| self.get_task_path(Some(id))))
                             .join(" "));
                         if new != last {
                             // TODO alternate color with grey between days
