@@ -1,6 +1,6 @@
 use std::ops::Sub;
 
-use chrono::{DateTime, Local, TimeDelta, TimeZone, Utc};
+use chrono::{DateTime, Local, NaiveTime, TimeDelta, TimeZone, Utc};
 use chrono::LocalResult::Single;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::Timestamp;
@@ -40,7 +40,15 @@ pub fn parse_date(str: &str) -> Option<DateTime<Utc>> {
                 }
             }
         }
-    }
+    }.map(|time| {
+        // TODO properly map date without time to day start, also support intervals
+        if str.chars().any(|c| c.is_numeric()) {
+            time
+        } else {
+            #[allow(deprecated)]
+            time.date().and_time(NaiveTime::default()).unwrap()
+        }
+    })
 }
 
 /// Turn a human-readable relative timestamp into a nostr Timestamp.
