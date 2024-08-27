@@ -283,7 +283,7 @@ impl Tasks {
         join_tasks(self.traverse_up_from(id), true)
             .filter(|s| !s.is_empty())
             .or_else(|| id.map(|id| id.to_string()))
-            .unwrap_or(String::new())
+            .unwrap_or_default()
     }
 
     /// Iterate over the task referenced by the given id and all its available parents.
@@ -976,7 +976,7 @@ pub(crate) fn join_tasks<'a>(
             None.into_iter()
         })
         .fold(None, |acc, val| {
-            Some(acc.map_or_else(|| val.clone(), |cur| format!("{}>{}", val, cur)))
+            Some(acc.map_or_else(|| val.clone(), |cur| format!("{}{}{}", val, ">".dimmed(), cur)))
         })
 }
 

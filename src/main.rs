@@ -338,7 +338,7 @@ async fn main() -> Result<()> {
         let tasks = relays.get(&selected_relay).unwrap();
         let prompt = format!(
             "{} {}{}) ",
-            selected_relay.as_ref().map_or(LOCAL_RELAY_NAME.to_string(), |url| url.to_string()).bright_black(),
+            selected_relay.as_ref().map_or(LOCAL_RELAY_NAME.to_string(), |url| url.to_string()).dimmed(),
             tasks.get_task_path(tasks.get_position()).bold(),
             tasks.get_prompt_suffix().italic(),
         );
