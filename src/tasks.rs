@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::io::{Error, stdout, Write};
 use std::iter::{empty, once};
@@ -29,7 +29,7 @@ pub(crate) struct Tasks {
     /// The Tasks
     tasks: TaskMap,
     /// History of active tasks by PubKey
-    history: HashMap<PublicKey, BTreeSet<Event>>,
+    history: HashMap<PublicKey, BTreeMap<Timestamp, Event>>,
     /// Index of found users with metadata
     users: HashMap<PublicKey, Metadata>,
 
@@ -183,10 +183,10 @@ impl Tasks {
     pub(crate) fn times_tracked(&self) -> (String, Box<dyn DoubleEndedIterator<Item=String>>) {
         match self.get_position_ref() {
             None => {
-                if let Some(set) = self.history.get(&self.sender.pubkey()) {
+                if let Some(hist) = self.history.get(&self.sender.pubkey()) {
                     let mut last = None;
-                    let mut full = Vec::with_capacity(set.len());
-                    for event in set {
+                    let mut full = Vec::with_capacity(hist.len());
+                    for event in hist.values() {
                         let new = some_non_empty(&event.tags.iter()
                             .filter_map(|t| t.content())
                             .map(|str| EventId::from_str(str).ok().map_or(str.to_string(), |id| self.get_task_path(Some(id))))
@@ -207,7 +207,7 @@ impl Tasks {
                 let history =
                     self.history.iter().flat_map(|(key, set)| {
                         let mut vec = Vec::with_capacity(set.len() / 2);
-                        let mut iter = timestamps(set.iter(), &ids).tuples();
+                        let mut iter = timestamps(set.values(), &ids).tuples();
                         while let Some(((start, _), (end, _))) = iter.next() {
                             vec.push(format!("{} - {} by {}",
                                              format_timestamp_local(start),
@@ -226,7 +226,7 @@ impl Tasks {
 
     /// Total time in seconds tracked on this task by the current user.
     pub(crate) fn time_tracked(&self, id: EventId) -> u64 {
-        Durations::from(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &vec![&id]).sum::<Duration>().as_secs()
+        Durations::from(self.get_own_history(), &vec![&id]).sum::<Duration>().as_secs()
     }
 
 
@@ -236,7 +236,7 @@ impl Tasks {
 
         let children = self.get_task_tree(&id).get_all();
         for user in self.history.values() {
-            total += Durations::from(user, &children).sum::<Duration>().as_secs();
+            total += Durations::from(user.values(), &children).sum::<Duration>().as_secs();
         }
         total
     }
@@ -399,7 +399,7 @@ impl Tasks {
             let now = &now();
             let mut tracking_stamp: Option<Timestamp> = None;
             for elem in
-                timestamps(self.history.get(&self.sender.pubkey()).into_iter().flatten(), &[t.get_id()])
+                timestamps(self.get_own_history(), &[t.get_id()])
                     .map(|(e, _)| e) {
                 if tracking_stamp.is_some() && elem > now {
                     break;
@@ -634,7 +634,7 @@ impl Tasks {
     /// Returns all recent events from history until the first event at or before the given timestamp.
     fn history_from(&self, stamp: Timestamp) -> impl Iterator<Item=&Event> {
         self.history.get(&self.sender.pubkey()).map(|hist| {
-            hist.iter().rev().take_while_inclusive(move |e| e.created_at > stamp)
+            hist.values().rev().take_while_inclusive(move |e| e.created_at > stamp)
         }).into_iter().flatten()
     }
 
@@ -750,7 +750,14 @@ impl Tasks {
             .is_some()
     }
 
-    pub(crate) fn track_at(&mut self, time: Timestamp, target: Option<EventId>) -> Option<EventId> {
+    pub(crate) fn track_at(&mut self, mut time: Timestamp, target: Option<EventId>) -> Option<EventId> {
+        if target.is_none() {
+            time = time - 1;
+        } else if let Some(hist) = self.history.get(&self.sender.pubkey()) {
+            while hist.get(&time).is_some() {
+                time = time + 1;
+            }
+        }
         let current_pos = self.get_position_at(time);
         if (time < Timestamp::now() || target.is_none()) && current_pos.1 == target.as_ref() {
             warn!("Already {} from {}",
@@ -789,8 +796,8 @@ impl Tasks {
             TASK_KIND => self.add_task(event),
             TRACKING_KIND =>
                 match self.history.get_mut(&event.pubkey) {
-                    Some(c) => { c.insert(event); }
-                    None => { self.history.insert(event.pubkey, BTreeSet::from([event])); }
+                    Some(c) => { c.insert(event.created_at, event); }
+                    None => { self.history.insert(event.pubkey, BTreeMap::from([(event.created_at, event)])); }
                 },
             METADATA_KIND =>
                 match Metadata::from_json(event.content()) {
@@ -827,8 +834,8 @@ impl Tasks {
         }
     }
 
-    fn get_own_history(&mut self) -> Option<&mut BTreeSet<Event>> {
-        self.history.get_mut(&self.sender.pubkey())
+    fn get_own_history(&self) -> impl DoubleEndedIterator<Item=&Event> + '_ {
+        self.history.get(&self.sender.pubkey()).into_iter().flat_map(|t| t.values())
     }
 
     pub(crate) fn undo(&mut self) {
@@ -842,8 +849,8 @@ impl Tasks {
 
     fn remove(&mut self, event: &Event) {
         self.tasks.remove(&event.id);
-        self.get_own_history().map(
-            |t| t.retain(|e| e != event &&
+        self.history.get_mut(&self.sender.pubkey())
+            .map(|t| t.retain(|t, e| e != event &&
                 !referenced_events(e).is_some_and(|id| id == &event.id)));
         self.referenced_tasks(event, |t| { t.props.remove(event); });
     }
@@ -1153,7 +1160,7 @@ mod tasks_test {
     fn test_procedures() {
         let mut tasks = stub_tasks();
         tasks.make_task_and_enter("proc: tags", State::Procedure);
-        assert_eq!(tasks.get_own_history().unwrap().len(), 1);
+        assert_eq!(tasks.get_own_history().count(), 1);
         let side = tasks.submit(build_task("side", vec![tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)], None));
         assert_eq!(tasks.get_current_task().unwrap().children, HashSet::<EventId>::new());
         let sub_id = tasks.make_task("sub");
@@ -1187,11 +1194,11 @@ mod tasks_test {
         let new2 = tasks.get_by_id(&id2.unwrap()).unwrap();
         assert_eq!(new2.props, Default::default());
 
-        assert_eq!(tasks.get_own_history().unwrap().len(), 1);
+        assert_eq!(tasks.get_own_history().count(), 1);
         let idagain = tasks.filter_or_create(None, "newer");
         assert_eq!(idagain, None);
         assert_position!(tasks, id1.unwrap());
-        assert_eq!(tasks.get_own_history().unwrap().len(), 2);
+        assert_eq!(tasks.get_own_history().count(), 2);
         assert_eq!(tasks.len(), 3);
     }
 
@@ -1209,9 +1216,19 @@ mod tasks_test {
         assert_position!(tasks, zero);
         assert!(tasks.time_tracked(zero) > almost_now.as_u64());
 
-        tasks.track_at(Timestamp::from(22), None);
-        assert_eq!(tasks.get_own_history().unwrap().len(), 2);
+        // Because None is backtracked by one to avoid conflicts
+        tasks.track_at(Timestamp::from(22 + 1), None);
+        assert_eq!(tasks.get_own_history().count(), 2);
         assert_eq!(tasks.time_tracked(zero), 11);
+        tasks.track_at(Timestamp::from(22 + 1), Some(zero));
+        assert_eq!(tasks.get_own_history().count(), 3);
+        assert!(tasks.time_tracked(zero) > 999);
+
+        let some = tasks.make_task("some");
+        tasks.track_at(Timestamp::from(22 + 1), Some(some));
+        assert_eq!(tasks.get_own_history().count(), 4);
+        assert_eq!(tasks.time_tracked(zero), 12);
+        assert!(tasks.time_tracked(some) > 999);
 
         // TODO test received events
     }
@@ -1223,7 +1240,7 @@ mod tasks_test {
         let zero = EventId::all_zeros();
 
         tasks.track_at(Timestamp::from(Timestamp::now().as_u64() + 100), Some(zero));
-        assert_eq!(timestamps(tasks.history.values().nth(0).unwrap().into_iter(), &vec![&zero]).collect_vec().len(), 2)
+        assert_eq!(timestamps(tasks.get_own_history(), &vec![&zero]).collect_vec().len(), 2)
         // TODO Does not show both future and current tracking properly, need to split by current time
     }
 
@@ -1273,7 +1290,7 @@ mod tasks_test {
 
         tasks.move_to(Some(t1));
         assert_position!(tasks, t1);
-        assert_eq!(tasks.get_own_history().unwrap().len(), 3);
+        assert_eq!(tasks.get_own_history().count(), 3);
         assert_eq!(tasks.relative_path(t4), "t2>t4");
         assert_eq!(tasks.visible_tasks().len(), 2);
         tasks.depth = 2;
