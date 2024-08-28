@@ -105,8 +105,12 @@ impl Task {
         })
     }
 
+    pub(crate) fn last_state_update(&self) -> Timestamp {
+        self.state().map(|s| s.time).unwrap_or(self.event.created_at)
+    }
+
     pub(crate) fn state(&self) -> Option<TaskState> {
-        self.states().max_by_key(|t| t.time)
+        self.states().last()
     }
 
     pub(crate) fn pure_state(&self) -> State {

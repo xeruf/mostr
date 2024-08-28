@@ -444,10 +444,10 @@ async fn main() -> Result<()> {
                         match arg {
                             None => {
                                 let today = Timestamp::now() - 80_000;
-                                info!("Filtering for tasks created in the last 22 hours");
+                                info!("Filtering for tasks opened in the last 22 hours");
                                 tasks.set_filter(
                                     tasks.filtered_tasks(tasks.get_position_ref())
-                                        .filter(|t| t.event.created_at > today)
+                                        .filter(|t| t.last_state_update() > today)
                                         .map(|t| t.event.id)
                                         .collect()
                                 );
@@ -475,11 +475,11 @@ async fn main() -> Result<()> {
                                     parse_hour(arg, 1)
                                         .or_else(|| parse_date(arg).map(|utc| utc.with_timezone(&Local)))
                                         .map(|time| {
-                                            info!("Filtering for tasks created after {}", format_datetime_relative(time));
+                                            info!("Filtering for tasks opened after {}", format_datetime_relative(time));
                                             let threshold = time.to_utc().timestamp();
                                             tasks.set_filter(
                                                 tasks.filtered_tasks(tasks.get_position_ref())
-                                                    .filter(|t| t.event.created_at.as_u64() as i64 > threshold)
+                                                    .filter(|t| t.last_state_update().as_u64() as i64 > threshold)
                                                     .map(|t| t.event.id)
                                                     .collect()
                                             );
