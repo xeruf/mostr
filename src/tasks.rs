@@ -922,8 +922,13 @@ impl Tasks {
     // Properties
 
     pub(crate) fn set_depth(&mut self, depth: i8) {
+        if depth < self.depth && !self.view.is_empty() {
+            self.view.clear();
+            info!("Cleared search and reduced view depth to {depth}");
+        } else {
+            info!("Changed view depth to {depth}");
+        }
         self.depth = depth;
-        info!("Changed view depth to {depth}");
     }
 
     pub(crate) fn get_columns(&mut self) -> &mut Vec<String> {
