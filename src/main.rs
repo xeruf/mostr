@@ -652,11 +652,6 @@ async fn main() -> Result<()> {
                             if dots > 1 {
                                 info!("Moving up {} tasks", dots - 1)
                             }
-                        } else if let Ok(depth) = slice.parse::<i8>() {
-                            if pos != tasks.get_position_ref() {
-                                tasks.move_to(pos.cloned());
-                            }
-                            tasks.set_depth(depth);
                         } else {
                             let mut transform: Box<dyn Fn(&str) -> String> = Box::new(|s: &str| s.to_string());
                             if !slice.chars().any(|c| c.is_ascii_uppercase()) {
