@@ -163,7 +163,7 @@ impl Tasks {
             .filter(|e| e.created_at <= timestamp)
             .map_or_else(
                 || (Timestamp::now(), None),
-                |e| (e.created_at, referenced_events(e)))
+                |e| (e.created_at, referenced_event(e)))
     }
 
     /// Ids of all subtasks recursively found for id, including itself
@@ -869,18 +869,19 @@ impl Tasks {
     pub(crate) fn move_back_to(&mut self, str: &str) -> bool {
         let lower = str.to_ascii_lowercase();
         let found = self.history_before_now()
-            .find(|e| referenced_events(e)
+            .find(|e| referenced_event(e)
                 .and_then(|id| self.get_by_id(id))
                 .is_some_and(|t| t.event.content.to_ascii_lowercase().contains(&lower)));
         if let Some(event) = found {
-            self.move_to(referenced_events(event).cloned());
+            self.move_to(referenced_event(event).cloned());
             return true;
         }
         false
     }
 
     pub(crate) fn move_back_by(&mut self, steps: usize) {
-        let id = self.history_before_now().nth(steps).and_then(|e| referenced_events(e));
+        let id = self.history_before_now().nth(steps)
+            .and_then(|e| referenced_event(e));
         self.move_to(id.cloned())
     }
 
@@ -897,7 +898,7 @@ impl Tasks {
         self.tasks.remove(&event.id);
         self.history.get_mut(&self.sender.pubkey())
             .map(|t| t.retain(|t, e| e != event &&
-                !referenced_events(e).is_some_and(|id| id == &event.id)));
+                !referenced_event(e).is_some_and(|id| id == &event.id)));
         self.referenced_tasks(event, |t| { t.props.remove(event); });
     }
 
@@ -1038,7 +1039,7 @@ pub(crate) fn join_tasks<'a>(
         })
 }
 
-fn referenced_events(event: &Event) -> Option<&EventId> {
+fn referenced_event(event: &Event) -> Option<&EventId> {
     event.tags.iter().find_map(|tag| match tag.as_standardized() {
         Some(TagStandard::Event { event_id, .. }) => Some(event_id),
         _ => None
