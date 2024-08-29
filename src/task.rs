@@ -76,6 +76,7 @@ impl Task {
         self.find_refs(MARKER_DEPENDS).collect()
     }
 
+    /// Trimmed event content or stringified id
     pub(crate) fn get_title(&self) -> String {
         Some(self.event.content.trim().to_string())
             .filter(|s| !s.is_empty())

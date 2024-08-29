@@ -375,7 +375,7 @@ async fn main() -> Result<()> {
                 match op {
                     None => {
                         debug!("Flushing Tasks because of empty command");
-                        tasks.flush()
+                        tasks.flush();
                     }
 
                     Some(':') => {
@@ -599,7 +599,7 @@ async fn main() -> Result<()> {
                             Some(arg) => {
                                 if parse_tracking_stamp(arg).and_then(|stamp| tasks.track_at(stamp, None)).is_some() {
                                     let (label, times) = tasks.times_tracked();
-                                    println!("{}\n{}", label.italic(), 
+                                    println!("{}\n{}", label.italic(),
                                              times.rev().take(15).collect_vec().iter().rev().join("\n"));
                                 }
                                 // So the error message is not covered up

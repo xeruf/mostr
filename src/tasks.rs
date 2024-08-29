@@ -155,6 +155,8 @@ impl Tasks {
         self.get_position_at(now()).1
     }
 
+    // TODO binary search
+    /// Gets last position change before the given timestamp
     fn get_position_at(&self, timestamp: Timestamp) -> (Timestamp, Option<&EventId>) {
         self.history_from(timestamp)
             .last()
@@ -579,7 +581,7 @@ impl Tasks {
         let has_space = lowercase_arg.split_ascii_whitespace().count() > 1;
 
         let mut filtered: Vec<EventId> = Vec::with_capacity(32);
-        let mut filtered_more: Vec<EventId> = Vec::with_capacity(32);
+        let mut filtered_fuzzy: Vec<EventId> = Vec::with_capacity(32);
         for task in self.filtered_tasks(position) {
             let lowercase = task.event.content.to_ascii_lowercase();
             if lowercase == lowercase_arg {
@@ -587,7 +589,7 @@ impl Tasks {
             } else if task.event.content.starts_with(arg) {
                 filtered.push(task.event.id)
             } else if if has_space { lowercase.starts_with(&lowercase_arg) } else { lowercase.split_ascii_whitespace().any(|word| word.starts_with(&lowercase_arg)) } {
-                filtered_more.push(task.event.id)
+                filtered_fuzzy.push(task.event.id)
             }
         }
         for task in self.tasks.values() {
@@ -600,7 +602,7 @@ impl Tasks {
         }
 
         if filtered.is_empty() {
-            filtered = filtered_more;
+            filtered = filtered_fuzzy;
         }
         let pos = self.get_position_ref();
         let immediate = filtered.iter().filter(
@@ -872,7 +874,7 @@ impl Tasks {
                 .is_some_and(|t| t.event.content.to_ascii_lowercase().contains(&lower)));
         if let Some(event) = found {
             self.move_to(referenced_events(event).cloned());
-            return true
+            return true;
         }
         false
     }
