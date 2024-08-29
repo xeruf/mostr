@@ -107,22 +107,22 @@ To stop time-tracking completely, simply move to the root of all tasks.
 
 Dot or slash can be repeated to move to parent tasks before acting.
 
-- `:[IND][PROP]` - add property column PROP at IND or end, if it already exists remove property column PROP or IND (
-  1-indexed), empty: list properties
+- `:[IND][PROP]` - add property column PROP at IND or end,
+  if it already exists remove property column PROP or IND; empty: list properties
 - `::[PROP]` - sort by property PROP (multiple space-separated values allowed)
 - `([TIME]` - list tracked times or insert timetracking with the specified offset
   such as `-1d`, `-15 minutes`, `yesterday 17:20`, `in 2 fortnights`
 - `)[TIME]` - stop timetracking with optional offset - also convenience helper to move to root
 - `>[TEXT]` - complete active task and move up, with optional status description
 - `<[TEXT]` - close active task and move up, with optional status description
-- `!TEXT` - set status for current task from text and move up (empty: Open)
-- `,[TEXT]` - list notes or add text note (comment / description)
+- `!TEXT` - set status for current task from text and move up; empty: Open
 - TBI: `*[INT]` - set priority - can also be used in task creation, with any digit
+- `,[TEXT]` - list notes or add text note (stateless task / task description)
 - TBI: `;[TEXT]` - list comments or comment on task
 - TBI: show status history and creation with attribution
 - `&` - revert
   - with string argument, find first matching task in history
-  - with int argument, jump back X tasks
+  - with int argument, jump back X tasks in history
   - undo last action (moving in place or upwards confirms pending actions)
 - `wss://...` - switch or subscribe to relay (prefix with space to forcibly add a new one)
 
@@ -132,9 +132,8 @@ Property Filters:
 - `+TAG` - add tag filter (empty: list all used tags)
 - `-TAG` - remove tag filters (by prefix)
 - `?STATUS` - filter by status (type or description) - plain `?` to reset, `??` to show all
-- `@AUTHOR` - filter by time or author (pubkey, or `@` for self, TBI: id prefix, name prefix)
+- `@[AUTHOR|TIME]` - filter by time or author (pubkey, or `@` for self, TBI: id prefix, name prefix)
 - TBI: `**INT` - filter by priority
-- TBI: Filter by time
 
 Status descriptions can be used for example for Kanban columns or review flows.
 An active tag or status filter will also set that attribute for newly created tasks.
@@ -209,12 +208,15 @@ Suggestions welcome!
 
 - TUI: Clear Terminal? Refresh on empty prompt after timeout?
 - Kanban, GANTT, Calendar
-- Web Interface, Messenger integrations
+- Web Interface
+- Messenger Integrations (Telegram Bot)
+- n8n node
+- Caldav Feed: Scheduled (planning) / Tracked (events, timetracking) with args for how far back/forward
 
 ## Exemplary Workflows
 
 - Freelancer
-- Family Chore management
+- Family Chore Management
 - Inter-Disciplinary Project Team -> Company with multiple projects and multiple relays
   + Permissions via status or assignment (reassignment?)
   + Tasks can be blocked while having a status (e.g. kanban column)
