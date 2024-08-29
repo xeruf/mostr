@@ -379,7 +379,10 @@ impl Tasks {
 
     pub(crate) fn filtered_tasks<'a>(&'a self, position: Option<&'a EventId>) -> impl Iterator<Item=&Task> + 'a {
         let current: HashMap<&EventId, &Task> = self.resolve_tasks(self.children_of(position)).map(|t| (t.get_id(), t)).collect();
-        let bookmarks = self.bookmarks.iter().filter(|id| !current.contains_key(id)).filter_map(|id| self.get_by_id(id)).collect_vec();
+        let bookmarks = self.bookmarks.iter()
+            .filter(|id| !position.is_some_and(|p| &p == id) && !current.contains_key(id))
+            .filter_map(|id| self.get_by_id(id))
+            .collect_vec();
         // TODO use ChildIterator
         current.into_values().chain(
             bookmarks
@@ -521,6 +524,20 @@ impl Tasks {
     }
 
     // Movement and Selection
+
+    pub(crate) fn toggle_bookmark(&mut self, id: EventId) -> nostr_sdk::Result<Event> {
+        match self.bookmarks.iter().position(|b| b == &id) {
+            None => self.bookmarks.push(id),
+            Some(pos) => { self.bookmarks.remove(pos); },
+        }
+        self.sender.submit(
+            EventBuilder::new(Kind::Bookmarks, "mostr pins",
+                              self.bookmarks.iter().map(|id| Tag::event(*id))))
+    }
+
+    pub(crate) fn set_filter_bookmarks(&mut self) {
+        self.set_filter(self.bookmarks.clone())
+    }
 
     pub(crate) fn set_filter(&mut self, view: Vec<EventId>) {
         if view.is_empty() {
@@ -1238,6 +1255,8 @@ mod tasks_test {
         assert_eq!(tasks.filtered_tasks(Some(&zero)).count(), 0);
         tasks.submit(EventBuilder::new(Kind::Bookmarks, "", [Tag::event(pin), Tag::event(zero)]));
         assert_eq!(tasks.filtered_tasks(Some(&zero)).collect_vec(), vec![tasks.get_by_id(&pin).unwrap()]);
+        tasks.move_to(Some(pin));
+        assert!(tasks.visible_tasks().is_empty());
 
         tasks.move_to(None);
         assert_eq!(tasks.visible_tasks().len(), 3);

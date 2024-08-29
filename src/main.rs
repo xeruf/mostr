@@ -499,7 +499,19 @@ async fn main() -> Result<()> {
                     }
 
                     Some('*') => {
-                        info!("Setting priority not yet implemented")
+                        match arg {
+                            None => match tasks.get_position_ref() {
+                                None => {
+                                    info!("Filtering for bookmarked tasks");
+                                    tasks.set_filter_bookmarks()
+                                },
+                                Some(pos) => {
+                                    info!("Toggling bookmark");
+                                    or_warn!(tasks.toggle_bookmark(*pos));
+                                }
+                            },
+                            Some(arg) => info!("Setting priority not yet implemented"),
+                        }
                     }
 
                     Some('|') =>
