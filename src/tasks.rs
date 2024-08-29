@@ -32,6 +32,8 @@ pub(crate) struct Tasks {
     history: HashMap<PublicKey, BTreeMap<Timestamp, Event>>,
     /// Index of found users with metadata
     users: HashMap<PublicKey, Metadata>,
+    /// Own pinned tasks
+    bookmarks: Vec<EventId>,
 
     /// The task properties currently visible
     properties: Vec<String>,
@@ -104,7 +106,12 @@ impl Display for StateFilter {
 }
 
 impl Tasks {
-    pub(crate) fn from(url: Option<Url>, tx: &tokio::sync::mpsc::Sender<MostrMessage>, keys: &Keys, metadata: Option<Metadata>) -> Self {
+    pub(crate) fn from(
+        url: Option<Url>,
+        tx: &tokio::sync::mpsc::Sender<MostrMessage>,
+        keys: &Keys,
+        metadata: Option<Metadata>,
+    ) -> Self {
         let mut new = Self::with_sender(EventSender::from(url, tx, keys));
         metadata.map(|m| new.users.insert(keys.public_key(), m));
         new
@@ -115,6 +122,8 @@ impl Tasks {
             tasks: Default::default(),
             history: Default::default(),
             users: Default::default(),
+            bookmarks: Default::default(),
+
             properties: [
                 "author",
                 "state",
@@ -130,6 +139,7 @@ impl Tasks {
                 "rtime",
                 "name",
             ].into_iter().map(|s| s.to_string()).collect(),
+
             view: Default::default(),
             tags: Default::default(),
             tags_excluded: Default::default(),
@@ -810,7 +820,9 @@ impl Tasks {
                     Err(e) => warn!("Cannot parse metadata: {} from {:?}", e, event)
                 }
             Kind::Bookmarks => {
-                //referenced_events(event)
+                if event.pubkey == self.sender.pubkey() {
+                    self.bookmarks = referenced_events(&event).cloned().collect_vec()
+                }
             }
             _ => {
                 if event.kind == TRACKING_KIND {
@@ -1039,18 +1051,19 @@ pub(crate) fn join_tasks<'a>(
         })
 }
 
-fn referenced_event(event: &Event) -> Option<&EventId> {
-    event.tags.iter().find_map(|tag| match tag.as_standardized() {
+fn referenced_events(event: &Event) -> impl Iterator<Item=&EventId> {
+    event.tags.iter().filter_map(|tag| match tag.as_standardized() {
         Some(TagStandard::Event { event_id, .. }) => Some(event_id),
         _ => None
     })
 }
 
+fn referenced_event(event: &Event) -> Option<&EventId> {
+    referenced_events(event).next()
+}
+
 fn matching_tag_id<'a>(event: &'a Event, ids: &'a [&'a EventId]) -> Option<&'a EventId> {
-    event.tags.iter().find_map(|tag| match tag.as_standardized() {
-        Some(TagStandard::Event { event_id, .. }) if ids.contains(&event_id) => Some(event_id),
-        _ => None
-    })
+    referenced_events(event).find(|id| ids.contains(id))
 }
 
 /// Filters out event timestamps to those that start or stop one of the given events
