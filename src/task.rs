@@ -233,14 +233,17 @@ pub(crate) enum State {
     /// Actionable ordered task list
     Procedure = PROCEDURE_KIND as isize,
 }
-impl From<&str> for State {
-    fn from(value: &str) -> Self {
-        match value {
-            "Closed" => State::Closed,
-            "Done" => State::Done,
-            "Pending" => State::Pending,
-            "Proc" | "Procedure" | "List" => State::Procedure,
-            _ => State::Open,
+impl TryFrom<&str> for State {
+    type Error = ();
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value.to_ascii_lowercase().as_str() {
+            "closed" => Ok(State::Closed),
+            "done" => Ok(State::Done),
+            "pending" => Ok(State::Pending),
+            "proc" | "procedure" | "list" => Ok(State::Procedure),
+            "open" => Ok(State::Open),
+            _ => Err(()),
         }
     }
 }

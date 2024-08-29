@@ -530,9 +530,20 @@ async fn main() -> Result<()> {
 
                     Some('!') =>
                         match tasks.get_position() {
-                            None => warn!("First select a task to set its state!"),
+                            None => {
+                                warn!("First select a task to set its state!");
+                                info!("Usage: ![(Open|Procedure|Pending|Done|Closed): ][Statename]");
+                            }
                             Some(id) => {
-                                tasks.set_state_for_with(id, arg_default);
+                                'block: {
+                                    if let Some((left, right)) = arg_default.split_once(": ") {
+                                        if let Ok(state) = left.try_into() {
+                                            tasks.set_state_for(id, right, state);
+                                            break 'block;
+                                        }
+                                    }
+                                    tasks.set_state_for_with(id, arg_default);
+                                }
                                 tasks.move_up();
                             }
                         }

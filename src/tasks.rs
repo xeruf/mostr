@@ -856,7 +856,7 @@ impl Tasks {
     }
 
     pub(crate) fn set_state_for_with(&mut self, id: EventId, comment: &str) {
-        self.set_state_for(id, comment, comment.into());
+        self.set_state_for(id, comment, comment.try_into().unwrap_or(State::Open));
     }
 
     pub(crate) fn set_state_for(&mut self, id: EventId, comment: &str, state: State) -> EventId {
