@@ -591,14 +591,22 @@ impl Tasks {
             }
         }
         for task in self.tasks.values() {
+            // Find global exact match
             if task.event.content.to_ascii_lowercase() == lowercase_arg &&
                 !self.traverse_up_from(Some(*task.get_id())).any(|t| t.pure_state() == State::Closed) {
                 // exclude closed tasks and their subtasks
                 return vec![task.event.id];
             }
         }
+
         if filtered.is_empty() {
-            return filtered_more;
+            filtered = filtered_more;
+        }
+        let pos = self.get_position_ref();
+        let immediate = filtered.iter().filter(
+            |t| self.get_by_id(t).is_some_and(|t| t.parent_id() == pos)).collect_vec();
+        if immediate.len() == 1 {
+            return immediate.into_iter().cloned().collect_vec();
         }
         filtered
     }
