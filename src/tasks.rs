@@ -226,7 +226,7 @@ impl Tasks {
 
     /// Total time in seconds tracked on this task by the current user.
     pub(crate) fn time_tracked(&self, id: EventId) -> u64 {
-        Durations::from(self.get_own_history(), &vec![&id]).sum::<Duration>().as_secs()
+        Durations::from(self.get_own_events_history(), &vec![&id]).sum::<Duration>().as_secs()
     }
 
 
@@ -399,7 +399,7 @@ impl Tasks {
             let now = &now();
             let mut tracking_stamp: Option<Timestamp> = None;
             for elem in
-                timestamps(self.get_own_history(), &[t.get_id()])
+                timestamps(self.get_own_events_history(), &[t.get_id()])
                     .map(|(e, _)| e) {
                 if tracking_stamp.is_some() && elem > now {
                     break;
@@ -834,8 +834,37 @@ impl Tasks {
         }
     }
 
-    fn get_own_history(&self) -> impl DoubleEndedIterator<Item=&Event> + '_ {
+    fn get_own_history(&self) -> Option<&BTreeMap<Timestamp, Event>> {
+        self.history.get(&self.sender.pubkey())
+    }
+
+    fn get_own_events_history(&self) -> impl DoubleEndedIterator<Item=&Event> + '_ {
         self.history.get(&self.sender.pubkey()).into_iter().flat_map(|t| t.values())
+    }
+
+    fn history_before_now(&self) -> impl Iterator<Item=&Event> {
+        self.get_own_history().into_iter().flat_map(|hist| {
+            let now = now();
+            hist.values().rev().skip_while(move |e| e.created_at > now)
+        })
+    }
+
+    pub(crate) fn move_back_to(&mut self, str: &str) -> bool {
+        let lower = str.to_ascii_lowercase();
+        let found = self.history_before_now()
+            .find(|e| referenced_events(e)
+                .and_then(|id| self.get_by_id(id))
+                .is_some_and(|t| t.event.content.to_ascii_lowercase().contains(&lower)));
+        if let Some(event) = found {
+            self.move_to(referenced_events(event).cloned());
+            return true
+        }
+        false
+    }
+
+    pub(crate) fn move_back_by(&mut self, steps: usize) {
+        let id = self.history_before_now().nth(steps).and_then(|e| referenced_events(e));
+        self.move_to(id.cloned())
     }
 
     pub(crate) fn undo(&mut self) {
@@ -1160,7 +1189,7 @@ mod tasks_test {
     fn test_procedures() {
         let mut tasks = stub_tasks();
         tasks.make_task_and_enter("proc: tags", State::Procedure);
-        assert_eq!(tasks.get_own_history().count(), 1);
+        assert_eq!(tasks.get_own_events_history().count(), 1);
         let side = tasks.submit(build_task("side", vec![tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)], None));
         assert_eq!(tasks.get_current_task().unwrap().children, HashSet::<EventId>::new());
         let sub_id = tasks.make_task("sub");
@@ -1194,11 +1223,11 @@ mod tasks_test {
         let new2 = tasks.get_by_id(&id2.unwrap()).unwrap();
         assert_eq!(new2.props, Default::default());
 
-        assert_eq!(tasks.get_own_history().count(), 1);
+        assert_eq!(tasks.get_own_events_history().count(), 1);
         let idagain = tasks.filter_or_create(None, "newer");
         assert_eq!(idagain, None);
         assert_position!(tasks, id1.unwrap());
-        assert_eq!(tasks.get_own_history().count(), 2);
+        assert_eq!(tasks.get_own_events_history().count(), 2);
         assert_eq!(tasks.len(), 3);
     }
 
@@ -1218,15 +1247,15 @@ mod tasks_test {
 
         // Because None is backtracked by one to avoid conflicts
         tasks.track_at(Timestamp::from(22 + 1), None);
-        assert_eq!(tasks.get_own_history().count(), 2);
+        assert_eq!(tasks.get_own_events_history().count(), 2);
         assert_eq!(tasks.time_tracked(zero), 11);
         tasks.track_at(Timestamp::from(22 + 1), Some(zero));
-        assert_eq!(tasks.get_own_history().count(), 3);
+        assert_eq!(tasks.get_own_events_history().count(), 3);
         assert!(tasks.time_tracked(zero) > 999);
 
         let some = tasks.make_task("some");
         tasks.track_at(Timestamp::from(22 + 1), Some(some));
-        assert_eq!(tasks.get_own_history().count(), 4);
+        assert_eq!(tasks.get_own_events_history().count(), 4);
         assert_eq!(tasks.time_tracked(zero), 12);
         assert!(tasks.time_tracked(some) > 999);
 
@@ -1240,7 +1269,7 @@ mod tasks_test {
         let zero = EventId::all_zeros();
 
         tasks.track_at(Timestamp::from(Timestamp::now().as_u64() + 100), Some(zero));
-        assert_eq!(timestamps(tasks.get_own_history(), &vec![&zero]).collect_vec().len(), 2)
+        assert_eq!(timestamps(tasks.get_own_events_history(), &vec![&zero]).collect_vec().len(), 2)
         // TODO Does not show both future and current tracking properly, need to split by current time
     }
 
@@ -1290,7 +1319,7 @@ mod tasks_test {
 
         tasks.move_to(Some(t1));
         assert_position!(tasks, t1);
-        assert_eq!(tasks.get_own_history().count(), 3);
+        assert_eq!(tasks.get_own_events_history().count(), 3);
         assert_eq!(tasks.relative_path(t4), "t2>t4");
         assert_eq!(tasks.visible_tasks().len(), 2);
         tasks.depth = 2;

@@ -437,7 +437,20 @@ async fn main() -> Result<()> {
                     }
 
                     Some('&') => {
-                        tasks.undo();
+                        match arg {
+                            None => tasks.undo(),
+                            Some(text) => match text.parse::<u8>() {
+                                Ok(int) => {
+                                    tasks.move_back_by(int as usize);
+                                }
+                                _ => {
+                                    if !tasks.move_back_to(text) {
+                                        warn!("Did not find a match in history for \"{text}\"");
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Some('@') => {

@@ -120,7 +120,10 @@ Dot or slash can be repeated to move to parent tasks before acting.
 - TBI: `*[INT]` - set priority - can also be used in task creation, with any digit
 - TBI: `;[TEXT]` - list comments or comment on task
 - TBI: show status history and creation with attribution
-- `&` - undo last action (moving in place or upwards confirms pending actions)
+- `&` - revert
+  - with string argument, find first matching task in history
+  - with int argument, jump back X tasks
+  - undo last action (moving in place or upwards confirms pending actions)
 - `wss://...` - switch or subscribe to relay (prefix with space to forcibly add a new one)
 
 Property Filters:
