@@ -378,20 +378,23 @@ impl Tasks {
     }
 
     pub(crate) fn filtered_tasks<'a>(&'a self, position: Option<&'a EventId>) -> impl Iterator<Item=&Task> + 'a {
+        let current: HashMap<&EventId, &Task> = self.resolve_tasks(self.children_of(position)).map(|t| (t.get_id(), t)).collect();
+        let bookmarks = self.bookmarks.iter().filter(|id| !current.contains_key(id)).filter_map(|id| self.get_by_id(id)).collect_vec();
         // TODO use ChildIterator
-        self.resolve_tasks(self.children_of(position))
-            .filter(move |t| {
-                // TODO apply filters in transit
-                self.state.matches(t) &&
-                    t.tags.as_ref().map_or(true, |tags| {
-                        !tags.iter().any(|tag| self.tags_excluded.contains(tag))
-                    }) &&
-                    (self.tags.is_empty() ||
-                        t.tags.as_ref().map_or(false, |tags| {
-                            let mut iter = tags.iter();
-                            self.tags.iter().all(|tag| iter.any(|t| t == tag))
-                        }))
-            })
+        current.into_values().chain(
+            bookmarks
+        ).filter(move |t| {
+            // TODO apply filters in transit
+            self.state.matches(t) &&
+                t.tags.as_ref().map_or(true, |tags| {
+                    !tags.iter().any(|tag| self.tags_excluded.contains(tag))
+                }) &&
+                (self.tags.is_empty() ||
+                    t.tags.as_ref().map_or(false, |tags| {
+                        let mut iter = tags.iter();
+                        self.tags.iter().all(|tag| iter.any(|t| t == tag))
+                    }))
+        })
     }
 
     pub(crate) fn visible_tasks(&self) -> Vec<&Task> {
@@ -1219,6 +1222,35 @@ mod tasks_test {
         ($left:expr, $right:expr $(,)?) => {
             assert_eq!($left.get_position_ref(), Some(&$right))
         };
+    }
+
+    #[test]
+    fn test_bookmarks() {
+        let mut tasks = stub_tasks();
+        let zero = EventId::all_zeros();
+        let test = tasks.make_task("test: tag");
+        let parent = tasks.make_task("parent");
+        assert_eq!(tasks.visible_tasks().len(), 2);
+        tasks.move_to(Some(parent));
+        let pin = tasks.make_task("pin");
+
+        assert_eq!(tasks.filtered_tasks(None).count(), 2);
+        assert_eq!(tasks.filtered_tasks(Some(&zero)).count(), 0);
+        tasks.submit(EventBuilder::new(Kind::Bookmarks, "", [Tag::event(pin), Tag::event(zero)]));
+        assert_eq!(tasks.filtered_tasks(Some(&zero)).collect_vec(), vec![tasks.get_by_id(&pin).unwrap()]);
+
+        tasks.move_to(None);
+        assert_eq!(tasks.visible_tasks().len(), 3);
+        tasks.set_depth(2);
+        assert_eq!(tasks.visible_tasks().len(), 3);
+        tasks.add_tag("tag".to_string());
+        assert_eq!(tasks.visible_tasks().len(), 1);
+        assert_eq!(tasks.filtered_tasks(None).collect_vec(), vec![tasks.get_by_id(&test).unwrap()]);
+        tasks.submit(EventBuilder::new(Kind::Bookmarks, "", []));
+        tasks.clear_filters();
+        assert_eq!(tasks.visible_tasks().len(), 3);
+        tasks.set_depth(1);
+        assert_eq!(tasks.visible_tasks().len(), 2);
     }
 
     #[test]
