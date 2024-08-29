@@ -5,26 +5,27 @@ use nostr_sdk::TagStandard::Hashtag;
 
 use crate::task::{MARKER_PARENT, State};
 
-pub const METADATA_KIND: u16 = 0;
-pub const NOTE_KIND: u16 = 1;
-pub const TASK_KIND: u16 = 1621;
-pub const TRACKING_KIND: u16 = 1650;
-pub const KINDS: [u16; 3] = [
-    METADATA_KIND,
-    NOTE_KIND,
+pub const TASK_KIND: Kind = Kind::GitIssue;
+pub const PROCEDURE_KIND_ID: u16 = 1639;
+pub const PROCEDURE_KIND: Kind = Kind::Regular(PROCEDURE_KIND_ID);
+pub const TRACKING_KIND: Kind = Kind::Regular(1650);
+pub const BASIC_KINDS: [Kind; 4] = [
+    Kind::Metadata,
+    Kind::TextNote,
     TASK_KIND,
+    Kind::Bookmarks,
 ];
-pub const PROP_KINDS: [u16; 6] = [
+pub const PROP_KINDS: [Kind; 6] = [
     TRACKING_KIND,
-    State::Open as u16,
-    State::Done as u16,
-    State::Closed as u16,
-    State::Pending as u16,
-    State::Procedure as u16
+    Kind::GitStatusOpen,
+    Kind::GitStatusApplied,
+    Kind::GitStatusClosed,
+    Kind::GitStatusDraft,
+    PROCEDURE_KIND,
 ];
 
+// TODO: use formatting - bold / heading / italics - and generate from code
 /// Helper for available properties.
-/// TODO: use formatting - bold / heading / italics - and generate from code
 pub const PROPERTY_COLUMNS: &str =
     "# Available Properties
 Immutable:
@@ -66,7 +67,7 @@ pub(crate) fn build_task(name: &str, tags: Vec<Tag>, kind: Option<(&str, Kind)>)
     info!("Created {}task \"{name}\" with tags [{}]",
         kind.map(|k| k.0).unwrap_or_default(),
         tags.iter().map(format_tag).join(", "));
-    EventBuilder::new(kind.map(|k| k.1).unwrap_or(Kind::from(TASK_KIND)), name, tags)
+    EventBuilder::new(kind.map(|k| k.1).unwrap_or(TASK_KIND), name, tags)
 }
 
 pub(crate) fn build_prop(

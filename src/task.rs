@@ -11,7 +11,7 @@ use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Event, EventId, Kind, Tag, TagStandard, Timestamp};
 
 use crate::helpers::{format_timestamp_local, some_non_empty};
-use crate::kinds::{is_hashtag, TASK_KIND};
+use crate::kinds::{is_hashtag, PROCEDURE_KIND, PROCEDURE_KIND_ID, TASK_KIND};
 
 pub static MARKER_PARENT: &str = "parent";
 pub static MARKER_DEPENDS: &str = "depends";
@@ -91,7 +91,7 @@ impl Task {
     }
 
     pub(crate) fn is_task(&self) -> bool {
-        self.event.kind.as_u16() == TASK_KIND ||
+        self.event.kind == TASK_KIND ||
             self.states().next().is_some()
     }
 
@@ -219,7 +219,6 @@ impl Display for TaskState {
     }
 }
 
-pub const PROCEDURE_KIND: u16 = 1639;
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq)]
 pub(crate) enum State {
     /// Actionable
@@ -231,7 +230,7 @@ pub(crate) enum State {
     /// Temporarily not actionable
     Pending,
     /// Actionable ordered task list
-    Procedure = PROCEDURE_KIND as isize,
+    Procedure = PROCEDURE_KIND_ID as isize,
 }
 impl TryFrom<&str> for State {
     type Error = ();
@@ -251,13 +250,18 @@ impl TryFrom<Kind> for State {
     type Error = ();
 
     fn try_from(value: Kind) -> Result<Self, Self::Error> {
-        match value.as_u16() {
-            1630 => Ok(State::Open),
-            1631 => Ok(State::Done),
-            1632 => Ok(State::Closed),
-            1633 => Ok(State::Pending),
-            PROCEDURE_KIND => Ok(State::Procedure),
-            _ => Err(()),
+        match value {
+            Kind::GitStatusOpen => Ok(State::Open),
+            Kind::GitStatusApplied => Ok(State::Done),
+            Kind::GitStatusClosed => Ok(State::Closed),
+            Kind::GitStatusDraft => Ok(State::Pending),
+            _ => {
+                if value == PROCEDURE_KIND {
+                    Ok(State::Procedure)
+                } else {
+                    Err(())
+                }
+            }
         }
     }
 }

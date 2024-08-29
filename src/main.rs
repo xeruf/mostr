@@ -28,7 +28,7 @@ use tokio::time::timeout;
 use xdg::BaseDirectories;
 
 use crate::helpers::*;
-use crate::kinds::{KINDS, PROP_KINDS, PROPERTY_COLUMNS, TRACKING_KIND};
+use crate::kinds::{BASIC_KINDS, PROP_KINDS, PROPERTY_COLUMNS, TRACKING_KIND};
 use crate::task::{MARKER_DEPENDS, State};
 use crate::tasks::{PropertyCollection, StateFilter, Tasks};
 
@@ -95,9 +95,9 @@ impl EventSender {
         }
         let mut queue = self.queue.borrow_mut();
         Ok(event_builder.to_event(&self.keys).inspect(|event| {
-            if event.kind.as_u16() == TRACKING_KIND {
+            if event.kind == TRACKING_KIND {
                 queue.retain(|e| {
-                    e.kind.as_u16() != TRACKING_KIND
+                    e.kind != TRACKING_KIND
                 });
             }
             queue.push(event.clone());
@@ -115,7 +115,7 @@ impl EventSender {
     }
     /// Sends all pending events if there is a non-tracking event
     fn flush(&self) {
-        if self.queue.borrow().iter().any(|event| event.kind.as_u16() != TRACKING_KIND) {
+        if self.queue.borrow().iter().any(|event| event.kind != TRACKING_KIND) {
             self.force_flush()
         }
     }
@@ -240,14 +240,10 @@ async fn main() -> Result<()> {
     let mut notifications = client.notifications();
     client.connect().await;
 
-    let sub1 = client.subscribe(vec![
-        Filter::new().kinds(KINDS.into_iter().map(Kind::from))
-    ], None).await;
+    let sub1 = client.subscribe(vec![Filter::new().kinds(BASIC_KINDS)], None).await;
     info!("Subscribed to tasks with {:?}", sub1);
 
-    let sub2 = client.subscribe(vec![
-        Filter::new().kinds(PROP_KINDS.into_iter().map(Kind::from))
-    ], None).await;
+    let sub2 = client.subscribe(vec![Filter::new().kinds(PROP_KINDS)], None).await;
     info!("Subscribed to updates with {:?}", sub2);
 
     let metadata = var("USER").ok().map(

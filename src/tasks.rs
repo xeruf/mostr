@@ -800,19 +800,26 @@ impl Tasks {
     }
 
     pub(crate) fn add(&mut self, event: Event) {
-        match event.kind.as_u16() {
-            TASK_KIND => self.add_task(event),
-            TRACKING_KIND =>
-                match self.history.get_mut(&event.pubkey) {
-                    Some(c) => { c.insert(event.created_at, event); }
-                    None => { self.history.insert(event.pubkey, BTreeMap::from([(event.created_at, event)])); }
-                },
-            METADATA_KIND =>
+        match event.kind {
+            Kind::GitIssue => self.add_task(event),
+            Kind::Metadata =>
                 match Metadata::from_json(event.content()) {
                     Ok(metadata) => { self.users.insert(event.pubkey, metadata); }
                     Err(e) => warn!("Cannot parse metadata: {} from {:?}", e, event)
                 }
-            _ => self.add_prop(event),
+            Kind::Bookmarks => {
+                //referenced_events(event)
+            }
+            _ => {
+                if event.kind == TRACKING_KIND {
+                    match self.history.get_mut(&event.pubkey) {
+                        Some(c) => { c.insert(event.created_at, event); }
+                        None => { self.history.insert(event.pubkey, BTreeMap::from([(event.created_at, event)])); }
+                    }
+                } else {
+                    self.add_prop(event)
+                }
+            }
         }
     }
 
@@ -834,7 +841,7 @@ impl Tasks {
             t.props.insert(event.clone());
         });
         if !found {
-            if event.kind.as_u16() == NOTE_KIND {
+            if event.kind.as_u16() == 1 {
                 self.add_task(event);
                 return;
             }
