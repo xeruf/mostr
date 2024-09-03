@@ -1161,10 +1161,20 @@ impl<'a> ChildIterator<'a> {
         }
     }
 
-    fn get_depth(mut self, depth: usize) -> Vec<&'a EventId> {
+    /// Process until the given depth
+    /// Returns true if that depth was reached
+    fn process_depth(&mut self, depth: usize) -> bool {
         while self.depth < depth {
-            self.next();
+            if self.next().is_none() {
+                return false
+            }
         }
+        true
+    }
+
+    /// Get all tasks until the specified depth
+    fn get_depth(mut self, depth: usize) -> Vec<&'a EventId> {
+        self.process_depth(depth);
         self.queue
     }
 
@@ -1411,6 +1421,7 @@ mod tasks_test {
         assert_eq!(ChildIterator::from(&tasks, &t1).get_depth(0).len(), 1);
         assert_eq!(ChildIterator::from(&tasks, &t1).get_depth(1).len(), 3);
         assert_eq!(ChildIterator::from(&tasks, &t1).get_depth(2).len(), 4);
+        assert_eq!(ChildIterator::from(&tasks, &t1).get_depth(9).len(), 4);
         assert_eq!(ChildIterator::from(&tasks, &t1).get_all().len(), 4);
 
         tasks.move_to(Some(t1));
