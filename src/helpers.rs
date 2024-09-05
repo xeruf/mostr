@@ -1,7 +1,7 @@
 use std::ops::Sub;
 
-use chrono::{DateTime, Local, NaiveTime, TimeDelta, TimeZone, Utc};
 use chrono::LocalResult::Single;
+use chrono::{DateTime, Local, NaiveTime, TimeDelta, TimeZone, Utc};
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::Timestamp;
 
@@ -86,10 +86,10 @@ pub fn format_datetime_relative(time: DateTime<Local>) -> String {
             -1 => "tomorrow ".into(),
             0 => "".into(),
             1 => "yesterday ".into(),
-            -3..=3 => date.format("%a ").to_string(),
-            //-10..=10 => date.format("%d. %a ").to_string(),
-            -100..=100 => date.format("%b %d ").to_string(),
-            _ => date.format("%y-%m-%d ").to_string(),
+            //-3..=3 => date.format("%a ").to_string(),
+            -10..=10 => date.format("%d. %a ").to_string(),
+            -100..=100 => date.format("%a %b %d ").to_string(),
+            _ => date.format("%y-%m-%d %a ").to_string(),
         };
     format!("{}{}", prefix, time.format("%H:%M"))
 }
