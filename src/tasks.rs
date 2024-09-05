@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fmt::{Display, Formatter};
-use std::io::{Error, stdout, Write};
-use std::iter::{empty, once};
+use std::io::{stdout, Error, Write};
+use std::iter::{empty, once, FusedIterator};
 use std::ops::{Div, Rem};
 use std::str::FromStr;
 use std::time::Duration;
@@ -1178,6 +1178,7 @@ impl<'a> ChildIterator<'a> {
         self.queue
     }
 
+    /// Get all children
     fn get_all(mut self) -> Vec<&'a EventId> {
         while self.next().is_some() {}
         self.queue
@@ -1210,6 +1211,7 @@ impl<'a> Iterator for ChildIterator<'a> {
         Some(id)
     }
 }
+impl FusedIterator for ChildIterator<'_> {}
 
 
 struct ParentIterator<'a> {
@@ -1223,7 +1225,14 @@ impl<'a> Iterator for ParentIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.current.and_then(|id| self.tasks.get(&id)).map(|t| {
-            self.prev.inspect(|id| assert!(t.children.contains(id)));
+            self.prev.inspect(|id| {
+                // Fails if child is discovered before parent
+                // Need to reverse add as well
+                //assert!(t.children.contains(id))
+                if !t.children.contains(id) {
+                    warn!("\"{}\" is missing child \"{}\"", t.get_title(), self.tasks.get(id).map_or(id.to_string(), |cht| cht.get_title()))
+                }
+            });
             self.prev = self.current;
             self.current = t.parent_id().cloned();
             t
