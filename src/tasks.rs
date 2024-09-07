@@ -388,6 +388,7 @@ impl Tasks {
             if sparse && current.is_empty() {
                 vec![]
             } else {
+                // TODO highlight bookmarks
                 self.bookmarks.iter()
                     .filter(|id| !position.is_some_and(|p| &p == id) && !ids.contains(id))
                     .filter_map(|id| self.get_by_id(id))
@@ -395,6 +396,7 @@ impl Tasks {
                     .collect_vec()
             };
         current.append(&mut bookmarks);
+
         current
     }
 
@@ -523,14 +525,23 @@ impl Tasks {
 
     // Movement and Selection
 
-    pub(crate) fn toggle_bookmark(&mut self, id: EventId) -> nostr_sdk::Result<Event> {
-        match self.bookmarks.iter().position(|b| b == &id) {
-            None => self.bookmarks.push(id),
-            Some(pos) => { self.bookmarks.remove(pos); }
-        }
+    /// Toggle bookmark on the given id.
+    /// Returns whether it was added (true) or removed (false).
+    pub(crate) fn toggle_bookmark(&mut self, id: EventId) -> nostr_sdk::Result<bool> {
+        let added = match self.bookmarks.iter().position(|b| b == &id) {
+            None => {
+                self.bookmarks.push(id);
+                true
+            }
+            Some(pos) => {
+                self.bookmarks.remove(pos);
+                false
+            }
+        };
         self.sender.submit(
             EventBuilder::new(Kind::Bookmarks, "mostr pins",
-                              self.bookmarks.iter().map(|id| Tag::event(*id))))
+                              self.bookmarks.iter().map(|id| Tag::event(*id))))?;
+        Ok(added)
     }
 
     pub(crate) fn set_filter_author(&mut self, key: PublicKey) -> bool {

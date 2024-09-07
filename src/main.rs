@@ -486,15 +486,17 @@ async fn main() -> Result<()> {
 
                     Some('*') => {
                         match arg {
-                            None => match tasks.get_position_ref() {
+                            None => match tasks.get_position() {
                                 None => {
                                     info!("Filtering for bookmarked tasks");
                                     tasks.set_view_bookmarks();
                                 }
-                                Some(pos) => {
-                                    info!("Toggling bookmark");
-                                    or_warn!(tasks.toggle_bookmark(*pos));
-                                }
+                                Some(pos) =>
+                                    match or_warn!(tasks.toggle_bookmark(pos)) {
+                                        Some(true) => info!("Bookmarking \"{}\"", tasks.get_task_title(&pos)),
+                                        Some(false) => info!("Removing bookmark for \"{}\"", tasks.get_task_title(&pos)),
+                                        None => {}
+                                    }
                             },
                             Some(arg) => info!("Setting priority not yet implemented"),
                         }
