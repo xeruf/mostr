@@ -383,6 +383,22 @@ impl Tasks {
 
     pub(crate) fn filtered_tasks<'a>(&'a self, position: Option<&'a EventId>, sparse: bool) -> Vec<&'a Task> {
         let mut current = self.resolve_tasks(self.children_of(position), sparse);
+        if current.is_empty() {
+            if !self.tags.is_empty() {
+                let mut children = self.children_of(self.get_position_ref()).peekable();
+                if children.peek().is_some() {
+                    current = self.resolve_tasks_rec(children, true, 9);
+                    if sparse {
+                        if current.is_empty() {
+                            println!("No tasks here matching{}", self.get_prompt_suffix());
+                        } else {
+                            println!("Found some matching tasks beyond specified view depth:");
+                        }
+                    }
+                }
+            }
+        }
+
         let ids = current.iter().map(|t| t.get_id()).collect_vec();
         let mut bookmarks =
             if sparse && current.is_empty() {
