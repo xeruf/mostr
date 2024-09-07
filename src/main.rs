@@ -632,7 +632,9 @@ async fn main() -> Result<()> {
                         }
                     }
 
-                    Some('/') => {
+                    Some('/') => if arg.is_none() {
+                        tasks.move_to(None);
+                    } else {
                         let mut dots = 1;
                         let mut pos = tasks.get_position_ref();
                         for _ in iter.take_while(|c| c == &'/') {

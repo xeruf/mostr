@@ -101,7 +101,7 @@ To stop time-tracking completely, simply move to the root of all tasks.
   + match by task name prefix: if one or more tasks match, filter / activate (tries case-sensitive then case-insensitive)
   + no match: create & activate task
 - `.2` - set view depth to the given number (how many subtask levels to show, default is 1)
-- `/[TEXT]` - activate task or filter by smart-case substring match
+- `/[TEXT]` - activate task or filter by smart-case substring match (empty: move to root)
 - `||TASK` - create and activate a new task procedure (where subtasks automatically depend on the previously created task)
 - `|[TASK]` - (un)mark current task as procedure or create a sibling task depending on the current one and move up
 
