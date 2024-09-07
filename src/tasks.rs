@@ -7,16 +7,16 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use colored::Colorize;
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 use log::{debug, error, info, trace, warn};
-use nostr_sdk::{Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey, Tag, TagStandard, Timestamp, UncheckedUrl, Url};
 use nostr_sdk::prelude::Marker;
+use nostr_sdk::{Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey, Tag, TagStandard, Timestamp, UncheckedUrl, Url};
 use TagStandard::Hashtag;
 
-use crate::{EventSender, MostrMessage};
-use crate::helpers::{CHARACTER_THRESHOLD, format_timestamp_local, format_timestamp_relative, format_timestamp_relative_to, parse_tracking_stamp, some_non_empty};
+use crate::helpers::{format_timestamp_local, format_timestamp_relative, format_timestamp_relative_to, parse_tracking_stamp, some_non_empty, CHARACTER_THRESHOLD};
 use crate::kinds::*;
-use crate::task::{MARKER_DEPENDS, MARKER_PARENT, State, Task, TaskState};
+use crate::task::{State, Task, TaskState, MARKER_DEPENDS, MARKER_PARENT};
+use crate::{EventSender, MostrMessage};
 
 const MAX_OFFSET: u64 = 9;
 fn now() -> Timestamp {
@@ -41,10 +41,10 @@ pub(crate) struct Tasks {
     sorting: VecDeque<String>,
 
     /// A filtered view of the current tasks
+    /// Would like this to be Task references but that doesn't work 
+    /// unless I start meddling with Rc everywhere.
     view: Vec<EventId>,
-    /// Zero: Only Active node
-    /// Positive: Go down the respective level
-    depth: i8,
+    depth: usize,
 
     /// Currently active tags
     tags: BTreeSet<Tag>,
@@ -74,10 +74,7 @@ impl StateFilter {
 
     fn matches(&self, task: &Task) -> bool {
         match self {
-            StateFilter::Default => {
-                let state = task.pure_state();
-                state.is_open() || (state == State::Done && task.parent_id().is_some())
-            }
+            StateFilter::Default => task.pure_state().is_open(),
             StateFilter::All => true,
             StateFilter::State(filter) => task.state().is_some_and(|t| t.matches_label(filter)),
         }
@@ -97,7 +94,7 @@ impl Display for StateFilter {
             f,
             "{}",
             match self {
-                StateFilter::Default => "relevant tasks".to_string(),
+                StateFilter::Default => "open tasks".to_string(),
                 StateFilter::All => "all tasks".to_string(),
                 StateFilter::State(s) => format!("state {s}"),
             }
@@ -176,11 +173,6 @@ impl Tasks {
                 |e| (e.created_at, referenced_event(e)))
     }
 
-    /// Ids of all subtasks recursively found for id, including itself
-    fn get_task_tree<'a>(&'a self, id: &'a EventId) -> ChildIterator {
-        ChildIterator::from(self, id)
-    }
-
     pub(crate) fn all_hashtags(&self) -> impl Iterator<Item=&str> {
         self.tasks.values()
             .filter(|t| t.pure_state() != State::Closed)
@@ -246,7 +238,7 @@ impl Tasks {
     fn total_time_tracked(&self, id: EventId) -> u64 {
         let mut total = 0;
 
-        let children = self.get_task_tree(&id).get_all();
+        let children = ChildIterator::from(&self, &id).get_all();
         for user in self.history.values() {
             total += Durations::from(user.values(), &children).sum::<Duration>().as_secs();
         }
@@ -317,35 +309,35 @@ impl Tasks {
 
     // Helpers
 
-    fn resolve_tasks<'a>(&'a self, iter: impl Iterator<Item=&'a EventId>) -> impl Iterator<Item=&'a Task> {
-        self.resolve_tasks_rec(iter, self.depth)
+    fn resolve_tasks<'a>(
+        &'a self,
+        iter: impl Iterator<Item=&'a EventId>,
+        sparse: bool,
+    ) -> Vec<&'a Task> {
+        self.resolve_tasks_rec(iter, sparse, self.depth)
     }
 
     fn resolve_tasks_rec<'a>(
         &'a self,
         iter: impl Iterator<Item=&'a EventId>,
-        depth: i8,
-    ) -> Box<impl Iterator<Item=&'a Task>> {
+        sparse: bool,
+        depth: usize,
+    ) -> Vec<&'a Task> {
         iter.filter_map(|id| self.get_by_id(id))
             .flat_map(move |task| {
                 let new_depth = depth - 1;
-                if new_depth == 0 {
-                    vec![task]
-                } else {
-                    let tasks_iter = self.resolve_tasks_rec(task.children.iter(), new_depth);
-                    if new_depth < 0 {
-                        let tasks: Vec<&Task> = tasks_iter.collect();
-                        if tasks.is_empty() {
-                            vec![task]
-                        } else {
-                            tasks
+                if new_depth > 0 {
+                    let mut children = self.resolve_tasks_rec(task.children.iter(), sparse, new_depth);
+                    if !children.is_empty() {
+                        if !sparse {
+                            children.push(task);
                         }
-                    } else {
-                        tasks_iter.chain(once(task)).collect()
+                        return children;
                     }
                 }
+                return if self.filter(task) { vec![task] } else { vec![] };
             })
-            .into()
+            .collect_vec()
     }
 
     /// Executes the given function with each task referenced by this event without marker.
@@ -377,32 +369,33 @@ impl Tasks {
             .map(|t| t.get_id())
     }
 
-    pub(crate) fn filtered_tasks<'a>(&'a self, position: Option<&'a EventId>) -> impl Iterator<Item=&Task> + 'a {
-        let current: HashMap<&EventId, &Task> = self.resolve_tasks(self.children_of(position)).map(|t| (t.get_id(), t)).collect();
-        let bookmarks =
-            if current.is_empty() {
+    fn filter(&self, task: &Task) -> bool {
+        self.state.matches(task) &&
+            task.tags.as_ref().map_or(true, |tags| {
+                !tags.iter().any(|tag| self.tags_excluded.contains(tag))
+            }) &&
+            (self.tags.is_empty() ||
+                task.tags.as_ref().map_or(false, |tags| {
+                    let mut iter = tags.iter();
+                    self.tags.iter().all(|tag| iter.any(|t| t == tag))
+                }))
+    }
+
+    pub(crate) fn filtered_tasks<'a>(&'a self, position: Option<&'a EventId>, sparse: bool) -> Vec<&'a Task> {
+        let mut current = self.resolve_tasks(self.children_of(position), sparse);
+        let ids = current.iter().map(|t| t.get_id()).collect_vec();
+        let mut bookmarks =
+            if sparse && current.is_empty() {
                 vec![]
             } else {
                 self.bookmarks.iter()
-                    .filter(|id| !position.is_some_and(|p| &p == id) && !current.contains_key(id))
+                    .filter(|id| !position.is_some_and(|p| &p == id) && !ids.contains(id))
                     .filter_map(|id| self.get_by_id(id))
+                    .filter(|t| self.filter(t))
                     .collect_vec()
             };
-        // TODO use ChildIterator
-        current.into_values().chain(
-            bookmarks
-        ).filter(move |t| {
-            // TODO apply filters in transit
-            self.state.matches(t) &&
-                t.tags.as_ref().map_or(true, |tags| {
-                    !tags.iter().any(|tag| self.tags_excluded.contains(tag))
-                }) &&
-                (self.tags.is_empty() ||
-                    t.tags.as_ref().map_or(false, |tags| {
-                        let mut iter = tags.iter();
-                        self.tags.iter().all(|tag| iter.any(|t| t == tag))
-                    }))
-        })
+        current.append(&mut bookmarks);
+        current
     }
 
     pub(crate) fn visible_tasks(&self) -> Vec<&Task> {
@@ -410,9 +403,9 @@ impl Tasks {
             return vec![];
         }
         if !self.view.is_empty() {
-            return self.resolve_tasks(self.view.iter()).collect();
+            return self.view.iter().flat_map(|id| self.get_by_id(id)).collect();
         }
-        self.filtered_tasks(self.get_position_ref()).collect()
+        self.filtered_tasks(self.get_position_ref(), true)
     }
 
     pub(crate) fn print_tasks(&self) -> Result<(), Error> {
@@ -540,18 +533,50 @@ impl Tasks {
                               self.bookmarks.iter().map(|id| Tag::event(*id))))
     }
 
-    pub(crate) fn set_filter_bookmarks(&mut self) {
-        self.set_filter(self.bookmarks.clone())
+    pub(crate) fn set_filter_author(&mut self, key: PublicKey) -> bool {
+        self.set_filter(|t| t.event.pubkey == key)
     }
 
-    pub(crate) fn set_filter(&mut self, view: Vec<EventId>) {
+    pub(crate) fn set_filter_from(&mut self, time: Timestamp) -> bool {
+        self.set_filter(|t| t.last_state_update() > time)
+    }
+
+    pub(crate) fn get_filtered<P>(&self, predicate: P) -> Vec<EventId>
+    where
+        P: Fn(&&Task) -> bool,
+    {
+        self.filtered_tasks(self.get_position_ref(), false)
+            .into_iter()
+            .filter(predicate)
+            .map(|t| t.event.id)
+            .collect()
+    }
+
+    pub(crate) fn set_filter<P>(&mut self, predicate: P) -> bool
+    where
+        P: Fn(&&Task) -> bool,
+    {
+        self.set_view(self.get_filtered(predicate))
+    }
+
+    pub(crate) fn set_view_bookmarks(&mut self) -> bool {
+        self.set_view(self.bookmarks.clone())
+    }
+
+    /// Set currently visible tasks.
+    /// Returns whether there are any.
+    pub(crate) fn set_view(&mut self, view: Vec<EventId>) -> bool {
         if view.is_empty() {
-            warn!("No match for filter!")
+            warn!("No match for filter!");
+            self.view = view;
+            return false;
         }
         self.view = view;
+        true
     }
 
     pub(crate) fn clear_filters(&mut self) {
+        self.state = StateFilter::Default;
         self.view.clear();
         self.tags.clear();
         self.tags_excluded.clear();
@@ -601,14 +626,14 @@ impl Tasks {
         self.sender.flush();
     }
 
-    /// Returns ids of tasks starting with the given string.
+    /// Returns ids of tasks matching the given string.
     ///
     /// Tries, in order:
     /// - single case-insensitive exact name match in visible tasks
     /// - single case-insensitive exact name match in all tasks
     /// - visible tasks starting with given arg case-sensitive
     /// - visible tasks where any word starts with given arg case-insensitive
-    pub(crate) fn get_filtered(&self, position: Option<&EventId>, arg: &str) -> Vec<EventId> {
+    pub(crate) fn get_matching(&self, position: Option<&EventId>, arg: &str) -> Vec<EventId> {
         if let Ok(id) = EventId::parse(arg) {
             return vec![id];
         }
@@ -617,7 +642,7 @@ impl Tasks {
 
         let mut filtered: Vec<EventId> = Vec::with_capacity(32);
         let mut filtered_fuzzy: Vec<EventId> = Vec::with_capacity(32);
-        for task in self.filtered_tasks(position) {
+        for task in self.filtered_tasks(position, false) {
             let lowercase = task.event.content.to_ascii_lowercase();
             if lowercase == lowercase_arg {
                 return vec![task.event.id];
@@ -651,7 +676,7 @@ impl Tasks {
     /// Finds out what to do with the given string.
     /// Returns an EventId if a new Task was created.
     pub(crate) fn filter_or_create(&mut self, position: Option<&EventId>, arg: &str) -> Option<EventId> {
-        let filtered = self.get_filtered(position, arg);
+        let filtered = self.get_matching(position, arg);
         match filtered.len() {
             0 => {
                 // No match, new task
@@ -670,7 +695,7 @@ impl Tasks {
             _ => {
                 // Multiple match, filter
                 self.move_to(position.cloned());
-                self.set_filter(filtered);
+                self.set_view(filtered);
                 None
             }
         }
@@ -976,10 +1001,10 @@ impl Tasks {
 
     // Properties
 
-    pub(crate) fn set_depth(&mut self, depth: i8) {
-        if depth < self.depth && !self.view.is_empty() {
+    pub(crate) fn set_depth(&mut self, depth: usize) {
+        if !self.view.is_empty() {
             self.view.clear();
-            info!("Cleared search and reduced view depth to {depth}");
+            info!("Cleared search and changed view depth to {depth}");
         } else {
             info!("Changed view depth to {depth}");
         }
@@ -1136,6 +1161,24 @@ impl Iterator for Durations<'_> {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+enum ChildIteratorFilter {
+    Reject = 0b00,
+    TakeSelf = 0b01,
+    TakeChildren = 0b10,
+    Take = 0b11,
+}
+impl ChildIteratorFilter {
+    fn takes_children(&self) -> bool {
+        self == &ChildIteratorFilter::Take ||
+            self == &ChildIteratorFilter::TakeChildren
+    }
+    fn takes_self(&self) -> bool {
+        self == &ChildIteratorFilter::Take ||
+            self == &ChildIteratorFilter::TakeSelf
+    }
+}
+
 /// Breadth-First Iterator over Tasks and recursive children
 struct ChildIterator<'a> {
     tasks: &'a TaskMap,
@@ -1149,6 +1192,28 @@ struct ChildIterator<'a> {
     next_depth_at: usize,
 }
 impl<'a> ChildIterator<'a> {
+    fn rooted(tasks: &'a TaskMap, id: Option<&EventId>) -> Self {
+        let mut queue = Vec::with_capacity(tasks.len());
+        queue.append(
+            &mut tasks
+                .values()
+                .filter(move |t| t.parent_id() == id)
+                .map(|t| t.get_id())
+                .collect_vec()
+        );
+        Self::with_queue(tasks, queue)
+    }
+
+    fn with_queue(tasks: &'a TaskMap, queue: Vec<&'a EventId>) -> Self {
+        ChildIterator {
+            tasks: &tasks,
+            next_depth_at: queue.len(),
+            index: 0,
+            depth: 1,
+            queue,
+        }
+    }
+
     fn from(tasks: &'a Tasks, id: &'a EventId) -> Self {
         let mut queue = Vec::with_capacity(30);
         queue.push(id);
@@ -1166,10 +1231,16 @@ impl<'a> ChildIterator<'a> {
     fn process_depth(&mut self, depth: usize) -> bool {
         while self.depth < depth {
             if self.next().is_none() {
-                return false
+                return false;
             }
         }
         true
+    }
+
+    /// Get all children
+    fn get_all(mut self) -> Vec<&'a EventId> {
+        while self.next().is_some() {}
+        self.queue
     }
 
     /// Get all tasks until the specified depth
@@ -1178,40 +1249,92 @@ impl<'a> ChildIterator<'a> {
         self.queue
     }
 
-    /// Get all children
-    fn get_all(mut self) -> Vec<&'a EventId> {
-        while self.next().is_some() {}
-        self.queue
-    }
-}
-impl<'a> Iterator for ChildIterator<'a> {
-    type Item = &'a EventId;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.queue.len() {
-            return None;
-        }
-        let id = self.queue[self.index];
-        if let Some(task) = self.tasks.get(id) {
-            self.queue.reserve(task.children.len());
-            self.queue.extend(task.children.iter());
-        } else {
-            // Unknown task, might still find children, just slower
-            for task in self.tasks.values() {
-                if task.parent_id().is_some_and(|i| i == id) {
-                    self.queue.push(task.get_id());
-                }
+    /// Get all tasks until the specified depth matching the filter
+    fn get_depth_filtered<F>(mut self, depth: usize, filter: F) -> Vec<&'a EventId>
+    where
+        F: Fn(&Task) -> ChildIteratorFilter,
+    {
+        while self.depth < depth {
+            if self.next_filtered(&filter).is_none() {
+                // TODO this can easily recurse beyond the intended depth
+                break;
             }
         }
-        self.index += 1;
+        while self.index < self.queue.len() {
+            if let Some(task) = self.tasks.get(self.queue[self.index]) {
+                if !filter(task).takes_self() {
+                    self.queue.remove(self.index);
+                    continue;
+                }
+            }
+            self.index += 1;
+        }
+        self.queue
+    }
+
+    fn check_depth(&mut self) {
         if self.next_depth_at == self.index {
             self.depth += 1;
             self.next_depth_at = self.queue.len();
         }
+    }
+
+    /// Get next id and advance, without adding children
+    fn next_task(&mut self) -> Option<&'a EventId> {
+        if self.index >= self.queue.len() {
+            return None;
+        }
+        let id = self.queue[self.index];
+        self.index += 1;
         Some(id)
+    }
+
+    /// Get the next known task and run it through the filter
+    fn next_filtered<F>(&mut self, filter: &F) -> Option<&'a Task>
+    where
+        F: Fn(&Task) -> ChildIteratorFilter,
+    {
+        self.next_task().and_then(|id| {
+            if let Some(task) = self.tasks.get(id) {
+                let take = filter(task);
+                if take.takes_children() {
+                    self.queue.reserve(task.children.len());
+                    self.queue.extend(task.children.iter());
+                }
+                if take.takes_self() {
+                    self.check_depth();
+                    return Some(task);
+                }
+            }
+            self.check_depth();
+            self.next_filtered(filter)
+        })
     }
 }
 impl FusedIterator for ChildIterator<'_> {}
+impl<'a> Iterator for ChildIterator<'a> {
+    type Item = &'a EventId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_task().inspect(|id| {
+            match self.tasks.get(id) {
+                None => {
+                    // Unknown task, might still find children, just slower
+                    for task in self.tasks.values() {
+                        if task.parent_id().is_some_and(|i| i == *id) {
+                            self.queue.push(task.get_id());
+                        }
+                    }
+                }
+                Some(task) => {
+                    self.queue.reserve(task.children.len());
+                    self.queue.extend(task.children.iter());
+                }
+            }
+            self.check_depth();
+        })
+    }
+}
 
 
 struct ParentIterator<'a> {
@@ -1265,6 +1388,13 @@ mod tasks_test {
         };
     }
 
+    macro_rules! assert_tasks {
+        ($left:expr, $right:expr $(,)?) => {
+            assert_eq!($left.visible_tasks().iter().map(|t| t.event.id).collect::<HashSet<EventId>>(), 
+                       HashSet::from($right))
+        };
+    }
+
     #[test]
     fn test_bookmarks() {
         let mut tasks = stub_tasks();
@@ -1275,29 +1405,33 @@ mod tasks_test {
         tasks.move_to(Some(parent));
         let pin = tasks.make_task("pin");
 
-        assert_eq!(tasks.filtered_tasks(None).count(), 2);
-        assert_eq!(tasks.filtered_tasks(Some(&zero)).count(), 0);
+        assert_eq!(tasks.filtered_tasks(None, true).len(), 2);
+        assert_eq!(tasks.filtered_tasks(None, false).len(), 2);
+        assert_eq!(tasks.filtered_tasks(Some(&zero), false).len(), 0);
         assert_eq!(tasks.visible_tasks().len(), 1);
-        assert_eq!(tasks.filtered_tasks(Some(&pin)).count(), 0);
-        assert_eq!(tasks.filtered_tasks(Some(&zero)).count(), 0);
-        
+        assert_eq!(tasks.filtered_tasks(Some(&pin), false).len(), 0);
+        assert_eq!(tasks.filtered_tasks(Some(&zero), false).len(), 0);
+
         tasks.submit(EventBuilder::new(Kind::Bookmarks, "", [Tag::event(pin), Tag::event(zero)]));
         assert_eq!(tasks.visible_tasks().len(), 1);
-        assert_eq!(tasks.filtered_tasks(Some(&pin)).count(), 0);
-        assert_eq!(tasks.filtered_tasks(Some(&zero)).count(), 0);
+        assert_eq!(tasks.filtered_tasks(Some(&pin), true).len(), 0);
+        assert_eq!(tasks.filtered_tasks(Some(&pin), false).len(), 0);
+        assert_eq!(tasks.filtered_tasks(Some(&zero), true).len(), 0);
+        assert_eq!(tasks.filtered_tasks(Some(&zero), false), vec![tasks.get_by_id(&pin).unwrap()]);
 
         tasks.move_to(None);
-        assert_eq!(tasks.visible_tasks().len(), 3);
+        assert_eq!(tasks.depth, 1);
+        assert_tasks!(tasks, [pin, test, parent]);
         tasks.set_depth(2);
-        assert_eq!(tasks.visible_tasks().len(), 3);
+        assert_tasks!(tasks, [pin, test]);
         tasks.add_tag("tag".to_string());
-        assert_eq!(tasks.visible_tasks().len(), 1);
-        assert_eq!(tasks.filtered_tasks(None).collect_vec(), vec![tasks.get_by_id(&test).unwrap()]);
+        assert_tasks!(tasks, [test]);
+        assert_eq!(tasks.filtered_tasks(None, true), vec![tasks.get_by_id(&test).unwrap()]);
         tasks.submit(EventBuilder::new(Kind::Bookmarks, "", []));
         tasks.clear_filters();
-        assert_eq!(tasks.visible_tasks().len(), 3);
+        assert_tasks!(tasks, [pin, test]);
         tasks.set_depth(1);
-        assert_eq!(tasks.visible_tasks().len(), 2);
+        assert_tasks!(tasks, [test, parent]);
     }
 
     #[test]
@@ -1406,24 +1540,22 @@ mod tasks_test {
         assert_position!(tasks, t1);
         tasks.depth = 2;
         assert_eq!(tasks.visible_tasks().len(), 0);
-        let t2 = tasks.make_task("t2");
+        let t11 = tasks.make_task("t11: tag");
         assert_eq!(tasks.visible_tasks().len(), 1);
-        assert_eq!(tasks.get_task_path(Some(t2)), "t1>t2");
-        assert_eq!(tasks.relative_path(t2), "t2");
-        let t3 = tasks.make_task("t3");
+        assert_eq!(tasks.get_task_path(Some(t11)), "t1>t11");
+        assert_eq!(tasks.relative_path(t11), "t11");
+        let t12 = tasks.make_task("t12");
         assert_eq!(tasks.visible_tasks().len(), 2);
 
-        tasks.move_to(Some(t2));
-        assert_position!(tasks, t2);
+        tasks.move_to(Some(t11));
+        assert_position!(tasks, t11);
         assert_eq!(tasks.visible_tasks().len(), 0);
-        let t4 = tasks.make_task("t4");
-        assert_eq!(tasks.visible_tasks().len(), 1);
-        assert_eq!(tasks.get_task_path(Some(t4)), "t1>t2>t4");
-        assert_eq!(tasks.relative_path(t4), "t4");
+        let t111 = tasks.make_task("t111");
+        assert_tasks!(tasks, [t111]);
+        assert_eq!(tasks.get_task_path(Some(t111)), "t1>t11>t111");
+        assert_eq!(tasks.relative_path(t111), "t111");
         tasks.depth = 2;
-        assert_eq!(tasks.visible_tasks().len(), 1);
-        tasks.depth = -1;
-        assert_eq!(tasks.visible_tasks().len(), 1);
+        assert_tasks!(tasks, [t111]);
 
         assert_eq!(ChildIterator::from(&tasks, &EventId::all_zeros()).get_all().len(), 1);
         assert_eq!(ChildIterator::from(&tasks, &EventId::all_zeros()).get_depth(0).len(), 1);
@@ -1436,33 +1568,22 @@ mod tasks_test {
         tasks.move_to(Some(t1));
         assert_position!(tasks, t1);
         assert_eq!(tasks.get_own_events_history().count(), 3);
-        assert_eq!(tasks.relative_path(t4), "t2>t4");
-        assert_eq!(tasks.visible_tasks().len(), 2);
-        tasks.depth = 2;
-        assert_eq!(tasks.visible_tasks().len(), 3);
-        tasks.set_filter(vec![t2]);
-        assert_eq!(tasks.visible_tasks().len(), 2);
-        tasks.depth = 1;
-        assert_eq!(tasks.visible_tasks().len(), 1);
-        tasks.depth = -1;
-        assert_eq!(tasks.visible_tasks().len(), 1);
-        tasks.set_filter(vec![t2, t3]);
-        assert_eq!(tasks.visible_tasks().len(), 2);
-        tasks.depth = 2;
-        assert_eq!(tasks.visible_tasks().len(), 3);
-        tasks.depth = 1;
-        assert_eq!(tasks.visible_tasks().len(), 2);
+        assert_eq!(tasks.relative_path(t111), "t11>t111");
+        assert_eq!(tasks.depth, 2);
+        assert_tasks!(tasks, [t111, t12]);
+        tasks.set_view(vec![t11]);
+        assert_tasks!(tasks, [t11]); // No more depth applied to view
+        tasks.set_depth(1);
+        assert_tasks!(tasks, [t11, t12]);
 
         tasks.move_to(None);
-        assert_eq!(tasks.visible_tasks().len(), 1);
+        assert_tasks!(tasks, [t1]);
         tasks.depth = 2;
-        assert_eq!(tasks.visible_tasks().len(), 3);
+        assert_tasks!(tasks, [t11, t12]);
         tasks.depth = 3;
-        assert_eq!(tasks.visible_tasks().len(), 4);
+        assert_tasks!(tasks, [t111, t12]);
         tasks.depth = 9;
-        assert_eq!(tasks.visible_tasks().len(), 4);
-        tasks.depth = -1;
-        assert_eq!(tasks.visible_tasks().len(), 2);
+        assert_tasks!(tasks, [t111, t12]);
     }
 
     #[test]

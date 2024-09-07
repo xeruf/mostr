@@ -14,13 +14,13 @@ use chrono::Local;
 use colored::Colorize;
 use env_logger::{Builder, Target, WriteStyle};
 use itertools::Itertools;
-use log::{debug, error, info, LevelFilter, trace, warn};
+use log::{debug, error, info, trace, warn, LevelFilter};
 use nostr_sdk::prelude::*;
 use nostr_sdk::TagStandard::Hashtag;
 use regex::Regex;
 use rustyline::config::Configurer;
-use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
+use rustyline::DefaultEditor;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::error::Elapsed;
@@ -28,8 +28,8 @@ use tokio::time::timeout;
 use xdg::BaseDirectories;
 
 use crate::helpers::*;
-use crate::kinds::{BASIC_KINDS, PROP_KINDS, PROPERTY_COLUMNS, TRACKING_KIND};
-use crate::task::{MARKER_DEPENDS, State};
+use crate::kinds::{BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS, TRACKING_KIND};
+use crate::task::{State, MARKER_DEPENDS};
 use crate::tasks::{PropertyCollection, StateFilter, Tasks};
 
 mod helpers;
@@ -450,51 +450,37 @@ async fn main() -> Result<()> {
                     }
 
                     Some('@') => {
-                        match arg {
+                        let success = match arg {
                             None => {
                                 let today = Timestamp::now() - 80_000;
-                                info!("Filtering for tasks opened in the last 22 hours");
-                                tasks.set_filter(
-                                    tasks.filtered_tasks(tasks.get_position_ref())
-                                        .filter(|t| t.last_state_update() > today)
-                                        .map(|t| t.event.id)
-                                        .collect()
-                                );
+                                info!("Filtering for tasks from the last 22 hours");
+                                tasks.set_filter_from(today)
                             }
                             Some(arg) => {
                                 if arg == "@" {
-                                    let key = keys.public_key();
                                     info!("Filtering for own tasks");
-                                    tasks.set_filter(
-                                        tasks.filtered_tasks(tasks.get_position_ref())
-                                            .filter(|t| t.event.pubkey == key)
-                                            .map(|t| t.event.id)
-                                            .collect()
-                                    )
+                                    tasks.set_filter_author(keys.public_key())
                                 } else if let Ok(key) = PublicKey::from_str(arg) {
                                     let author = tasks.get_author(&key);
                                     info!("Filtering for tasks by {author}");
-                                    tasks.set_filter(
-                                        tasks.filtered_tasks(tasks.get_position_ref())
-                                            .filter(|t| t.event.pubkey == key)
-                                            .map(|t| t.event.id)
-                                            .collect()
-                                    )
+                                    tasks.set_filter_author(key)
                                 } else {
                                     parse_hour(arg, 1)
                                         .or_else(|| parse_date(arg).map(|utc| utc.with_timezone(&Local)))
                                         .map(|time| {
-                                            info!("Filtering for tasks opened after {}", format_datetime_relative(time));
+                                            info!("Filtering for tasks from {}", format_datetime_relative(time));
                                             let threshold = time.to_utc().timestamp();
-                                            tasks.set_filter(
-                                                tasks.filtered_tasks(tasks.get_position_ref())
-                                                    .filter(|t| t.last_state_update().as_u64() as i64 > threshold)
-                                                    .map(|t| t.event.id)
-                                                    .collect()
-                                            );
-                                        });
+                                            tasks.set_filter_from(
+                                                if let Some(t) = 0u64.checked_add_signed(threshold) {
+                                                    Timestamp::from(t)
+                                                } else { Timestamp::zero() })
+                                        })
+                                        .unwrap_or(false)
                                 }
                             }
+                        };
+                        if !success {
+                            continue;
                         }
                     }
 
@@ -503,8 +489,8 @@ async fn main() -> Result<()> {
                             None => match tasks.get_position_ref() {
                                 None => {
                                     info!("Filtering for bookmarked tasks");
-                                    tasks.set_filter_bookmarks()
-                                },
+                                    tasks.set_view_bookmarks();
+                                }
                                 Some(pos) => {
                                     info!("Toggling bookmark");
                                     or_warn!(tasks.toggle_bookmark(*pos));
@@ -636,7 +622,7 @@ async fn main() -> Result<()> {
                             } else {
                                 tasks.clear_filters();
                             }
-                        } else if let Ok(depth) = slice.parse::<i8>() {
+                        } else if let Ok(depth) = slice.parse::<usize>() {
                             if pos != tasks.get_position_ref() {
                                 tasks.move_to(pos.cloned());
                             }
@@ -667,19 +653,17 @@ async fn main() -> Result<()> {
                                 transform = Box::new(|s| s.to_ascii_lowercase());
                             }
 
-                            let filtered = tasks.filtered_tasks(pos)
-                                .filter(|t| {
+                            let filtered =
+                                tasks.get_filtered(|t| {
                                     transform(&t.event.content).contains(slice) ||
                                         t.tags.iter().flatten().any(
                                             |tag| tag.content().is_some_and(|s| transform(s).contains(slice)))
-                                })
-                                .map(|t| t.event.id)
-                                .collect_vec();
+                                });
                             if filtered.len() == 1 {
                                 tasks.move_to(filtered.into_iter().next());
                             } else {
                                 tasks.move_to(pos.cloned());
-                                tasks.set_filter(filtered);
+                                tasks.set_view(filtered);
                             }
                         }
                     }
