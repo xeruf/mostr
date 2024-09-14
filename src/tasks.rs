@@ -201,9 +201,10 @@ impl Tasks {
                             last = new;
                         }
                     }
+                    // TODO show history for active tags
                     ("Your Time-Tracking History:".to_string(), Box::from(full.into_iter()))
                 } else {
-                    ("You have nothing tracked yet".to_string(), Box::from(empty()))
+                    ("You have nothing time-tracked yet".to_string(), Box::from(empty()))
                 }
             }
             Some(id) => {
@@ -220,7 +221,7 @@ impl Tasks {
                         }
                         iter.into_buffer()
                             .for_each(|(stamp, _)|
-                            vec.push(format!("{} started by {}", format_timestamp_local(stamp), self.get_author(key))));
+                                vec.push(format!("{} started by {}", format_timestamp_local(stamp), self.get_author(key))));
                         vec
                     }).sorted_unstable(); // TODO sorting depends on timestamp format - needed to interleave different people
                 (format!("Times Tracked on {:?}", self.get_task_title(id)), Box::from(history))
@@ -680,8 +681,8 @@ impl Tasks {
                 filtered_fuzzy.push(task.event.id)
             }
         }
+        // Find global exact match
         for task in self.tasks.values() {
-            // Find global exact match
             if task.get_filter_title().to_ascii_lowercase() == lowercase_arg &&
                 // exclude closed tasks and their subtasks
                 !self.traverse_up_from(Some(*task.get_id())).any(|t| t.pure_state() == State::Closed) {
@@ -701,7 +702,10 @@ impl Tasks {
         filtered
     }
 
-    /// Finds out what to do with the given string.
+    /// Finds out what to do with the given string, one of:
+    /// - filtering the visible tasks
+    /// - entering the only matching task
+    /// - creating a new task
     /// Returns an EventId if a new Task was created.
     pub(crate) fn filter_or_create(&mut self, position: Option<&EventId>, arg: &str) -> Option<EventId> {
         let filtered = self.get_matching(position, arg);
