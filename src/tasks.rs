@@ -670,20 +670,21 @@ impl Tasks {
         let mut filtered: Vec<EventId> = Vec::with_capacity(32);
         let mut filtered_fuzzy: Vec<EventId> = Vec::with_capacity(32);
         for task in self.filtered_tasks(position, false) {
-            let lowercase = task.event.content.to_ascii_lowercase();
+            let content = task.get_filter_title();
+            let lowercase = content.to_ascii_lowercase();
             if lowercase == lowercase_arg {
                 return vec![task.event.id];
-            } else if task.event.content.starts_with(arg) {
+            } else if content.starts_with(arg) {
                 filtered.push(task.event.id)
-            } else if if has_space { lowercase.starts_with(&lowercase_arg) } else { lowercase.split_ascii_whitespace().any(|word| word.starts_with(&lowercase_arg)) } {
+            } else if if has_space { lowercase.starts_with(&lowercase_arg) } else { lowercase.split_ascii_whitespace().any(|word| word.trim_start_matches('#').starts_with(&lowercase_arg)) } {
                 filtered_fuzzy.push(task.event.id)
             }
         }
         for task in self.tasks.values() {
             // Find global exact match
-            if task.event.content.to_ascii_lowercase() == lowercase_arg &&
-                !self.traverse_up_from(Some(*task.get_id())).any(|t| t.pure_state() == State::Closed) {
+            if task.get_filter_title().to_ascii_lowercase() == lowercase_arg &&
                 // exclude closed tasks and their subtasks
+                !self.traverse_up_from(Some(*task.get_id())).any(|t| t.pure_state() == State::Closed) {
                 return vec![task.event.id];
             }
         }

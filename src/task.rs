@@ -78,9 +78,12 @@ impl Task {
 
     /// Trimmed event content or stringified id
     pub(crate) fn get_title(&self) -> String {
-        Some(self.event.content.trim().to_string())
-            .filter(|s| !s.is_empty())
+        some_non_empty(self.event.content.trim())
             .unwrap_or_else(|| self.get_id().to_string())
+    }
+
+    pub(crate) fn get_filter_title(&self) -> String {
+        self.event.content.trim().trim_start_matches('#').to_string()
     }
 
     pub(crate) fn description_events(&self) -> impl Iterator<Item=&Event> + '_ {
