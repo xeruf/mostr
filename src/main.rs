@@ -361,6 +361,8 @@ async fn main() -> Result<()> {
                 }
                 if count > 0 {
                     info!("Received {count} Updates");
+                } else {
+                    relays.values_mut().for_each(|tasks| tasks.process_overflow());
                 }
 
                 let mut iter = input.chars();
