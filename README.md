@@ -166,9 +166,6 @@ Considering to use Calendar: https://github.com/nostr-protocol/nips/blob/master/
 - Remove status filter when moving up?
 - Task markdown support? - colored
 - Time tracking: Ability to postpone task and add planned timestamps (calendar entry)
-- Parse Hashtag tags from task name
-- Unified Filter object
-  -> include subtasks of matched tasks
 - Speedup: Offline caching & Expiry (no need to fetch potential years of history)
   + Fetch most recent tasks first
   + Relay: compress tracked time for old tasks, filter closed tasks

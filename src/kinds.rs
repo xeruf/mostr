@@ -1,9 +1,10 @@
 use itertools::Itertools;
 use log::info;
-use nostr_sdk::{Alphabet, EventBuilder, EventId, Kind, Tag, TagStandard};
 use nostr_sdk::TagStandard::Hashtag;
+use nostr_sdk::{Alphabet, EventBuilder, EventId, Kind, Tag, TagStandard};
+use std::collections::HashSet;
 
-use crate::task::{MARKER_PARENT, State};
+use crate::task::{State, MARKER_PARENT};
 
 pub const TASK_KIND: Kind = Kind::GitIssue;
 pub const PROCEDURE_KIND_ID: u16 = 1639;
@@ -82,19 +83,31 @@ pub(crate) fn build_prop(
     )
 }
 
-/// Expects sanitized input
+/// Return Hashtags embedded in the string.
+pub(crate) fn extract_hashtags(input: &str) -> impl Iterator<Item=Tag> + '_ {
+    input.split_ascii_whitespace()
+        .filter(|s| s.starts_with('#'))
+        .map(|s| s.trim_start_matches('#'))
+        .map(to_hashtag)
+}
+
+/// Extracts everything after a ": " as a list of tags.
+///
+/// Expects sanitized input.
 pub(crate) fn extract_tags(input: &str) -> (&str, Vec<Tag>) {
     match input.split_once(": ") {
-        None => (input, vec![]),
-        Some(s) => {
-            let tags = s
-                .1
-                .split_ascii_whitespace()
-                .map(|t| Hashtag(t.to_string()).into())
+        None => (input, extract_hashtags(input).collect_vec()),
+        Some((name, tags)) => {
+            let tags = extract_hashtags(name)
+                .chain(tags.split_ascii_whitespace().map(to_hashtag))
                 .collect();
-            (s.0, tags)
+            (name, tags)
         }
     }
+}
+
+fn to_hashtag(tag: &str) -> Tag {
+    Hashtag(tag.to_string()).into()
 }
 
 fn format_tag(tag: &Tag) -> String {
@@ -123,3 +136,9 @@ pub(crate) fn is_hashtag(tag: &Tag) -> bool {
         .is_some_and(|letter| letter.character == Alphabet::T)
 }
 
+
+#[test]
+fn test_extract_tags() {
+    assert_eq!(extract_tags("Hello from #mars with #greetings: yeah done-it"),
+               ("Hello from #mars with #greetings", ["mars", "greetings", "yeah", "done-it"].into_iter().map(to_hashtag).collect()))
+}
