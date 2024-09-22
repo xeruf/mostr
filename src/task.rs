@@ -90,12 +90,16 @@ impl Task {
         self.description_events().map(|e| &e.content)
     }
 
+    pub(crate) fn is_task_kind(&self) -> bool {
+        self.event.kind == TASK_KIND
+    }
+
     pub(crate) fn is_task(&self) -> bool {
-        self.event.kind == TASK_KIND ||
+        self.is_task_kind() ||
             self.states().next().is_some()
     }
 
-    fn states(&self) -> impl Iterator<Item=TaskState> + '_ {
+    fn states(&self) -> impl DoubleEndedIterator<Item=TaskState> + '_ {
         self.props.iter().filter_map(|event| {
             event.kind.try_into().ok().map(|s| TaskState {
                 name: some_non_empty(&event.content),
@@ -110,7 +114,16 @@ impl Task {
     }
 
     pub(crate) fn state(&self) -> Option<TaskState> {
-        self.states().last()
+        let now = Timestamp::now();
+        // TODO do not iterate constructed state objects
+        let state = self.states().rev().take_while_inclusive(|ts| ts.time > now);
+        state.last().map(|ts| {
+            if ts.time <= now {
+                ts
+            } else {
+                self.default_state()
+            }
+        })
     }
 
     pub(crate) fn pure_state(&self) -> State {
