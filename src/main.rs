@@ -326,10 +326,6 @@ async fn main() -> Result<()> {
     }
 
     loop {
-        trace!("All Root Tasks:\n{}", relays.iter().map(|(url, tasks)|
-            format!("{}: [{}]",
-                url.as_ref().map(ToString::to_string).unwrap_or(LOCAL_RELAY_NAME.to_string()),
-                tasks.children_for(None).map(|task| tasks.get_task_title(task.get_id())).join("; "))).join("\n"));
         println!();
         let tasks = relays.get(&selected_relay).unwrap();
         let prompt = format!(

@@ -24,6 +24,27 @@ fn now() -> Timestamp {
 }
 
 type TaskMap = HashMap<EventId, Task>;
+trait TaskMapMethods {
+    fn children_of<'a>(&'a self, task: &'a Task) -> impl Iterator<Item=&Task> + 'a;
+    fn children_for<'a>(&'a self, id: Option<&'a EventId>) -> impl Iterator<Item=&Task> + 'a;
+    fn children_ids_for<'a>(&'a self, id: &'a EventId) -> impl Iterator<Item=&EventId> + 'a;
+}
+impl TaskMapMethods for TaskMap {
+    fn children_of<'a>(&'a self, task: &'a Task) -> impl Iterator<Item=&Task> + 'a {
+        self.children_for(Some(task.get_id()))
+    }
+
+    fn children_for<'a>(&'a self, id: Option<&'a EventId>) -> impl Iterator<Item=&Task> + 'a {
+        self.values()
+            .filter(move |t| t.parent_id() == id)
+    }
+
+    fn children_ids_for<'a>(&'a self, id: &'a EventId) -> impl Iterator<Item=&EventId> + 'a {
+        self.children_for(Some(id))
+            .map(|t| t.get_id())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Tasks {
     /// The Tasks
@@ -271,7 +292,7 @@ impl Tasks {
             _ => {
                 let mut sum = 0f32;
                 let mut count = 0;
-                for prog in self.children_ids_for(task.get_id()).filter_map(|e| self.total_progress(e)) {
+                for prog in self.tasks.children_ids_for(task.get_id()).filter_map(|e| self.total_progress(e)) {
                     sum += prog;
                     count += 1;
                 }
@@ -314,7 +335,6 @@ impl Tasks {
         ParentIterator {
             tasks: &self.tasks,
             current: id,
-            prev: None,
         }
     }
 
@@ -345,7 +365,7 @@ impl Tasks {
         iter.flat_map(move |task| {
                 let new_depth = depth - 1;
                 if new_depth > 0 {
-                    let mut children = self.resolve_tasks_rec(self.children_of(&task), sparse, new_depth);
+                    let mut children = self.resolve_tasks_rec(self.tasks.children_of(&task), sparse, new_depth);
                     if !children.is_empty() {
                         if !sparse {
                             children.push(task);
@@ -380,21 +400,6 @@ impl Tasks {
         self.get_position_ref().and_then(|id| self.get_by_id(id))
     }
 
-    pub(crate) fn children_of<'a>(&'a self, task: &'a Task) -> impl Iterator<Item=&Task> + 'a {
-        self.children_for(Some(task.get_id()))
-    }
-
-    pub(crate) fn children_for<'a>(&'a self, id: Option<&'a EventId>) -> impl Iterator<Item=&Task> + 'a {
-        self.tasks
-            .values()
-            .filter(move |t| t.parent_id() == id)
-    }
-
-    pub(crate) fn children_ids_for<'a>(&'a self, id: &'a EventId) -> impl Iterator<Item=&EventId> + 'a {
-        self.children_for(Some(id))
-            .map(|t| t.get_id())
-    }
-
     fn filter(&self, task: &Task) -> bool {
         self.state.matches(task) &&
             task.tags.as_ref().map_or(true, |tags| {
@@ -408,10 +413,10 @@ impl Tasks {
     }
 
     pub(crate) fn filtered_tasks<'a>(&'a self, position: Option<&'a EventId>, sparse: bool) -> Vec<&'a Task> {
-        let mut current = self.resolve_tasks(self.children_for(position), sparse);
+        let mut current = self.resolve_tasks(self.tasks.children_for(position), sparse);
         if current.is_empty() {
             if !self.tags.is_empty() {
-                let mut children = self.children_for(self.get_position_ref()).peekable();
+                let mut children = self.tasks.children_for(self.get_position_ref()).peekable();
                 if children.peek().is_some() {
                     current = self.resolve_tasks_rec(children, true, 9);
                     if sparse {
@@ -517,7 +522,7 @@ impl Tasks {
     }
 
     fn get_property(&self, task: &Task, str: &str) -> String {
-        let mut children = self.children_of(task).peekable();
+        let mut children = self.tasks.children_of(task).peekable();
         let progress =
             self.total_progress(task.get_id())
                 .filter(|_| children.peek().is_some());
@@ -826,7 +831,7 @@ impl Tasks {
             self.get_by_id(pos)
                 .map(|task| {
                     if task.pure_state() == State::Procedure {
-                        self.children_of(task)
+                        self.tasks.children_of(task)
                             .max()
                             .map(|t| tags.push(self.make_event_tag(&t.event, MARKER_DEPENDS)));
                     }
@@ -953,9 +958,6 @@ impl Tasks {
         } else {
             let id = event.id;
             let task = Task::new(event);
-            task.find_refs(MARKER_PARENT).for_each(|parent| {
-                self.tasks.get_mut(parent).map(|t| { t.children.insert(id); });
-            });
             self.tasks.insert(id, task);
         }
     }
@@ -1360,8 +1362,7 @@ impl<'a> ChildIterator<'a> {
             if let Some(task) = self.tasks.get(id) {
                 let take = filter(task);
                 if take.takes_children() {
-                    self.queue.reserve(task.children.len());
-                    self.queue.extend(task.children.iter());
+                    self.queue_children_of(&task);
                 }
                 if take.takes_self() {
                     self.check_depth();
@@ -1371,6 +1372,10 @@ impl<'a> ChildIterator<'a> {
             self.check_depth();
             self.next_filtered(filter)
         })
+    }
+
+    fn queue_children_of(&mut self, task: &'a Task) {
+        self.queue.extend(self.tasks.children_ids_for(task.get_id()));
     }
 }
 impl FusedIterator for ChildIterator<'_> {}
@@ -1389,8 +1394,7 @@ impl<'a> Iterator for ChildIterator<'a> {
                     }
                 }
                 Some(task) => {
-                    self.queue.reserve(task.children.len());
-                    self.queue.extend(task.children.iter());
+                    self.queue_children_of(&task);
                 }
             }
             self.check_depth();
@@ -1402,23 +1406,12 @@ impl<'a> Iterator for ChildIterator<'a> {
 struct ParentIterator<'a> {
     tasks: &'a TaskMap,
     current: Option<EventId>,
-    /// Inexpensive helper to assert correctness
-    prev: Option<EventId>,
 }
 impl<'a> Iterator for ParentIterator<'a> {
     type Item = &'a Task;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.current.and_then(|id| self.tasks.get(&id)).map(|t| {
-            self.prev.inspect(|id| {
-                // Fails if child is discovered before parent
-                // Need to reverse add as well
-                //assert!(t.children.contains(id))
-                if !t.children.contains(id) {
-                    warn!("\"{}\" is not properly referencing child \"{}\"", t.get_title(), self.tasks.get(id).map_or(id.to_string(), |cht| cht.get_title()))
-                }
-            });
-            self.prev = self.current;
             self.current = t.parent_id().cloned();
             t
         })
@@ -1502,9 +1495,11 @@ mod tasks_test {
         tasks.make_task_and_enter("proc: tags", State::Procedure);
         assert_eq!(tasks.get_own_events_history().count(), 1);
         let side = tasks.submit(build_task("side", vec![tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)], None));
-        assert_eq!(tasks.get_current_task().unwrap().children, HashSet::<EventId>::new());
+        assert_eq!(tasks.visible_tasks(),
+                   Vec::<&Task>::new());
         let sub_id = tasks.make_task("sub");
-        assert_eq!(tasks.get_current_task().unwrap().children, HashSet::from([sub_id]));
+        assert_eq!(tasks.visible_tasks().iter().map(|t| t.event.id).collect_vec(),
+                   Vec::from([sub_id]));
         assert_eq!(tasks.len(), 3);
         let sub = tasks.get_by_id(&sub_id).unwrap();
         assert_eq!(sub.get_dependendees(), Vec::<&EventId>::new());

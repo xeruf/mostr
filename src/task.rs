@@ -24,9 +24,6 @@ pub(crate) struct Task {
     pub(crate) tags: Option<BTreeSet<Tag>>,
     /// Task references derived from the event tags
     refs: Vec<(String, EventId)>,
-
-    /// Reference to children, populated dynamically
-    pub(crate) children: HashSet<EventId>,
     /// Events belonging to this task, such as state updates and notes
     pub(crate) props: BTreeSet<Event>,
 }
@@ -52,7 +49,6 @@ impl Task {
         });
         // Separate refs for dependencies
         Task {
-            children: Default::default(),
             props: Default::default(),
             tags: Some(tags).filter(|t: &BTreeSet<Tag>| !t.is_empty()),
             refs,
