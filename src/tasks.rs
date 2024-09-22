@@ -76,6 +76,7 @@ pub(crate) struct TasksRelay {
 
     sender: EventSender,
     overflow: VecDeque<Event>,
+    pub(crate) custom_time: Option<Timestamp>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -167,6 +168,7 @@ impl TasksRelay {
 
             sender,
             overflow: Default::default(),
+            custom_time: None,
         }
     }
 
@@ -308,6 +310,14 @@ impl TasksRelay {
     }
 
     // Parents
+
+    pub(crate) fn up_by(&self, count: usize) -> Option<&EventId> {
+        let mut pos = self.get_position_ref();
+        for _ in 0..count {
+            pos = self.get_parent(pos);
+        }
+        pos
+    }
 
     pub(crate) fn get_parent(&self, id: Option<&EventId>) -> Option<&EventId> {
         id.and_then(|id| self.get_by_id(id))
@@ -597,6 +607,7 @@ impl TasksRelay {
     }
 
     pub(crate) fn set_filter_from(&mut self, time: Timestamp) -> bool {
+        // TODO filter at both ends
         self.set_filter(|t| t.last_state_update() > time)
     }
 
@@ -916,7 +927,10 @@ impl TasksRelay {
     }
 
     /// Sign and queue the event to the relay, returning its id
-    fn submit(&mut self, builder: EventBuilder) -> EventId {
+    fn submit(&mut self, mut builder: EventBuilder) -> EventId {
+        if let Some(stamp) = self.custom_time {
+            builder = builder.custom_created_at(stamp);
+        }
         let event = self.sender.submit(builder).unwrap();
         let id = event.id;
         self.add(event);

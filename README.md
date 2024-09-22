@@ -106,6 +106,7 @@ To stop time-tracking completely, simply move to the root of all tasks.
 - `|[TASK]` - (un)mark current task as procedure or create a sibling task depending on the current one and move up
 
 Dot or slash can be repeated to move to parent tasks before acting.
+Append `@TIME` to any task creation or change command to record the action with the given time.
 
 - `:[IND][PROP]` - add property column PROP at IND or end,
   if it already exists remove property column PROP or IND; empty: list properties

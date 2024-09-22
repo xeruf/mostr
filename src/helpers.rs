@@ -11,6 +11,25 @@ pub fn some_non_empty(str: &str) -> Option<String> {
     if str.is_empty() { None } else { Some(str.to_string()) }
 }
 
+pub fn trim_start_count(str: &str, char: char) -> (&str, usize) {
+    let len = str.len();
+    let result = str.trim_start_matches(char);
+    let dots = len - result.len();
+    (result, dots)
+}
+
+pub trait ToTimestamp {
+    fn to_timestamp(&self) -> Timestamp;
+}
+impl<T: TimeZone> ToTimestamp for DateTime<T> {
+    fn to_timestamp(&self) -> Timestamp {
+        let stamp = self.to_utc().timestamp();
+        if let Some(t) = 0u64.checked_add_signed(stamp) {
+            Timestamp::from(t)
+        } else { Timestamp::zero() }
+    }
+}
+
 /// Parses the hour from a plain number in the String,
 /// with max of max_future hours into the future.
 pub fn parse_hour(str: &str, max_future: i64) -> Option<DateTime<Local>> {
@@ -57,7 +76,7 @@ pub fn parse_date(str: &str) -> Option<DateTime<Utc>> {
 /// - Otherwise try to parse a relative date
 pub fn parse_tracking_stamp(str: &str) -> Option<Timestamp> {
     if let Some(num) = parse_hour(str, 6) {
-        return Some(Timestamp::from(num.to_utc().timestamp() as u64));
+        return Some(num.to_timestamp());
     }
     let stripped = str.trim().trim_start_matches('+').trim_start_matches("in ");
     if let Ok(num) = stripped.parse::<i64>() {

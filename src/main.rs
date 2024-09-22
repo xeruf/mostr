@@ -361,34 +361,49 @@ async fn main() -> Result<()> {
                     relays.values_mut().for_each(|tasks| tasks.process_overflow());
                 }
 
-                let mut iter = input.chars();
-                let op = iter.next();
-                let arg = if input.len() > 1 {
-                    Some(input[1..].trim())
+                let tasks = relays.get_mut(&selected_relay).unwrap();
+
+                let operator = input.chars().next();
+                let mut command = input;
+                match operator {
+                    None => {
+                        debug!("Flushing Tasks because of empty command");
+                        tasks.flush();
+                        or_warn!(tasks.print_tasks());
+                        continue;
+                    }
+                    Some('@') => {}
+                    Some(_) => {
+                        if let Some((left, arg)) = command.split_once("@") {
+                            if let Some(time) = parse_hour(arg, 20)
+                                .or_else(|| parse_date(arg).map(|utc| utc.with_timezone(&Local))) {
+                                command = left.to_string();
+                                tasks.custom_time = Some(time.to_timestamp());
+                            }
+                        }
+                    }
+                }
+
+                let arg = if command.len() > 1 {
+                    Some(command[1..].trim())
                 } else {
                     None
                 };
                 let arg_default = arg.unwrap_or("");
-                let tasks = relays.get_mut(&selected_relay).unwrap();
-                match op {
-                    None => {
-                        debug!("Flushing Tasks because of empty command");
-                        tasks.flush();
-                    }
-
+                match operator {
                     Some(':') => {
+                        let mut iter = arg_default.chars();
                         let next = iter.next();
+                        let remaining = iter.collect::<String>().trim().to_string();
                         if let Some(':') = next {
-                            let str: String = iter.collect();
-                            let result = str.split_whitespace().map(|s| s.to_string()).collect::<VecDeque<_>>();
-                            if result.len() == 1 {
-                                tasks.add_sorting_property(str.trim().to_string())
+                            let props = remaining.split_whitespace().map(|s| s.to_string()).collect::<VecDeque<_>>();
+                            if props.len() == 1 {
+                                tasks.add_sorting_property(remaining)
                             } else {
-                                tasks.set_sorting(result)
+                                tasks.set_sorting(props)
                             }
                         } else if let Some(digit) = next.and_then(|s| s.to_digit(10)) {
                             let index = (digit as usize).saturating_sub(1);
-                            let remaining = iter.collect::<String>().trim().to_string();
                             if remaining.is_empty() {
                                 tasks.get_columns().remove_at(index);
                             } else {
@@ -467,11 +482,7 @@ async fn main() -> Result<()> {
                                         .or_else(|| parse_date(arg).map(|utc| utc.with_timezone(&Local)))
                                         .map(|time| {
                                             info!("Filtering for tasks from {}", format_datetime_relative(time));
-                                            let threshold = time.to_utc().timestamp();
-                                            tasks.set_filter_from(
-                                                if let Some(t) = 0u64.checked_add_signed(threshold) {
-                                                    Timestamp::from(t)
-                                                } else { Timestamp::zero() })
+                                            tasks.set_filter_from(time.to_timestamp())
                                         })
                                         .unwrap_or(false)
                                 }
@@ -607,59 +618,49 @@ async fn main() -> Result<()> {
                     }
 
                     Some('.') => {
-                        let mut dots = 1;
-                        let mut pos = tasks.get_position_ref();
-                        for _ in iter.take_while(|c| c == &'.') {
-                            dots += 1;
-                            pos = tasks.get_parent(pos);
-                        }
+                        let (remaining, dots) = trim_start_count(&command, '.');
+                        let pos = tasks.up_by(dots - 1);
 
-                        let slice = input[dots..].trim();
-                        if slice.is_empty() {
+                        if remaining.is_empty() {
                             tasks.move_to(pos.cloned());
                             if dots > 1 {
                                 info!("Moving up {} tasks", dots - 1)
                             } else {
                                 tasks.clear_filters();
                             }
-                        } else if let Ok(depth) = slice.parse::<usize>() {
+                        } else if let Ok(depth) = remaining.parse::<usize>() {
                             if pos != tasks.get_position_ref() {
                                 tasks.move_to(pos.cloned());
                             }
                             tasks.set_depth(depth);
                         } else {
-                            tasks.filter_or_create(pos.cloned().as_ref(), slice).map(|id| tasks.move_to(Some(id)));
+                            tasks.filter_or_create(pos.cloned().as_ref(), &remaining).map(|id| tasks.move_to(Some(id)));
                         }
                     }
 
                     Some('/') => if arg.is_none() {
                         tasks.move_to(None);
                     } else {
-                        let mut dots = 1;
-                        let mut pos = tasks.get_position_ref();
-                        for _ in iter.take_while(|c| c == &'/') {
-                            dots += 1;
-                            pos = tasks.get_parent(pos);
-                        }
+                        let (remaining, dots) = trim_start_count(&command, '/');
+                        let pos = tasks.up_by(dots - 1);
 
-                        let slice = input[dots..].trim();
-                        if slice.is_empty() {
+                        if remaining.is_empty() {
                             tasks.move_to(pos.cloned());
                             if dots > 1 {
                                 info!("Moving up {} tasks", dots - 1)
                             }
                         } else {
                             let mut transform: Box<dyn Fn(&str) -> String> = Box::new(|s: &str| s.to_string());
-                            if !slice.chars().any(|c| c.is_ascii_uppercase()) {
+                            if !remaining.chars().any(|c| c.is_ascii_uppercase()) {
                                 // Smart-case - case-sensitive if any uppercase char is entered
                                 transform = Box::new(|s| s.to_ascii_lowercase());
                             }
 
                             let filtered =
                                 tasks.get_filtered(|t| {
-                                    transform(&t.event.content).contains(slice) ||
+                                    transform(&t.event.content).contains(&remaining) ||
                                         t.tags.iter().flatten().any(
-                                            |tag| tag.content().is_some_and(|s| transform(s).contains(slice)))
+                                            |tag| tag.content().is_some_and(|s| transform(s).contains(&remaining)))
                                 });
                             if filtered.len() == 1 {
                                 tasks.move_to(filtered.into_iter().next());
@@ -671,14 +672,14 @@ async fn main() -> Result<()> {
                     }
 
                     _ =>
-                        if Regex::new("^wss?://").unwrap().is_match(input.trim()) {
+                        if Regex::new("^wss?://").unwrap().is_match(command.trim()) {
                             tasks.move_to(None);
-                            if let Some((url, tasks)) = relays.iter().find(|(key, _)| key.as_ref().is_some_and(|url| url.as_str().starts_with(&input))) {
+                            if let Some((url, tasks)) = relays.iter().find(|(key, _)| key.as_ref().is_some_and(|url| url.as_str().starts_with(&command))) {
                                 selected_relay.clone_from(url);
                                 or_warn!(tasks.print_tasks());
                                 continue;
                             }
-                            or_warn!(Url::parse(&input), "Failed to parse url {}", input).map(|url| {
+                            or_warn!(Url::parse(&command), "Failed to parse url {}", command).map(|url| {
                                 match tx.try_send(MostrMessage::NewRelay(url.clone())) {
                                     Err(e) => error!("Nostr communication thread failure, cannot add relay \"{url}\": {e}"),
                                     Ok(_) => {
@@ -689,16 +690,17 @@ async fn main() -> Result<()> {
                                 }
                             });
                             continue;
-                        } else if input.contains('\n') {
-                            input.split('\n').for_each(|line| {
+                        } else if command.contains('\n') {
+                            command.split('\n').for_each(|line| {
                                 if !line.trim().is_empty() {
                                     tasks.make_task(line);
                                 }
                             });
                         } else {
-                            tasks.filter_or_create(tasks.get_position().as_ref(), &input);
+                            tasks.filter_or_create(tasks.get_position().as_ref(), &command);
                         }
                 }
+                tasks.custom_time = None;
                 or_warn!(tasks.print_tasks());
             }
             Err(ReadlineError::Eof) => break,
