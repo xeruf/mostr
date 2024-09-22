@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::io::{stdout, Error, Write};
 use std::iter::{empty, once, FusedIterator};
@@ -265,13 +265,13 @@ impl Tasks {
     }
 
     fn total_progress(&self, id: &EventId) -> Option<f32> {
-        self.get_by_id(id).and_then(|t| match t.pure_state() {
+        self.get_by_id(id).and_then(|task| match task.pure_state() {
             State::Closed => None,
             State::Done => Some(1.0),
             _ => {
                 let mut sum = 0f32;
                 let mut count = 0;
-                for prog in t.children.iter().filter_map(|e| self.total_progress(e)) {
+                for prog in self.children_ids_for(task.get_id()).filter_map(|e| self.total_progress(e)) {
                     sum += prog;
                     count += 1;
                 }
@@ -330,7 +330,7 @@ impl Tasks {
 
     fn resolve_tasks<'a>(
         &'a self,
-        iter: impl Iterator<Item=&'a EventId>,
+        iter: impl Iterator<Item=&'a Task>,
         sparse: bool,
     ) -> Vec<&'a Task> {
         self.resolve_tasks_rec(iter, sparse, self.depth)
@@ -338,15 +338,14 @@ impl Tasks {
 
     fn resolve_tasks_rec<'a>(
         &'a self,
-        iter: impl Iterator<Item=&'a EventId>,
+        iter: impl Iterator<Item=&'a Task>,
         sparse: bool,
         depth: usize,
     ) -> Vec<&'a Task> {
-        iter.filter_map(|id| self.get_by_id(id))
-            .flat_map(move |task| {
+        iter.flat_map(move |task| {
                 let new_depth = depth - 1;
                 if new_depth > 0 {
-                    let mut children = self.resolve_tasks_rec(task.children.iter(), sparse, new_depth);
+                    let mut children = self.resolve_tasks_rec(self.children_of(&task), sparse, new_depth);
                     if !children.is_empty() {
                         if !sparse {
                             children.push(task);
@@ -381,10 +380,18 @@ impl Tasks {
         self.get_position_ref().and_then(|id| self.get_by_id(id))
     }
 
-    pub(crate) fn children_of<'a>(&'a self, id: Option<&'a EventId>) -> impl Iterator<Item=&EventId> + 'a {
+    pub(crate) fn children_of<'a>(&'a self, task: &'a Task) -> impl Iterator<Item=&Task> + 'a {
+        self.children_for(Some(task.get_id()))
+    }
+
+    pub(crate) fn children_for<'a>(&'a self, id: Option<&'a EventId>) -> impl Iterator<Item=&Task> + 'a {
         self.tasks
             .values()
             .filter(move |t| t.parent_id() == id)
+    }
+
+    pub(crate) fn children_ids_for<'a>(&'a self, id: &'a EventId) -> impl Iterator<Item=&EventId> + 'a {
+        self.children_for(Some(id))
             .map(|t| t.get_id())
     }
 
@@ -401,10 +408,10 @@ impl Tasks {
     }
 
     pub(crate) fn filtered_tasks<'a>(&'a self, position: Option<&'a EventId>, sparse: bool) -> Vec<&'a Task> {
-        let mut current = self.resolve_tasks(self.children_of(position), sparse);
+        let mut current = self.resolve_tasks(self.children_for(position), sparse);
         if current.is_empty() {
             if !self.tags.is_empty() {
-                let mut children = self.children_of(self.get_position_ref()).peekable();
+                let mut children = self.children_for(self.get_position_ref()).peekable();
                 if children.peek().is_some() {
                     current = self.resolve_tasks_rec(children, true, 9);
                     if sparse {
@@ -510,15 +517,16 @@ impl Tasks {
     }
 
     fn get_property(&self, task: &Task, str: &str) -> String {
+        let mut children = self.children_of(task).peekable();
         let progress =
             self.total_progress(task.get_id())
-                .filter(|_| !task.children.is_empty());
+                .filter(|_| children.peek().is_some());
         let prog_string = progress.map_or(String::new(), |p| format!("{:2.0}%", p * 100.0));
         match str {
             "subtasks" => {
                 let mut total = 0;
                 let mut done = 0;
-                for subtask in task.children.iter().filter_map(|id| self.get_by_id(id)) {
+                for subtask in children {
                     let state = subtask.pure_state();
                     total += &(state != State::Closed).into();
                     done += &(state == State::Done).into();
@@ -816,10 +824,9 @@ impl Tasks {
             let mut tags = Vec::with_capacity(2);
             tags.push(self.make_event_tag_from_id(*pos, MARKER_PARENT));
             self.get_by_id(pos)
-                .map(|t| {
-                    if t.pure_state() == State::Procedure {
-                        t.children.iter()
-                            .filter_map(|id| self.get_by_id(id))
+                .map(|task| {
+                    if task.pure_state() == State::Procedure {
+                        self.children_of(task)
                             .max()
                             .map(|t| tags.push(self.make_event_tag(&t.event, MARKER_DEPENDS)));
                     }
