@@ -30,7 +30,7 @@ use xdg::BaseDirectories;
 use crate::helpers::*;
 use crate::kinds::{BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS, TRACKING_KIND};
 use crate::task::{State, MARKER_DEPENDS};
-use crate::tasks::{PropertyCollection, StateFilter, Tasks};
+use crate::tasks::{PropertyCollection, StateFilter, TasksRelay};
 
 mod helpers;
 mod task;
@@ -251,8 +251,8 @@ async fn main() -> Result<()> {
     let moved_metadata = metadata.clone();
 
     let (tx, mut rx) = mpsc::channel::<MostrMessage>(64);
-    let tasks_for_url = |url: Option<Url>| Tasks::from(url, &tx, &keys, metadata.clone());
-    let mut relays: HashMap<Option<Url>, Tasks> =
+    let tasks_for_url = |url: Option<Url>| TasksRelay::from(url, &tx, &keys, metadata.clone());
+    let mut relays: HashMap<Option<Url>, TasksRelay> =
         client.relays().await.into_keys().map(|url| (Some(url.clone()), tasks_for_url(Some(url)))).collect();
 
     let sender = tokio::spawn(async move {

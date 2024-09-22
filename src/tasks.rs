@@ -46,7 +46,7 @@ impl TaskMapMethods for TaskMap {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Tasks {
+pub(crate) struct TasksRelay {
     /// The Tasks
     tasks: TaskMap,
     /// History of active tasks by PubKey
@@ -124,7 +124,7 @@ impl Display for StateFilter {
     }
 }
 
-impl Tasks {
+impl TasksRelay {
     pub(crate) fn from(
         url: Option<Url>,
         tx: &Sender<MostrMessage>,
@@ -137,7 +137,7 @@ impl Tasks {
     }
 
     pub(crate) fn with_sender(sender: EventSender) -> Self {
-        Tasks {
+        TasksRelay {
             tasks: Default::default(),
             history: Default::default(),
             users: Default::default(),
@@ -1278,7 +1278,7 @@ impl<'a> ChildIterator<'a> {
         }
     }
 
-    fn from(tasks: &'a Tasks, id: &'a EventId) -> Self {
+    fn from(tasks: &'a TasksRelay, id: &'a EventId) -> Self {
         let mut queue = Vec::with_capacity(30);
         queue.push(id);
         ChildIterator {
@@ -1424,12 +1424,12 @@ mod tasks_test {
 
     use super::*;
 
-    fn stub_tasks() -> Tasks {
+    fn stub_tasks() -> TasksRelay {
         use tokio::sync::mpsc;
         use nostr_sdk::Keys;
 
         let (tx, _rx) = mpsc::channel(16);
-        Tasks::with_sender(EventSender {
+        TasksRelay::with_sender(EventSender {
             url: None,
             tx,
             keys: Keys::generate(),
