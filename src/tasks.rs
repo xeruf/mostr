@@ -1052,7 +1052,10 @@ impl TasksRelay {
             comment,
             id,
         );
-        info!("Task status {} set for \"{}\"", TaskState::get_label_for(&state, comment), self.get_task_title(&id));
+        info!("Task status {} set for \"{}\"{}",
+            TaskState::get_label_for(&state, comment),
+            self.get_task_title(&id),
+            self.custom_time.map(|ts| format!(" at {}", format_timestamp_relative(&ts))).unwrap_or_default());
         self.submit(prop)
     }
 

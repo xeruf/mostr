@@ -29,7 +29,7 @@ use xdg::BaseDirectories;
 
 use crate::helpers::*;
 use crate::kinds::{BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS, TRACKING_KIND};
-use crate::task::{State, MARKER_DEPENDS};
+use crate::task::{State, Task, TaskState, MARKER_DEPENDS};
 use crate::tasks::{PropertyCollection, StateFilter, TasksRelay};
 
 mod helpers;
@@ -262,7 +262,7 @@ async fn main() -> Result<()> {
             or_warn!(client.set_metadata(meta).await, "Unable to set metadata");
         }
 
-        loop {
+        'repl: loop {
             let result_received = timeout(Duration::from_secs(INACTVITY_DELAY), rx.recv()).await;
             match result_received {
                 Ok(Some(MostrMessage::NewRelay(url))) => {
@@ -300,7 +300,7 @@ async fn main() -> Result<()> {
                 }
                 Ok(None) => {
                     debug!("Finalizing nostr communication thread because communication channel was closed");
-                    break;
+                    break 'repl;
                 }
             }
         }
@@ -325,7 +325,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    loop {
+    'repl: loop {
         println!();
         let tasks = relays.get(&selected_relay).unwrap();
         let prompt = format!(
@@ -370,7 +370,7 @@ async fn main() -> Result<()> {
                         debug!("Flushing Tasks because of empty command");
                         tasks.flush();
                         or_warn!(tasks.print_tasks());
-                        continue;
+                        continue 'repl;
                     }
                     Some('@') => {}
                     Some(_) => {
@@ -413,7 +413,7 @@ async fn main() -> Result<()> {
                             tasks.get_columns().add_or_remove(arg.to_string());
                         } else {
                             println!("{}", PROPERTY_COLUMNS);
-                            continue;
+                            continue 'repl;
                         }
                     }
 
@@ -424,12 +424,12 @@ async fn main() -> Result<()> {
                                     || info!("With a task selected, use ,NOTE to attach NOTE and , to list all its notes"),
                                     |task| println!("{}", task.description_events().map(|e| format!("{} {}", format_timestamp_local(&e.created_at), e.content)).join("\n")),
                                 );
-                                continue;
+                                continue 'repl;
                             }
                             Some(arg) => {
                                 if arg.len() < CHARACTER_THRESHOLD {
                                     warn!("Note needs at least {CHARACTER_THRESHOLD} characters!");
-                                    continue;
+                                    continue 'repl;
                                 }
                                 tasks.make_note(arg)
                             }
@@ -437,12 +437,12 @@ async fn main() -> Result<()> {
 
                     Some('>') => {
                         tasks.update_state(arg_default, State::Done);
-                        tasks.move_up();
+                        if tasks.custom_time.is_none() { tasks.move_up(); }
                     }
 
                     Some('<') => {
                         tasks.update_state(arg_default, State::Closed);
-                        tasks.move_up();
+                        if tasks.custom_time.is_none() { tasks.move_up(); }
                     }
 
                     Some('&') => {
@@ -455,7 +455,7 @@ async fn main() -> Result<()> {
                                 _ => {
                                     if !tasks.move_back_to(text) {
                                         warn!("Did not find a match in history for \"{text}\"");
-                                        continue;
+                                        continue 'repl;
                                     }
                                 }
                             }
@@ -489,7 +489,7 @@ async fn main() -> Result<()> {
                             }
                         };
                         if !success {
-                            continue;
+                            continue 'repl;
                         }
                     }
 
@@ -559,9 +559,22 @@ async fn main() -> Result<()> {
                                             tasks.set_state_for(id, right, state);
                                             break 'block;
                                         }
+                                        if let Some(time) = parse_hour(left, 20)
+                                            .map(|dt| dt.to_utc())
+                                            .or_else(|| parse_date(left)) {
+                                            let stamp = time.to_timestamp();
+                                            let state = tasks.get_by_id(&id).and_then(Task::state);
+                                            tasks.set_state_for(id, right, State::Pending);
+                                            tasks.custom_time = Some(stamp);
+                                            tasks.set_state_for(id,
+                                                                &state.as_ref().map(TaskState::get_label).unwrap_or_default(),
+                                                                state.map(|ts| ts.state).unwrap_or(State::Open));
+                                            break 'block;
+                                        }
                                     }
                                     tasks.set_state_for_with(id, arg_default);
                                 }
+                                tasks.custom_time = None;
                                 tasks.move_up();
                             }
                         }
@@ -577,7 +590,7 @@ async fn main() -> Result<()> {
                                 if tasks.has_tag_filter() {
                                     println!("Use # to remove tag filters and . to remove all filters.")
                                 }
-                                continue;
+                                continue 'repl;
                             }
                         }
 
@@ -599,7 +612,7 @@ async fn main() -> Result<()> {
                             let (label, mut times) = tasks.times_tracked();
                             println!("{}\n{}", label.italic(), times.join("\n"));
                         }
-                        continue;
+                        continue 'repl;
                     }
 
                     Some(')') => {
@@ -612,7 +625,7 @@ async fn main() -> Result<()> {
                                              times.rev().take(15).collect_vec().iter().rev().join("\n"));
                                 }
                                 // So the error message is not covered up
-                                continue;
+                                continue 'repl;
                             }
                         }
                     }
@@ -677,7 +690,7 @@ async fn main() -> Result<()> {
                             if let Some((url, tasks)) = relays.iter().find(|(key, _)| key.as_ref().is_some_and(|url| url.as_str().starts_with(&command))) {
                                 selected_relay.clone_from(url);
                                 or_warn!(tasks.print_tasks());
-                                continue;
+                                continue 'repl;
                             }
                             or_warn!(Url::parse(&command), "Failed to parse url {}", command).map(|url| {
                                 match tx.try_send(MostrMessage::NewRelay(url.clone())) {
@@ -689,7 +702,7 @@ async fn main() -> Result<()> {
                                     }
                                 }
                             });
-                            continue;
+                            continue 'repl;
                         } else if command.contains('\n') {
                             command.split('\n').for_each(|line| {
                                 if !line.trim().is_empty() {
@@ -703,8 +716,8 @@ async fn main() -> Result<()> {
                 tasks.custom_time = None;
                 or_warn!(tasks.print_tasks());
             }
-            Err(ReadlineError::Eof) => break,
-            Err(ReadlineError::Interrupted) => break, // TODO exit if prompt was empty, or clear
+            Err(ReadlineError::Eof) => break 'repl,
+            Err(ReadlineError::Interrupted) => break 'repl, // TODO exit if prompt was empty, or clear
             Err(e) => warn!("{}", e),
         }
     }

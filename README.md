@@ -117,6 +117,7 @@ Append `@TIME` to any task creation or change command to record the action with 
 - `>[TEXT]` - complete active task and move up, with optional status description
 - `<[TEXT]` - close active task and move up, with optional status description
 - `!TEXT` - set status for current task from text and move up; empty: Open
+- `!TIME: REASON` - defer current task to date
 - TBI: `*[INT]` - set priority - can also be used in task creation, with any digit
 - `,[TEXT]` - list notes or add text note (stateless task / task description)
 - TBI: `;[TEXT]` - list comments or comment on task
