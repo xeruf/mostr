@@ -602,15 +602,31 @@ async fn main() -> Result<()> {
 
                     Some('(') => {
                         if let Some(arg) = arg {
-                            if tasks.track_from(arg) {
-                                let (label, times) = tasks.times_tracked();
+                            let (first, remaining) = arg.split_at(1);
+                            if first == "(" {
+                                let mut max = usize::MAX;
+                                match remaining.parse::<usize>() {
+                                    Ok(number) => max = number,
+                                    Err(e) => warn!("Unsure what to do with {:?}", e),
+                                }
+                                let (label, mut times) = tasks.times_tracked();
                                 println!("{}\n{}", label.italic(),
-                                         times.rev().take(15).collect_vec().iter().rev().join("\n"));
+                                         times.rev().take(max).collect_vec().iter().rev().join("\n"));
+                            } else if let Ok(key) = PublicKey::parse(arg) { // TODO also match name
+                                let (label, mut times) = tasks.times_tracked_for(&key);
+                                println!("{}\n{}", label.italic(),
+                                         times.join("\n"));
+                            } else {
+                                if tasks.track_from(arg) {
+                                    let (label, times) = tasks.times_tracked();
+                                    println!("{}\n{}", label.italic(),
+                                             times.rev().take(15).collect_vec().iter().rev().join("\n"));
+                                }
                             }
-                            // TODO show history of author / pubkey
                         } else {
                             let (label, mut times) = tasks.times_tracked();
-                            println!("{}\n{}", label.italic(), times.join("\n"));
+                            println!("{}\n{}", label.italic(),
+                                     times.rev().take(80).collect_vec().iter().rev().join("\n"));
                         }
                         continue 'repl;
                     }

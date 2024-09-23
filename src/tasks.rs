@@ -226,9 +226,13 @@ impl TasksRelay {
 
     /// Dynamic time tracking overview for current task or current user.
     pub(crate) fn times_tracked(&self) -> (String, Box<dyn DoubleEndedIterator<Item=String>>) {
+        self.times_tracked_for(&self.sender.pubkey())
+    }
+
+    pub(crate) fn times_tracked_for(&self, key: &PublicKey) -> (String, Box<dyn DoubleEndedIterator<Item=String>>) {
         match self.get_position_ref() {
             None => {
-                if let Some(hist) = self.history.get(&self.sender.pubkey()) {
+                if let Some(hist) = self.history.get(key) {
                     let mut last = None;
                     let mut full = Vec::with_capacity(hist.len());
                     for event in hist.values() {
@@ -249,6 +253,7 @@ impl TasksRelay {
                 }
             }
             Some(id) => {
+                // TODO consider pubkey
                 let ids = vec![id];
                 let history =
                     self.history.iter().flat_map(|(key, set)| {

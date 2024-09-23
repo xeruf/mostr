@@ -111,7 +111,7 @@ Append `@TIME` to any task creation or change command to record the action with 
 - `:[IND][PROP]` - add property column PROP at IND or end,
   if it already exists remove property column PROP or IND; empty: list properties
 - `::[PROP]` - sort by property PROP (multiple space-separated values allowed)
-- `([TIME]` - list tracked times or insert timetracking with the specified offset
+- `([TIME]` - list tracked times or insert timetracking with the specified offset (double to view all history)
   such as `-1d`, `-15 minutes`, `yesterday 17:20`, `in 2 fortnights`
 - `)[TIME]` - stop timetracking with optional offset - also convenience helper to move to root
 - `>[TEXT]` - complete active task and move up, with optional status description
