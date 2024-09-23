@@ -174,16 +174,18 @@ impl TasksRelay {
 
     pub(crate) fn process_overflow(&mut self) {
         let elements = self.overflow.len();
+        let mut issues = 0;
         for _ in 0..elements {
-            if let Some(event) = self.overflow.pop_front() {
+            if let Some(event) = self.overflow.pop_back() {
                 if let Some(event) = self.add_prop(event) {
                     warn!("Unable to sort Event {:?}", event);
+                    issues += 1;
                     //self.overflow.push_back(event);
                 }
             }
         }
         if elements > 0 {
-            info!("Reprocessed {elements} updates{}", self.sender.url.clone().map(|url| format!(" from {url}")).unwrap_or_default());
+            info!("Reprocessed {elements} updates with {issues} issues{}", self.sender.url.clone().map(|url| format!(" from {url}")).unwrap_or_default());
         }
     }
 
