@@ -203,7 +203,9 @@ async fn main() -> Result<()> {
     };
 
     let client = ClientBuilder::new()
-        .opts(Options::new().automatic_authentication(true))
+        .opts(Options::new()
+            .automatic_authentication(true)
+            .pool(RelayPoolOptions::new().notification_channel_size(8192)))
         .signer(&keys)
         .build();
     info!("My public key: {}", keys.public_key());
@@ -245,6 +247,22 @@ async fn main() -> Result<()> {
 
     let sub2 = client.subscribe(vec![Filter::new().kinds(PROP_KINDS)], None).await;
     info!("Subscribed to updates with {:?}", sub2);
+
+    if args.peek().is_some_and(|arg| arg == "--watch-events") {
+        loop {
+            match notifications.recv().await {
+                Ok(notification) => {
+                    if let RelayPoolNotification::Event { event, .. } = notification {
+                        println!("At {} found {} kind {} content \"{}\"", event.created_at, event.id, event.kind, event.content);
+                    }
+                }
+                Err(e) => {
+                    println!("Aborting due to {:?}", e);
+                    return Ok(());
+                }
+            }
+        }
+    }
 
     let metadata = var("USER").ok().map(
         |user| Metadata::new().name(user));
