@@ -15,6 +15,7 @@ use itertools::{Either, Itertools};
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::prelude::Marker;
 use nostr_sdk::{Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey, Tag, TagStandard, Timestamp, UncheckedUrl, Url};
+use regex::bytes::Regex;
 use tokio::sync::mpsc::Sender;
 use TagStandard::Hashtag;
 
@@ -715,7 +716,8 @@ impl TasksRelay {
             return vec![id];
         }
         let lowercase_arg = arg.to_ascii_lowercase();
-        let has_space = lowercase_arg.split_ascii_whitespace().count() > 1;
+        // TODO apply regex to all matching
+        let regex = Regex::new(&format!(r"\b{}", lowercase_arg)).unwrap();
 
         let mut filtered: Vec<EventId> = Vec::with_capacity(32);
         let mut filtered_fuzzy: Vec<EventId> = Vec::with_capacity(32);
@@ -726,7 +728,7 @@ impl TasksRelay {
                 return vec![task.event.id];
             } else if content.starts_with(arg) {
                 filtered.push(task.event.id)
-            } else if if has_space { lowercase.starts_with(&lowercase_arg) } else { lowercase.split_ascii_whitespace().any(|word| word.trim_start_matches('#').starts_with(&lowercase_arg)) } {
+            } else if regex.is_match(lowercase.as_bytes()) {
                 filtered_fuzzy.push(task.event.id)
             }
         }
@@ -1547,17 +1549,25 @@ mod tasks_test {
         assert_eq!(tasks.visible_tasks().len(), 2);
         assert_eq!(tasks.get_by_id(&sub).unwrap().parent_id(), zero);
 
-        let id2 = tasks.filter_or_create(None, "new");
+        // Do not substring match invisible subtask
+        let id2 = tasks.filter_or_create(None, "#new-is gold wrapped").unwrap();
         assert_eq!(tasks.len(), 3);
         assert_eq!(tasks.visible_tasks().len(), 2);
-        let new2 = tasks.get_by_id(&id2.unwrap()).unwrap();
+        let new2 = tasks.get_by_id(&id2).unwrap();
         assert_eq!(new2.props, Default::default());
 
-        assert_eq!(tasks.get_own_events_history().count(), 1);
+        tasks.move_up();
+        assert_eq!(tasks.get_matching(tasks.get_position_ref(), "wrapped").len(), 1);
+        assert_eq!(tasks.get_matching(tasks.get_position_ref(), "new-i").len(), 1);
+        tasks.filter_or_create(None, "is gold");
+        assert_position!(tasks, id2);
+
+        assert_eq!(tasks.get_own_events_history().count(), 3);
+        // Global match
         let idagain = tasks.filter_or_create(None, "newer");
         assert_eq!(idagain, None);
         assert_position!(tasks, id1.unwrap());
-        assert_eq!(tasks.get_own_events_history().count(), 2);
+        assert_eq!(tasks.get_own_events_history().count(), 4);
         assert_eq!(tasks.len(), 3);
     }
 

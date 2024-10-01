@@ -697,6 +697,7 @@ async fn main() -> Result<()> {
                                 info!("Moving up {} tasks", dots - 1)
                             }
                         } else {
+                            // TODO regex match
                             let mut transform: Box<dyn Fn(&str) -> String> = Box::new(|s: &str| s.to_string());
                             if !remaining.chars().any(|c| c.is_ascii_uppercase()) {
                                 // Smart-case - case-sensitive if any uppercase char is entered
