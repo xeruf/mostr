@@ -381,19 +381,21 @@ impl TasksRelay {
         depth: usize,
     ) -> Vec<&'a Task> {
         iter.flat_map(move |task| {
-                let new_depth = depth - 1;
-                if new_depth > 0 {
-                    let mut children = self.resolve_tasks_rec(self.tasks.children_of(&task), sparse, new_depth);
-                    if !children.is_empty() {
-                        if !sparse {
-                            children.push(task);
-                        }
-                        return children;
+            if !self.state.matches(task) {
+                return vec![]
+            }
+            let new_depth = depth - 1;
+            if new_depth > 0 {
+                let mut children = self.resolve_tasks_rec(self.tasks.children_of(&task), sparse, new_depth);
+                if !children.is_empty() {
+                    if !sparse {
+                        children.push(task);
                     }
+                    return children;
                 }
-                return if self.filter(task) { vec![task] } else { vec![] };
-            })
-            .collect_vec()
+            }
+            return if self.filter(task) { vec![task] } else { vec![] };
+        }).collect_vec()
     }
 
     /// Executes the given function with each task referenced by this event without marker.
