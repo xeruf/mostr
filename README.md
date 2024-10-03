@@ -162,27 +162,21 @@ Considering to use Calendar: https://github.com/nostr-protocol/nips/blob/master/
 
 ## Plans
 
+- Handle event sending rejections (e.g. permissions)
 - Local Database Cache, Negentropy Reconciliation
   -> Offline Use!
-- Scheduling
 - Remove status filter when moving up?
 - Task markdown support? - colored
-- Time tracking: Ability to postpone task and add planned timestamps (calendar entry)
+- Calendar Events - make future time-tracking editable -> parametrised replaceable events
 - Speedup: Offline caching & Expiry (no need to fetch potential years of history)
   + Fetch most recent tasks first
   + Relay: compress tracked time for old tasks, filter closed tasks
   + Relay: filter out task status updates within few seconds, also on client side
 
-### Fixes
-
-- Handle event sending rejections (e.g. permissions)
-- Recursive filter handling
-
-### Command
+### Commands
 
 - Open Command characters: `_^\=$%~'"`, `{}[]`
 - Remove colon from task creation syntax
-- reassign undo to `&` and use `@` for people
   
 ### Conceptual
 
@@ -212,7 +206,7 @@ Suggestions welcome!
 - n8n node
 - Caldav Feed: Scheduled (planning) / Tracked (events, timetracking) with args for how far back/forward
 
-## Exemplary Workflows
+## Exemplary Workflows - User Stories
 
 - Freelancer
 - Family Chore Management
@@ -222,6 +216,29 @@ Suggestions welcome!
   + A meeting can be worked on (tracked) before it starts
   + Schedule for multiple people
 - Tracking Daily Routines / Habits
+
+### Freelancer
+
+For a Freelancer, mostr can help structure work times
+across different projects
+because it can connect to multiple clients,
+using their mental state effectively (Mind Management not Time Management).
+It also enables transparency for clients
+by sharing the tracked time -
+but alternatively the freelancer
+can track times on their own auxiliary relay
+without problems.
+
+### Family
+
+With a mobile client implemented,
+mostr can track shopping lists and other chores for a family,
+and provide them context-dependently -
+allowing you to batch shopping and activities without mental effort.
+
+### Project Team
+
+sharing, assigning, stand-ups, communication
 
 ### Contexts
 

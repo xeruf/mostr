@@ -52,7 +52,7 @@ pub(crate) struct TasksRelay {
     tasks: TaskMap,
     /// History of active tasks by PubKey
     history: HashMap<PublicKey, BTreeMap<Timestamp, Event>>,
-    /// Index of found users with metadata
+    /// Index of known users with metadata
     users: HashMap<PublicKey, Metadata>,
     /// Own pinned tasks
     bookmarks: Vec<EventId>,
@@ -62,15 +62,15 @@ pub(crate) struct TasksRelay {
     /// The task properties sorted by
     sorting: VecDeque<String>,
 
-    /// A filtered view of the current tasks
-    /// Would like this to be Task references but that doesn't work 
-    /// unless I start meddling with Rc everywhere.
+    /// A filtered view of the current tasks.
+    /// Would like this to be Task references
+    /// but that doesn't work unless I start meddling with Rc everywhere.
     view: Vec<EventId>,
     depth: usize,
 
     /// Currently active tags
     tags: BTreeSet<Tag>,
-    /// Tags filtered out
+    /// Tags filtered out from view
     tags_excluded: BTreeSet<Tag>,
     /// Current active state
     state: StateFilter,
@@ -993,10 +993,10 @@ impl TasksRelay {
             t.props.insert(event.clone());
         });
         if !found {
-            if event.kind.as_u16() == 1 {
+            if event.kind == Kind::TextNote {
                 self.add_task(event);
             } else {
-                return Some(event)
+                return Some(event);
             }
         }
         None
