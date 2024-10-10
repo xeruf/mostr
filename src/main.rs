@@ -679,7 +679,7 @@ async fn main() -> Result<()> {
                             if pos != tasks.get_position_ref() {
                                 tasks.move_to(pos.cloned());
                             }
-                            tasks.set_depth(depth);
+                            tasks.set_view_depth(depth);
                         } else {
                             tasks.filter_or_create(pos.cloned().as_ref(), &remaining).map(|id| tasks.move_to(Some(id)));
                         }
@@ -696,6 +696,11 @@ async fn main() -> Result<()> {
                             if dots > 1 {
                                 info!("Moving up {} tasks", dots - 1)
                             }
+                        } else if let Ok(depth) = remaining.parse::<usize>() {
+                            if pos != tasks.get_position_ref() {
+                                tasks.move_to(pos.cloned());
+                            }
+                            tasks.set_search_depth(depth);
                         } else {
                             // TODO regex match
                             let mut transform: Box<dyn Fn(&str) -> String> = Box::new(|s: &str| s.to_string());

@@ -66,7 +66,9 @@ pub(crate) struct TasksRelay {
     /// Would like this to be Task references
     /// but that doesn't work unless I start meddling with Rc everywhere.
     view: Vec<EventId>,
-    depth: usize,
+    search_depth: usize,
+    view_depth: usize,
+    pub(crate) recurse_stateless_tasks: bool,
 
     /// Currently active tags
     tags: BTreeSet<Tag>,
@@ -165,7 +167,9 @@ impl TasksRelay {
             tags: Default::default(),
             tags_excluded: Default::default(),
             state: Default::default(),
-            depth: 1,
+            search_depth: 4,
+            view_depth: 0,
+            recurse_stateless_tasks: true,
 
             sender,
             overflow: Default::default(),
@@ -371,7 +375,7 @@ impl TasksRelay {
         iter: impl Iterator<Item=&'a Task>,
         sparse: bool,
     ) -> Vec<&'a Task> {
-        self.resolve_tasks_rec(iter, sparse, self.depth)
+        self.resolve_tasks_rec(iter, sparse, self.search_depth + self.view_depth)
     }
 
     fn resolve_tasks_rec<'a>(
@@ -384,7 +388,10 @@ impl TasksRelay {
             if !self.state.matches(task) {
                 return vec![]
             }
-            let new_depth = depth - 1;
+            let mut new_depth = depth - 1;
+            if sparse && new_depth > self.view_depth && self.filter(task) {
+                new_depth = self.view_depth;
+            }
             if new_depth > 0 {
                 let mut children = self.resolve_tasks_rec(self.tasks.children_of(&task), sparse, new_depth);
                 if !children.is_empty() {
@@ -443,7 +450,7 @@ impl TasksRelay {
                         if current.is_empty() {
                             println!("No tasks here matching{}", self.get_prompt_suffix());
                         } else {
-                            println!("Found some matching tasks beyond specified view depth:");
+                            println!("Found some matching tasks beyond specified search depth:");
                         }
                     }
                 }
@@ -468,7 +475,7 @@ impl TasksRelay {
     }
 
     pub(crate) fn visible_tasks(&self) -> Vec<&Task> {
-        if self.depth == 0 {
+        if self.search_depth == 0 {
             return vec![];
         }
         if !self.view.is_empty() {
@@ -531,7 +538,7 @@ impl TasksRelay {
                     .map(|p| self.get_property(task, p.as_str()))
                     .join(" \t")
             )?;
-            if self.depth < 2 || task.parent_id() == self.get_position_ref() {
+            if self.view_depth < 2 || task.parent_id() == self.get_position_ref() {
                 total_time += self.total_time_tracked(task.event.id)
             }
         }
@@ -1093,14 +1100,19 @@ impl TasksRelay {
 
     // Properties
 
-    pub(crate) fn set_depth(&mut self, depth: usize) {
+    pub(crate) fn set_view_depth(&mut self, depth: usize) {
+        info!("Changed view depth to {depth}");
+        self.view_depth = depth;
+    }
+
+    pub(crate) fn set_search_depth(&mut self, depth: usize) {
         if !self.view.is_empty() {
             self.view.clear();
-            info!("Cleared search and changed view depth to {depth}");
+            info!("Cleared search and changed search depth to {depth}");
         } else {
-            info!("Changed view depth to {depth}");
+            info!("Changed search depth to {depth}");
         }
-        self.depth = depth;
+        self.view_depth = depth;
     }
 
     pub(crate) fn get_columns(&mut self) -> &mut Vec<String> {
@@ -1503,9 +1515,9 @@ mod tasks_test {
         assert_eq!(tasks.filtered_tasks(Some(&zero), false), vec![tasks.get_by_id(&pin).unwrap()]);
 
         tasks.move_to(None);
-        assert_eq!(tasks.depth, 1);
+        assert_eq!(tasks.view_depth, 1);
         assert_tasks!(tasks, [pin, test, parent]);
-        tasks.set_depth(2);
+        tasks.set_view_depth(2);
         assert_tasks!(tasks, [pin, test]);
         tasks.add_tag("tag".to_string());
         assert_tasks!(tasks, [test]);
@@ -1513,7 +1525,7 @@ mod tasks_test {
         tasks.submit(EventBuilder::new(Kind::Bookmarks, "", []));
         tasks.clear_filters();
         assert_tasks!(tasks, [pin, test]);
-        tasks.set_depth(1);
+        tasks.set_view_depth(1);
         assert_tasks!(tasks, [test, parent]);
     }
 
@@ -1622,16 +1634,16 @@ mod tasks_test {
 
         let t1 = tasks.make_task("t1");
         let task1 = tasks.get_by_id(&t1).unwrap();
-        assert_eq!(tasks.depth, 1);
+        assert_eq!(tasks.view_depth, 1);
         assert_eq!(task1.pure_state(), State::Open);
         debug!("{:?}", tasks);
         assert_eq!(tasks.visible_tasks().len(), 1);
-        tasks.depth = 0;
+        tasks.view_depth = 0;
         assert_eq!(tasks.visible_tasks().len(), 0);
 
         tasks.move_to(Some(t1));
         assert_position!(tasks, t1);
-        tasks.depth = 2;
+        tasks.view_depth = 2;
         assert_eq!(tasks.visible_tasks().len(), 0);
         let t11 = tasks.make_task("t11: tag");
         assert_eq!(tasks.visible_tasks().len(), 1);
@@ -1647,7 +1659,7 @@ mod tasks_test {
         assert_tasks!(tasks, [t111]);
         assert_eq!(tasks.get_task_path(Some(t111)), "t1>t11>t111");
         assert_eq!(tasks.relative_path(t111), "t111");
-        tasks.depth = 2;
+        tasks.view_depth = 2;
         assert_tasks!(tasks, [t111]);
 
         assert_eq!(ChildIterator::from(&tasks, &EventId::all_zeros()).get_all().len(), 1);
@@ -1662,20 +1674,20 @@ mod tasks_test {
         assert_position!(tasks, t1);
         assert_eq!(tasks.get_own_events_history().count(), 3);
         assert_eq!(tasks.relative_path(t111), "t11>t111");
-        assert_eq!(tasks.depth, 2);
+        assert_eq!(tasks.view_depth, 2);
         assert_tasks!(tasks, [t111, t12]);
         tasks.set_view(vec![t11]);
         assert_tasks!(tasks, [t11]); // No more depth applied to view
-        tasks.set_depth(1);
+        tasks.set_view_depth(1);
         assert_tasks!(tasks, [t11, t12]);
 
         tasks.move_to(None);
         assert_tasks!(tasks, [t1]);
-        tasks.depth = 2;
+        tasks.view_depth = 2;
         assert_tasks!(tasks, [t11, t12]);
-        tasks.depth = 3;
+        tasks.view_depth = 3;
         assert_tasks!(tasks, [t111, t12]);
-        tasks.depth = 9;
+        tasks.view_depth = 9;
         assert_tasks!(tasks, [t111, t12]);
     }
 
