@@ -134,7 +134,7 @@ impl Task {
         self.state().unwrap_or_else(|| self.default_state())
     }
 
-    /// Returns None for a stateless task.
+    /// Returns None for activities.
     pub(crate) fn state_label(&self) -> Option<ColoredString> {
         self.state()
             .or_else(|| Some(self.default_state()).filter(|_| self.is_task()))

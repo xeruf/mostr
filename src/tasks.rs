@@ -68,7 +68,7 @@ pub(crate) struct TasksRelay {
     view: Vec<EventId>,
     search_depth: usize,
     view_depth: usize,
-    pub(crate) recurse_stateless_tasks: bool,
+    pub(crate) recurse_activities: bool,
 
     /// Currently active tags
     tags: BTreeSet<Tag>,
@@ -169,7 +169,7 @@ impl TasksRelay {
             state: Default::default(),
             search_depth: 4,
             view_depth: 0,
-            recurse_stateless_tasks: true,
+            recurse_activities: true,
 
             sender,
             overflow: Default::default(),
@@ -1092,7 +1092,7 @@ impl TasksRelay {
         }
         let (input, tags) = extract_tags(note.trim());
         self.submit(
-            build_task(input, tags, Some(("stateless ", Kind::TextNote)))
+            build_task(input, tags, Some(("activity", Kind::TextNote)))
                 .add_tags(self.parent_tag())
                 .add_tags(self.tags.iter().cloned())
         );

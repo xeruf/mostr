@@ -65,8 +65,8 @@ where
 
 /// Build a task with informational output and optional labeled kind
 pub(crate) fn build_task(name: &str, tags: Vec<Tag>, kind: Option<(&str, Kind)>) -> EventBuilder {
-    info!("Created {}task \"{name}\" with tags [{}]",
-        kind.map(|k| k.0).unwrap_or_default(),
+    info!("Created {} \"{name}\" with tags [{}]",
+        kind.map(|k| k.0).unwrap_or("task"),
         tags.iter().map(format_tag).join(", "));
     EventBuilder::new(kind.map(|k| k.1).unwrap_or(TASK_KIND), name, tags)
 }
