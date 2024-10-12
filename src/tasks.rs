@@ -1101,7 +1101,7 @@ impl TasksRelay {
     // Properties
 
     pub(crate) fn set_view_depth(&mut self, depth: usize) {
-        info!("Changed view depth to {depth}");
+        info!("Showing {depth} subtask levels");
         self.view_depth = depth;
     }
 
@@ -1500,6 +1500,7 @@ mod tasks_test {
         tasks.move_to(Some(parent));
         let pin = tasks.make_task("pin");
 
+        tasks.search_depth = 1;
         assert_eq!(tasks.filtered_tasks(None, true).len(), 2);
         assert_eq!(tasks.filtered_tasks(None, false).len(), 2);
         assert_eq!(tasks.filtered_tasks(Some(&zero), false).len(), 0);
@@ -1515,9 +1516,9 @@ mod tasks_test {
         assert_eq!(tasks.filtered_tasks(Some(&zero), false), vec![tasks.get_by_id(&pin).unwrap()]);
 
         tasks.move_to(None);
-        assert_eq!(tasks.view_depth, 1);
+        assert_eq!(tasks.view_depth, 0);
         assert_tasks!(tasks, [pin, test, parent]);
-        tasks.set_view_depth(2);
+        tasks.set_view_depth(1);
         assert_tasks!(tasks, [pin, test]);
         tasks.add_tag("tag".to_string());
         assert_tasks!(tasks, [test]);
@@ -1525,7 +1526,7 @@ mod tasks_test {
         tasks.submit(EventBuilder::new(Kind::Bookmarks, "", []));
         tasks.clear_filters();
         assert_tasks!(tasks, [pin, test]);
-        tasks.set_view_depth(1);
+        tasks.set_view_depth(0);
         assert_tasks!(tasks, [test, parent]);
     }
 
@@ -1534,7 +1535,8 @@ mod tasks_test {
         let mut tasks = stub_tasks();
         tasks.make_task_and_enter("proc: tags", State::Procedure);
         assert_eq!(tasks.get_own_events_history().count(), 1);
-        let side = tasks.submit(build_task("side", vec![tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)], None));
+        let side = tasks.submit(
+            build_task("side", vec![tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)], None));
         assert_eq!(tasks.visible_tasks(),
                    Vec::<&Task>::new());
         let sub_id = tasks.make_task("sub");
@@ -1634,16 +1636,16 @@ mod tasks_test {
 
         let t1 = tasks.make_task("t1");
         let task1 = tasks.get_by_id(&t1).unwrap();
-        assert_eq!(tasks.view_depth, 1);
+        assert_eq!(tasks.view_depth, 0);
         assert_eq!(task1.pure_state(), State::Open);
         debug!("{:?}", tasks);
         assert_eq!(tasks.visible_tasks().len(), 1);
-        tasks.view_depth = 0;
+        tasks.search_depth = 0;
         assert_eq!(tasks.visible_tasks().len(), 0);
 
         tasks.move_to(Some(t1));
         assert_position!(tasks, t1);
-        tasks.view_depth = 2;
+        tasks.search_depth = 2;
         assert_eq!(tasks.visible_tasks().len(), 0);
         let t11 = tasks.make_task("t11: tag");
         assert_eq!(tasks.visible_tasks().len(), 1);
@@ -1678,14 +1680,16 @@ mod tasks_test {
         assert_tasks!(tasks, [t111, t12]);
         tasks.set_view(vec![t11]);
         assert_tasks!(tasks, [t11]); // No more depth applied to view
-        tasks.set_view_depth(1);
+        tasks.set_search_depth(1); // resets view
+        assert_tasks!(tasks, [t111, t12]);
+        tasks.set_view_depth(0);
         assert_tasks!(tasks, [t11, t12]);
 
         tasks.move_to(None);
         assert_tasks!(tasks, [t1]);
-        tasks.view_depth = 2;
+        tasks.view_depth = 1;
         assert_tasks!(tasks, [t11, t12]);
-        tasks.view_depth = 3;
+        tasks.view_depth = 2;
         assert_tasks!(tasks, [t111, t12]);
         tasks.view_depth = 9;
         assert_tasks!(tasks, [t111, t12]);
