@@ -450,7 +450,7 @@ impl TasksRelay {
                         if current.is_empty() {
                             println!("No tasks here matching{}", self.get_prompt_suffix());
                         } else {
-                            println!("Found some matching tasks beyond specified search depth:");
+                            println!("Found matching tasks beyond specified search depth:");
                         }
                     }
                 }
@@ -1112,7 +1112,7 @@ impl TasksRelay {
         } else {
             info!("Changed search depth to {depth}");
         }
-        self.view_depth = depth;
+        self.search_depth = depth;
     }
 
     pub(crate) fn get_columns(&mut self) -> &mut Vec<String> {
@@ -1523,6 +1523,7 @@ mod tasks_test {
         tasks.add_tag("tag".to_string());
         assert_tasks!(tasks, [test]);
         assert_eq!(tasks.filtered_tasks(None, true), vec![tasks.get_by_id(&test).unwrap()]);
+
         tasks.submit(EventBuilder::new(Kind::Bookmarks, "", []));
         tasks.clear_filters();
         assert_tasks!(tasks, [pin, test]);
@@ -1693,6 +1694,13 @@ mod tasks_test {
         assert_tasks!(tasks, [t111, t12]);
         tasks.view_depth = 9;
         assert_tasks!(tasks, [t111, t12]);
+
+        tasks.add_tag("tag".to_string());
+        tasks.view_depth = 0;
+        assert_tasks!(tasks, [t11]);
+        tasks.search_depth = 0;
+        assert_eq!(tasks.view, []);
+        assert_tasks!(tasks, []);
     }
 
     #[test]
