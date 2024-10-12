@@ -389,7 +389,7 @@ impl TasksRelay {
                 return vec![]
             }
             let mut new_depth = depth;
-            if !self.recurse_activities || task.is_task() {
+            if depth > 0 && (!self.recurse_activities || task.is_task()) {
                 new_depth = depth - 1;
                 if sparse && new_depth > self.view_depth && self.filter(task) {
                     new_depth = self.view_depth;
@@ -1646,6 +1646,8 @@ mod tasks_test {
         assert_eq!(tasks.visible_tasks().len(), 1);
         tasks.search_depth = 0;
         assert_eq!(tasks.visible_tasks().len(), 0);
+        tasks.recurse_activities = false;
+        assert_eq!(tasks.filtered_tasks(None, false).len(), 1);
 
         tasks.move_to(Some(t1));
         assert_position!(tasks, t1);
@@ -1690,6 +1692,7 @@ mod tasks_test {
         assert_tasks!(tasks, [t11, t12]);
 
         tasks.move_to(None);
+        tasks.recurse_activities = true;
         assert_tasks!(tasks, [t11, t12]);
         tasks.recurse_activities = false;
         assert_tasks!(tasks, [t1]);
