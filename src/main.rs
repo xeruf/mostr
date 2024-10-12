@@ -25,7 +25,6 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
-use xdg::BaseDirectories;
 
 use crate::helpers::*;
 use crate::kinds::{BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS, TRACKING_KIND};
@@ -169,7 +168,7 @@ async fn main() -> Result<()> {
     );
     builder.init();
 
-    let config_dir = or_warn!(BaseDirectories::new(), "Could not determine config directory")
+    let config_dir = or_warn!(xdg::BaseDirectories::new(), "Could not determine config directory")
         .and_then(|d| or_warn!(d.create_config_directory("mostr"), "Could not create config directory"))
         .unwrap_or(PathBuf::new());
     let keysfile = config_dir.join("key");
