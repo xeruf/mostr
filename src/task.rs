@@ -94,9 +94,10 @@ impl Task {
         self.event.kind == TASK_KIND
     }
 
+    /// Whether this is an actionable task - false if stateless
     pub(crate) fn is_task(&self) -> bool {
         self.is_task_kind() ||
-            self.states().next().is_some()
+            self.props.iter().any(|event| State::try_from(event.kind).is_ok())
     }
 
     fn states(&self) -> impl DoubleEndedIterator<Item=TaskState> + '_ {

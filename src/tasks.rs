@@ -388,9 +388,12 @@ impl TasksRelay {
             if !self.state.matches(task) {
                 return vec![]
             }
-            let mut new_depth = depth - 1;
-            if sparse && new_depth > self.view_depth && self.filter(task) {
-                new_depth = self.view_depth;
+            let mut new_depth = depth;
+            if !self.recurse_activities || task.is_task() {
+                new_depth = depth - 1;
+                if sparse && new_depth > self.view_depth && self.filter(task) {
+                    new_depth = self.view_depth;
+                }
             }
             if new_depth > 0 {
                 let mut children = self.resolve_tasks_rec(self.tasks.children_of(&task), sparse, new_depth);
@@ -1082,12 +1085,11 @@ impl TasksRelay {
         Some(self.set_state_for(*id, comment, state))
     }
 
-    pub(crate) fn make_note(&mut self, note: &str) {
+    pub(crate) fn make_note(&mut self, note: &str) -> EventId {
         if let Some(id) = self.get_position_ref() {
             if self.get_by_id(id).is_some_and(|t| t.is_task()) {
                 let prop = build_prop(Kind::TextNote, note.trim(), *id);
-                self.submit(prop);
-                return;
+                return self.submit(prop)
             }
         }
         let (input, tags) = extract_tags(note.trim());
@@ -1095,7 +1097,7 @@ impl TasksRelay {
             build_task(input, tags, Some(("activity", Kind::TextNote)))
                 .add_tags(self.parent_tag())
                 .add_tags(self.tags.iter().cloned())
-        );
+        )
     }
 
     // Properties
@@ -1635,10 +1637,11 @@ mod tasks_test {
     fn test_depth() {
         let mut tasks = stub_tasks();
 
-        let t1 = tasks.make_task("t1");
-        let task1 = tasks.get_by_id(&t1).unwrap();
+        let t1 = tasks.make_note("t1");
+        let activity_t1 = tasks.get_by_id(&t1).unwrap();
+        assert!(!activity_t1.is_task());
         assert_eq!(tasks.view_depth, 0);
-        assert_eq!(task1.pure_state(), State::Open);
+        assert_eq!(activity_t1.pure_state(), State::Open);
         debug!("{:?}", tasks);
         assert_eq!(tasks.visible_tasks().len(), 1);
         tasks.search_depth = 0;
@@ -1687,6 +1690,8 @@ mod tasks_test {
         assert_tasks!(tasks, [t11, t12]);
 
         tasks.move_to(None);
+        assert_tasks!(tasks, [t11, t12]);
+        tasks.recurse_activities = false;
         assert_tasks!(tasks, [t1]);
         tasks.view_depth = 1;
         assert_tasks!(tasks, [t11, t12]);
