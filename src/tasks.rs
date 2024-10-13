@@ -270,11 +270,11 @@ impl TasksRelay {
                             vec.push(format!("{} - {} by {}",
                                              format_timestamp_local(start),
                                              format_timestamp_relative_to(end, start),
-                                             self.get_author(key)))
+                                             self.get_username(key)))
                         }
                         iter.into_buffer()
                             .for_each(|(stamp, _)|
-                                vec.push(format!("{} started by {}", format_timestamp_local(stamp), self.get_author(key))));
+                                vec.push(format!("{} started by {}", format_timestamp_local(stamp), self.get_username(key))));
                         vec
                     }).sorted_unstable(); // TODO sorting depends on timestamp format - needed to interleave different people
                 (format!("Times Tracked on {:?}", self.get_task_title(id)), Box::from(history))
@@ -587,7 +587,7 @@ impl TasksRelay {
             }
             "progress" => prog_string.clone(),
 
-            "author" => format!("{:.6}", self.get_author(&task.event.pubkey)), // FIXME temporary until proper column alignment
+            "author" => format!("{:.6}", self.get_username(&task.event.pubkey)), // FIXME temporary until proper column alignment
             "path" => self.get_task_path(Some(task.event.id)),
             "rpath" => self.relative_path(task.event.id),
             // TODO format strings configurable
@@ -597,7 +597,14 @@ impl TasksRelay {
         }
     }
 
-    pub(crate) fn get_author(&self, pubkey: &PublicKey) -> String {
+    pub(crate) fn find_user(&self, term: &str) -> Option<(&PublicKey, &Metadata)> {
+        self.users.iter().find(|(_, v)|
+            // TODO regex word boundary
+            v.name.as_ref().is_some_and(|n| n.starts_with(term)) ||
+                v.display_name.as_ref().is_some_and(|n| n.starts_with(term)))
+    }
+
+    pub(crate) fn get_username(&self, pubkey: &PublicKey) -> String {
         self.users.get(pubkey)
             .and_then(|m| m.name.clone())
             .unwrap_or_else(|| format!("{:.6}", pubkey.to_string()))

@@ -500,9 +500,12 @@ async fn main() -> Result<()> {
                                     info!("Filtering for own tasks");
                                     tasks.set_filter_author(keys.public_key())
                                 } else if let Ok(key) = PublicKey::from_str(arg) {
-                                    let author = tasks.get_author(&key);
+                                    let author = tasks.get_username(&key);
                                     info!("Filtering for tasks by {author}");
                                     tasks.set_filter_author(key)
+                                } else if let Some((key, meta)) = tasks.find_user(arg) {
+                                    info!("Filtering for tasks by {}", meta.display_name.as_ref().unwrap_or(meta.name.as_ref().unwrap_or(&key.to_string())));
+                                    tasks.set_filter_author(key.clone())
                                 } else {
                                     parse_hour(arg, 1)
                                         .or_else(|| parse_date(arg).map(|utc| utc.with_timezone(&Local)))
