@@ -553,9 +553,11 @@ impl TasksRelay {
 
     fn get_property(&self, task: &Task, str: &str) -> String {
         let mut children = self.tasks.children_of(task).peekable();
+        // Only show progress for non-activities with children
         let progress =
-            self.total_progress(task.get_id())
-                .filter(|_| children.peek().is_some());
+            children.peek()
+                .filter(|_| task.is_task())
+                .and_then(|_| self.total_progress(task.get_id()));
         let prog_string = progress.map_or(String::new(), |p| format!("{:2.0}%", p * 100.0));
         match str {
             "subtasks" => {
