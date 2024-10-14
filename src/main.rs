@@ -730,7 +730,9 @@ async fn main() -> Result<()> {
                                 tasks.move_to(filtered.into_iter().next());
                             } else {
                                 tasks.move_to(pos.cloned());
-                                tasks.set_view(filtered);
+                                if !tasks.set_view(filtered) {
+                                    continue 'repl;
+                                }
                             }
                         }
                     }
