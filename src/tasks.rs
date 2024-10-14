@@ -1105,13 +1105,14 @@ impl Display for TasksRelay {
             writeln!(lock, "{}", t.descriptions().join("\n"))?;
         }
 
+        let position = self.get_position_ref();
         let mut current = vec![];
         let mut roots = self.view.iter().flat_map(|id| self.get_by_id(id)).collect_vec();
         if self.search_depth > 0 && roots.is_empty() {
-            current = self.resolve_tasks_rec(self.tasks.children_for(self.get_position_ref()), true, self.search_depth + self.view_depth);
+            current = self.resolve_tasks_rec(self.tasks.children_for(position), true, self.search_depth + self.view_depth);
             if current.is_empty() {
                 if !self.tags.is_empty() {
-                    let mut children = self.tasks.children_for(self.get_position_ref()).peekable();
+                    let mut children = self.tasks.children_for(position).peekable();
                     if children.peek().is_some() {
                         current = self.resolve_tasks_rec(children, true, 9);
                         if current.is_empty() {
@@ -1135,22 +1136,34 @@ impl Display for TasksRelay {
             return Ok(());
         }
 
-        //let tree = current.iter().flat_map(|task| self.traverse_up_from(Some(task.event.id))).map(|task| task.get_id()).unique().collect_vec();
-        //let ids = current.iter().map(|t| t.get_id()).collect_vec();
-        //let mut bookmarks =
-        //        // TODO highlight bookmarks
-        //        // TODO add recent tasks
-        //        self.bookmarks.iter()
-        //            .filter(|id| !position.is_some_and(|p| &p == id) && !ids.contains(id))
-        //            .filter_map(|id| self.get_by_id(id))
-        //            .filter(|t| self.filter(t))
-        //            .collect_vec();
-        //current.append(&mut bookmarks);
+        let tree = current.iter().flat_map(|task| self.traverse_up_from(Some(task.event.id))).unique();
+        let ids: HashSet<&EventId> = tree.map(|t| t.get_id()).collect();
+        let mut bookmarks =
+            // TODO add recent tasks
+            self.bookmarks.iter()
+                .filter(|id| !position.is_some_and(|p| &p == id) && !ids.contains(id))
+                .filter_map(|id| self.get_by_id(id))
+                .filter(|t| self.filter(t))
+                .peekable();
+        if bookmarks.peek().is_some() {
+            writeln!(lock, "{}", Colorize::bold("Bookmarks"))?;
+            for task in bookmarks {
+                writeln!(
+                    lock,
+                    "{}",
+                    self.properties.iter()
+                        .map(|p| self.get_property(task, p.as_str()))
+                        .join(" \t")
+                )?;
+            }
+        }
 
         // TODO proper column alignment
         // TODO hide empty columns
         writeln!(lock, "{}", self.properties.join(" \t").bold())?;
+
         let count = current.len();
+        let mut total_time = 0;
         for task in current {
             writeln!(
                 lock,
@@ -1159,12 +1172,9 @@ impl Display for TasksRelay {
                     .map(|p| self.get_property(task, p.as_str()))
                     .join(" \t")
             )?;
+            total_time += self.total_time_tracked(task.event.id) // TODO include parent if it matches
         }
 
-        let mut total_time = 0;
-        //for root in roots {
-        //    total_time += self.total_time_tracked(root.event.id)
-        //}
         writeln!(lock, "{} visible tasks{}", count, display_time(" tracked a total of HHhMMm", total_time))?;
         Ok(())
     }

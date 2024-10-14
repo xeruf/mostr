@@ -2,6 +2,7 @@ use fmt::Display;
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashSet};
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::string::ToString;
 
 use colored::{ColoredString, Colorize};
@@ -37,6 +38,12 @@ impl PartialOrd<Self> for Task {
 impl Ord for Task {
     fn cmp(&self, other: &Self) -> Ordering {
         self.event.cmp(&other.event)
+    }
+}
+
+impl Hash for Task {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.event.id.hash(state);
     }
 }
 
