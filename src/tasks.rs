@@ -210,6 +210,13 @@ impl TasksRelay {
         self.get_position_at(now()).1
     }
 
+    fn sorting_key(&self, task: &Task) -> impl Ord {
+        self.sorting
+            .iter()
+            .map(|p| self.get_property(task, p.as_str()))
+            .collect_vec()
+    }
+
     // TODO binary search
     /// Gets last position change before the given timestamp
     fn get_position_at(&self, timestamp: Timestamp) -> (Timestamp, Option<&EventId>) {
@@ -370,23 +377,16 @@ impl TasksRelay {
 
     // Helpers
 
-    fn resolve_tasks<'a>(
-        &'a self,
-        iter: impl Iterator<Item=&'a Task>,
-        sparse: bool,
-    ) -> Vec<&'a Task> {
-        self.resolve_tasks_rec(iter, sparse, self.search_depth + self.view_depth)
-    }
-
     fn resolve_tasks_rec<'a>(
         &'a self,
         iter: impl Iterator<Item=&'a Task>,
         sparse: bool,
         depth: usize,
     ) -> Vec<&'a Task> {
-        iter.flat_map(move |task| {
+        iter.sorted_by_cached_key(|task| self.sorting_key(task))
+            .flat_map(move |task| {
             if !self.state.matches(task) {
-                return vec![]
+                return vec![];
             }
             let mut new_depth = depth;
             if depth > 0 && (!self.recurse_activities || task.is_task()) {
@@ -443,7 +443,8 @@ impl TasksRelay {
     }
 
     pub(crate) fn filtered_tasks<'a>(&'a self, position: Option<&'a EventId>, sparse: bool) -> Vec<&'a Task> {
-        let mut current = self.resolve_tasks(self.tasks.children_for(position), sparse);
+        let roots = self.tasks.children_for(position);
+        let mut current = self.resolve_tasks_rec(roots, sparse, self.search_depth + self.view_depth);
         if current.is_empty() {
             if !self.tags.is_empty() {
                 let mut children = self.tasks.children_for(self.get_position_ref()).peekable();
@@ -485,70 +486,6 @@ impl TasksRelay {
             return self.view.iter().flat_map(|id| self.get_by_id(id)).collect();
         }
         self.filtered_tasks(self.get_position_ref(), true)
-    }
-
-    pub(crate) fn print_tasks(&self) -> Result<(), Error> {
-        let mut lock = stdout().lock();
-        if let Some(t) = self.get_current_task() {
-            let state = t.state_or_default();
-            let now = &now();
-            let mut tracking_stamp: Option<Timestamp> = None;
-            for elem in
-                timestamps(self.get_own_events_history(), &[t.get_id()])
-                    .map(|(e, _)| e) {
-                if tracking_stamp.is_some() && elem > now {
-                    break;
-                }
-                tracking_stamp = Some(*elem)
-            }
-            writeln!(
-                lock,
-                "Tracking since {} (total tracked time {}m) - {} since {}",
-                tracking_stamp.map_or("?".to_string(), |t| format_timestamp_relative(&t)),
-                self.time_tracked(*t.get_id()) / 60,
-                state.get_label(),
-                format_timestamp_relative(&state.time)
-            )?;
-            writeln!(lock, "{}", t.descriptions().join("\n"))?;
-        }
-
-        let mut tasks = self.visible_tasks();
-        if tasks.is_empty() {
-            let (label, times) = self.times_tracked();
-            let mut times_recent = times.rev().take(6).collect_vec();
-            times_recent.reverse();
-            // TODO Add recent prefix
-            writeln!(lock, "{}\n{}", label.italic(), times_recent.join("\n"))?;
-            return Ok(());
-        }
-
-        // TODO proper column alignment
-        // TODO hide empty columns
-        writeln!(lock, "{}", self.properties.join("\t").bold())?;
-        let mut total_time = 0;
-        let count = tasks.len();
-        tasks.sort_by_cached_key(|task| {
-            self.sorting
-                .iter()
-                .map(|p| self.get_property(task, p.as_str()))
-                .collect_vec()
-        });
-        for task in tasks {
-            writeln!(
-                lock,
-                "{}",
-                self.properties.iter()
-                    .map(|p| self.get_property(task, p.as_str()))
-                    .join(" \t")
-            )?;
-            if self.view_depth < 2 || task.parent_id() == self.get_position_ref() {
-                total_time += self.total_time_tracked(task.event.id)
-            }
-        }
-        if total_time > 0 {
-            writeln!(lock, "{} visible tasks{}", count, display_time(" tracked a total of HHhMMm", total_time))?;
-        }
-        Ok(())
     }
 
     fn get_property(&self, task: &Task, str: &str) -> String {
@@ -1140,6 +1077,96 @@ impl TasksRelay {
         self.sorting.push_front(property);
         self.sorting.truncate(4);
         info!("Now sorting by {:?}", self.sorting);
+    }
+}
+
+impl Display for TasksRelay {
+    fn fmt(&self, lock: &mut Formatter<'_>) -> std::fmt::Result {
+        if let Some(t) = self.get_current_task() {
+            let state = t.state_or_default();
+            let now = &now();
+            let mut tracking_stamp: Option<Timestamp> = None;
+            for elem in
+                timestamps(self.get_own_events_history(), &[t.get_id()])
+                    .map(|(e, _)| e) {
+                if tracking_stamp.is_some() && elem > now {
+                    break;
+                }
+                tracking_stamp = Some(*elem)
+            }
+            writeln!(
+                lock,
+                "Active from {} (total tracked time {}m) - {} since {}",
+                tracking_stamp.map_or("?".to_string(), |t| format_timestamp_relative(&t)),
+                self.time_tracked(*t.get_id()) / 60,
+                state.get_label(),
+                format_timestamp_relative(&state.time)
+            )?;
+            writeln!(lock, "{}", t.descriptions().join("\n"))?;
+        }
+
+        let mut current = vec![];
+        let mut roots = self.view.iter().flat_map(|id| self.get_by_id(id)).collect_vec();
+        if self.search_depth > 0 && roots.is_empty() {
+            current = self.resolve_tasks_rec(self.tasks.children_for(self.get_position_ref()), true, self.search_depth + self.view_depth);
+            if current.is_empty() {
+                if !self.tags.is_empty() {
+                    let mut children = self.tasks.children_for(self.get_position_ref()).peekable();
+                    if children.peek().is_some() {
+                        current = self.resolve_tasks_rec(children, true, 9);
+                        if current.is_empty() {
+                            writeln!(lock, "No tasks here matching{}", self.get_prompt_suffix())?;
+                        } else {
+                            writeln!(lock, "Found matching tasks beyond specified search depth:")?;
+                        }
+                    }
+                }
+            }
+        } else {
+            current = self.resolve_tasks_rec(roots.iter().cloned(), true, self.view_depth);
+        }
+
+        if current.is_empty() {
+            let (label, times) = self.times_tracked();
+            let mut times_recent = times.rev().take(6).collect_vec();
+            times_recent.reverse();
+            // TODO Add recent prefix
+            writeln!(lock, "{}\n{}", label.italic(), times_recent.join("\n"))?;
+            return Ok(());
+        }
+
+        //let tree = current.iter().flat_map(|task| self.traverse_up_from(Some(task.event.id))).map(|task| task.get_id()).unique().collect_vec();
+        //let ids = current.iter().map(|t| t.get_id()).collect_vec();
+        //let mut bookmarks =
+        //        // TODO highlight bookmarks
+        //        // TODO add recent tasks
+        //        self.bookmarks.iter()
+        //            .filter(|id| !position.is_some_and(|p| &p == id) && !ids.contains(id))
+        //            .filter_map(|id| self.get_by_id(id))
+        //            .filter(|t| self.filter(t))
+        //            .collect_vec();
+        //current.append(&mut bookmarks);
+
+        // TODO proper column alignment
+        // TODO hide empty columns
+        writeln!(lock, "{}", self.properties.join(" \t").bold())?;
+        let count = current.len();
+        for task in current {
+            writeln!(
+                lock,
+                "{}",
+                self.properties.iter()
+                    .map(|p| self.get_property(task, p.as_str()))
+                    .join(" \t")
+            )?;
+        }
+
+        let mut total_time = 0;
+        //for root in roots {
+        //    total_time += self.total_time_tracked(root.event.id)
+        //}
+        writeln!(lock, "{} visible tasks{}", count, display_time(" tracked a total of HHhMMm", total_time))?;
+        Ok(())
     }
 }
 

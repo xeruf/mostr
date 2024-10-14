@@ -386,7 +386,7 @@ async fn main() -> Result<()> {
                     None => {
                         debug!("Flushing Tasks because of empty command");
                         tasks.flush();
-                        or_warn!(tasks.print_tasks());
+                        println!("{}", tasks);
                         continue 'repl;
                     }
                     Some('@') => {}
@@ -740,7 +740,7 @@ async fn main() -> Result<()> {
                             tasks.move_to(None);
                             if let Some((url, tasks)) = relays.iter().find(|(key, _)| key.as_ref().is_some_and(|url| url.as_str().starts_with(&command))) {
                                 selected_relay.clone_from(url);
-                                or_warn!(tasks.print_tasks());
+                                println!("{}", tasks);
                                 continue 'repl;
                             }
                             or_warn!(Url::parse(&command), "Failed to parse url {}", command).map(|url| {
@@ -765,7 +765,7 @@ async fn main() -> Result<()> {
                         }
                 }
                 tasks.custom_time = None;
-                or_warn!(tasks.print_tasks());
+                println!("{}", tasks);
             }
             Err(ReadlineError::Eof) => break 'repl,
             Err(ReadlineError::Interrupted) => break 'repl, // TODO exit if prompt was empty, or clear
