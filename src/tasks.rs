@@ -694,7 +694,7 @@ impl TasksRelay {
         for task in self.tasks.values() {
             if task.get_filter_title().to_ascii_lowercase() == lowercase_arg &&
                 // exclude closed tasks and their subtasks
-                !self.traverse_up_from(Some(*task.get_id())).any(|t| t.pure_state() == State::Closed) {
+                !self.traverse_up_from(Some(*task.get_id())).any(|t| !t.pure_state().is_open()) {
                 return vec![task.event.id];
             }
         }
