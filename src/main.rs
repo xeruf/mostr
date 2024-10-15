@@ -686,13 +686,18 @@ async fn main() -> Result<()> {
                             } else {
                                 tasks.clear_filters();
                             }
-                        } else if let Ok(depth) = remaining.parse::<usize>() {
-                            if pos != tasks.get_position_ref() {
-                                tasks.move_to(pos.cloned());
-                            }
-                            tasks.set_view_depth(depth);
                         } else {
-                            tasks.filter_or_create(pos.cloned().as_ref(), &remaining).map(|id| tasks.move_to(Some(id)));
+                            match remaining.parse::<usize>() {
+                                Ok(depth) if depth < 10 => {
+                                    if pos != tasks.get_position_ref() {
+                                        tasks.move_to(pos.cloned());
+                                    }
+                                    tasks.set_view_depth(depth);
+                                }
+                                _ => {
+                                    tasks.filter_or_create(pos.cloned().as_ref(), &remaining).map(|id| tasks.move_to(Some(id)));
+                                }
+                            }
                         }
                     }
 
