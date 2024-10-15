@@ -702,9 +702,8 @@ impl TasksRelay {
         if filtered.is_empty() {
             filtered = filtered_fuzzy;
         }
-        let pos = self.get_position_ref();
         let immediate = filtered.iter().filter(
-            |t| self.get_by_id(t).is_some_and(|t| t.parent_id() == pos)).collect_vec();
+            |t| self.get_by_id(t).is_some_and(|t| t.parent_id() == position)).collect_vec();
         if immediate.len() == 1 {
             return immediate.into_iter().cloned().collect_vec();
         }
