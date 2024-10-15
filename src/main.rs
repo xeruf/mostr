@@ -299,7 +299,7 @@ async fn main() -> Result<()> {
                             queue_events.append(&mut events);
                             queue = Some((queue_url, queue_events));
                         } else {
-                            info!("Sending {} events to {url} due to relay change", queue_events.len());
+                            info!("Sending {} events to {queue_url} due to relay change", queue_events.len());
                             client.batch_event_to(vec![queue_url], queue_events, RelaySendOptions::new()).await;
                             queue = None;
                         }
