@@ -60,7 +60,7 @@ pub(crate) struct TasksRelay {
     /// The task properties currently visible
     properties: Vec<String>,
     /// The task properties sorted by
-    sorting: VecDeque<String>,
+    sorting: VecDeque<String>, // TODO track boolean for reversal?
 
     /// A filtered view of the current tasks.
     /// Would like this to be Task references
@@ -1137,16 +1137,19 @@ impl Display for TasksRelay {
         }
 
         let tree = current.iter().flat_map(|task| self.traverse_up_from(Some(task.event.id))).unique();
-        let ids: HashSet<&EventId> = tree.map(|t| t.get_id()).collect();
+        let ids: HashSet<&EventId> = tree.map(|t| t.get_id()).chain(position).collect();
         let mut bookmarks =
-            // TODO add recent tasks
+            // TODO add recent tasks (most time tracked + recently created)
             self.bookmarks.iter()
-                .filter(|id| !position.is_some_and(|p| &p == id) && !ids.contains(id))
+                .chain(self.tasks.values().sorted_unstable().take(3).map(|t| t.get_id()))
+                .filter(|id| !ids.contains(id))
                 .filter_map(|id| self.get_by_id(id))
                 .filter(|t| self.filter(t))
+                .sorted_by_cached_key(|t| self.sorting_key(t))
+                .dedup()
                 .peekable();
         if bookmarks.peek().is_some() {
-            writeln!(lock, "{}", Colorize::bold("Bookmarks"))?;
+            writeln!(lock, "{}", Colorize::bold("Quick Access"))?;
             for task in bookmarks {
                 writeln!(
                     lock,
