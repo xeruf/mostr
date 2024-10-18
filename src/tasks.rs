@@ -255,6 +255,7 @@ impl TasksRelay {
                             .map(|str| EventId::from_str(str).ok().map_or(str.to_string(), |id| self.get_task_path(Some(id))))
                             .join(" "));
                         if new != last {
+                            // TODO omit intervals <2min - but I think I need threeway for that
                             // TODO alternate color with grey between days
                             full.push(format!("{} {}", format_timestamp_local(&event.created_at), new.as_ref().unwrap_or(&"---".to_string())));
                             last = new;
@@ -274,10 +275,13 @@ impl TasksRelay {
                         let mut vec = Vec::with_capacity(set.len() / 2);
                         let mut iter = timestamps(set.values(), &ids).tuples();
                         while let Some(((start, _), (end, _))) = iter.next() {
-                            vec.push(format!("{} - {} by {}",
-                                             format_timestamp_local(start),
-                                             format_timestamp_relative_to(end, start),
-                                             self.get_username(key)))
+                            // Filter out intervals <2 mins
+                            if start.as_u64() + 120 < end.as_u64() {
+                                vec.push(format!("{} - {} by {}",
+                                                 format_timestamp_local(start),
+                                                 format_timestamp_relative_to(end, start),
+                                                 self.get_username(key)))
+                            }
                         }
                         iter.into_buffer()
                             .for_each(|(stamp, _)|
@@ -1266,6 +1270,7 @@ fn referenced_event(event: &Event) -> Option<&EventId> {
     referenced_events(event).next()
 }
 
+/// Returns the id of a referenced event if it is contained in the provided ids list.
 fn matching_tag_id<'a>(event: &'a Event, ids: &'a [&'a EventId]) -> Option<&'a EventId> {
     referenced_events(event).find(|id| ids.contains(id))
 }
