@@ -8,16 +8,13 @@ First, start a nostr relay, such as
 - https://github.com/coracle-social/bucket for local development
 - https://github.com/rnostr/rnostr for production use
 
-Run development build with:
+Install rustup and run a development build with:
 
     cargo run
 
 A `relay` list and private `key` can be placed in config files
 under `${XDG_CONFIG_HOME:-$HOME/.config}/mostr/`.
-Currently, all relays are fetched and synced to,
-separation is planned -
-ideally for any project with different collaborators,
-an own relay will be used.
+Ideally any project with different collaborators has its own relay.
 If not saved, mostr will ask for a relay url
 (entering none is fine too, but your data will not be persisted between sessions)
 and a private key, alternatively generating one on the fly.
@@ -119,7 +116,7 @@ Append `@TIME` to any task creation or change command to record the action with 
 - `!TEXT` - set status for current task from text and move up; empty: Open
 - `!TIME: REASON` - defer current task to date
 - TBI: `*[INT]` - set priority - can also be used in task creation, with any digit
-- `,[TEXT]` - list notes or add text note (stateless task / task description)
+- `,[TEXT]` - list notes or add text (activity / task description)
 - TBI: `;[TEXT]` - list comments or comment on task
 - TBI: show status history and creation with attribution
 - `&` - revert
@@ -197,14 +194,17 @@ Suggestions welcome!
   + Subtask progress immediate/all/leafs
   + path full / leaf / top
 
-### Interfaces
+### Interfaces & Integrations
 
 - TUI: Clear Terminal? Refresh on empty prompt after timeout?
 - Kanban, GANTT, Calendar
-- Web Interface
-- Messenger Integrations (Telegram Bot)
 - n8n node
-- Caldav Feed: Scheduled (planning) / Tracked (events, timetracking) with args for how far back/forward
+- Webcal Feed: Scheduled (planning) / Tracked (events, timetracking) with args for how far back/forward
+
+Interfaces:
+
+- text-based REPL for terminal and messengers
+- interactive UI for web, mobile, desktop e.g. https://docs.slint.dev/latest/docs/slint/src/introduction/
 
 ## Exemplary Workflows - User Stories
 
