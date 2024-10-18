@@ -409,6 +409,16 @@ async fn main() -> Result<()> {
                 let arg_default = arg.unwrap_or("");
                 match operator {
                     Some(':') => {
+                        if command.starts_with("://") {
+                            if let Some((url, tasks)) = relays.iter().find(|(key, _)| key.as_ref().is_some_and(|url| url.as_str().contains(&command))) {
+                                selected_relay.clone_from(url);
+                                println!("{}", tasks);
+                                continue 'repl;
+                            }
+                            warn!("No connected relay contains {:?}", command);
+                            continue 'repl;
+                        } 
+                        
                         let mut iter = arg_default.chars();
                         let next = iter.next();
                         let remaining = iter.collect::<String>().trim().to_string();
