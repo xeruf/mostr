@@ -563,12 +563,7 @@ async fn main() -> Result<()> {
                             },
                             Some(arg) => 'arm: {
                                 if !arg.starts_with('|') {
-                                    if let Some(pos) = tasks.get_position() {
-                                        tasks.move_up();
-                                        tasks.make_task_with(
-                                            arg,
-                                            once(tasks.make_event_tag_from_id(pos, MARKER_DEPENDS)),
-                                            true);
+                                    if tasks.make_dependent_sibling(arg) {
                                         break 'arm;
                                     }
                                 }

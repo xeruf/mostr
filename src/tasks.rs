@@ -834,6 +834,22 @@ impl TasksRelay {
         self.move_to(Some(id));
     }
 
+    /// Moves up and creates a sibling task dependent on the current one
+    ///
+    /// Returns true if successful, false if there is no current task
+    pub(crate) fn make_dependent_sibling(&mut self, input: &str) -> bool {
+        if let Some(pos) = self.get_position() {
+            self.move_up();
+            self.make_task_with(
+                input,
+                self.get_position().map(|par| self.make_event_tag_from_id(par, MARKER_PARENT))
+                    .into_iter().chain(once(self.make_event_tag_from_id(pos, MARKER_DEPENDS))),
+                true);
+            return true;
+        }
+        false
+    }
+
     /// Creates a task including current tag filters
     ///
     /// Sanitizes input
@@ -1546,6 +1562,22 @@ mod tasks_test {
         };
     }
 
+
+    #[test]
+    fn test_sibling_dependency() {
+        let mut tasks = stub_tasks();
+        let parent = tasks.make_task("parent");
+        let sub = tasks.submit(
+            build_task("sub", vec![tasks.make_event_tag_from_id(parent, MARKER_PARENT)], None));
+        assert_eq!(tasks.visible_tasks().len(), 1);
+        tasks.track_at(Timestamp::now(), Some(sub));
+        assert_eq!(tasks.get_own_events_history().count(), 1);
+
+        tasks.make_dependent_sibling("sibling");
+        assert_eq!(tasks.len(), 3);
+        assert_eq!(tasks.visible_tasks().len(), 2);
+    }
+
     #[test]
     fn test_bookmarks() {
         let mut tasks = stub_tasks();
@@ -1597,8 +1629,7 @@ mod tasks_test {
         assert_eq!(tasks.visible_tasks(),
                    Vec::<&Task>::new());
         let sub_id = tasks.make_task("sub");
-        assert_eq!(tasks.visible_tasks().iter().map(|t| t.event.id).collect_vec(),
-                   Vec::from([sub_id]));
+        assert_tasks!(tasks, [sub_id]);
         assert_eq!(tasks.len(), 3);
         let sub = tasks.get_by_id(&sub_id).unwrap();
         assert_eq!(sub.get_dependendees(), Vec::<&EventId>::new());
