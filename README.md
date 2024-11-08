@@ -142,21 +142,6 @@ An active tag or status filter will also set that attribute for newly created ta
 - TBI = To Be Implemented
 - `. TASK` - create and enter a new task even if the name matches an existing one
 
-## Nostr reference
-
-Mostr mainly uses the following NIPs:
-
-- Kind 1 for task descriptions and permanent tasks, can contain task property updates (tags, priority)
-- Issue Tracking: https://github.com/nostr-protocol/nips/blob/master/34.md
-  + Tasks have Kind 1621 (originally: git issue - currently no markdown support implemented)
-  + TBI: Kind 1622 for task comments
-  + Kind 1630-1633: Task Status (1630 Open, 1631 Done, 1632 Closed, 1633 Pending)
-- Own Kind 1650 for time-tracking
-
-Considering to use Calendar: https://github.com/nostr-protocol/nips/blob/master/52.md
-- Kind 31922 for GANTT, since it has only Date
-- Kind 31923 for Calendar, since it has a time
-
 ## Plans
 
 - Handle event sending rejections (e.g. permissions)

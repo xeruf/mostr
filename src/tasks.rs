@@ -865,6 +865,7 @@ impl TasksRelay {
 
     pub(crate) fn track_at(&mut self, mut time: Timestamp, target: Option<EventId>) -> Option<EventId> {
         if target.is_none() {
+            // Prevent random overlap with tracking started in the same second
             time = time - 1;
         } else if let Some(hist) = self.history.get(&self.sender.pubkey()) {
             while hist.get(&time).is_some() {
