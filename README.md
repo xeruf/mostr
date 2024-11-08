@@ -87,7 +87,7 @@ To stop time-tracking completely, simply move to the root of all tasks.
 
 ### Command Syntax
 
-`TASK` creation syntax: `NAME: TAG1 TAG2 ...`
+`TASK` creation syntax: `NAME #TAG *PRIO # TAG1 TAG2 ...`
 
 - `TASK` - create task
   + prefix with space if you want a task to start with a command character

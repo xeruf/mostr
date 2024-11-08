@@ -91,11 +91,12 @@ pub(crate) fn extract_hashtags(input: &str) -> impl Iterator<Item=Tag> + '_ {
         .map(to_hashtag)
 }
 
-/// Extracts everything after a ": " as a list of tags.
+/// Extracts everything after a " # " as a list of tags 
+/// as well as various embedded tags.
 ///
 /// Expects sanitized input.
 pub(crate) fn extract_tags(input: &str) -> (&str, Vec<Tag>) {
-    match input.split_once(": ") {
+    match input.split_once(" # ") {
         None => (input, extract_hashtags(input).collect_vec()),
         Some((name, tags)) => {
             let tags = extract_hashtags(name)
@@ -139,6 +140,6 @@ pub(crate) fn is_hashtag(tag: &Tag) -> bool {
 
 #[test]
 fn test_extract_tags() {
-    assert_eq!(extract_tags("Hello from #mars with #greetings: yeah done-it"),
+    assert_eq!(extract_tags("Hello from #mars with #greetings # yeah done-it"),
                ("Hello from #mars with #greetings", ["mars", "greetings", "yeah", "done-it"].into_iter().map(to_hashtag).collect()))
 }

@@ -1582,7 +1582,7 @@ mod tasks_test {
     fn test_bookmarks() {
         let mut tasks = stub_tasks();
         let zero = EventId::all_zeros();
-        let test = tasks.make_task("test: tag");
+        let test = tasks.make_task("test # tag");
         let parent = tasks.make_task("parent");
         assert_eq!(tasks.visible_tasks().len(), 2);
         tasks.move_to(Some(parent));
@@ -1622,7 +1622,7 @@ mod tasks_test {
     #[test]
     fn test_procedures() {
         let mut tasks = stub_tasks();
-        tasks.make_task_and_enter("proc: tags", State::Procedure);
+        tasks.make_task_and_enter("proc # tags", State::Procedure);
         assert_eq!(tasks.get_own_events_history().count(), 1);
         let side = tasks.submit(
             build_task("side", vec![tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)], None));
@@ -1738,7 +1738,7 @@ mod tasks_test {
         assert_position!(tasks, t1);
         tasks.search_depth = 2;
         assert_eq!(tasks.visible_tasks().len(), 0);
-        let t11 = tasks.make_task("t11: tag");
+        let t11 = tasks.make_task("t11 # tag");
         assert_eq!(tasks.visible_tasks().len(), 1);
         assert_eq!(tasks.get_task_path(Some(t11)), "t1>t11");
         assert_eq!(tasks.relative_path(t11), "t11");
