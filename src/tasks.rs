@@ -24,7 +24,7 @@ pub const HIGH_PRIO: Prio = 85;
 
 /// Amount of seconds to treat as "now"
 const MAX_OFFSET: u64 = 9;
-fn now() -> Timestamp {
+pub(crate) fn now() -> Timestamp {
     Timestamp::now() + MAX_OFFSET
 }
 

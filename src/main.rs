@@ -5,7 +5,7 @@ use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::iter::once;
-use std::ops::Sub;
+use std::ops::{Add, Sub};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
@@ -81,11 +81,12 @@ impl EventSender {
         }
     }
 
+    // TODO this direly needs testing
     fn submit(&self, event_builder: EventBuilder) -> Result<Event> {
+        let min = Timestamp::now().sub(UNDO_DELAY);
         {
             // Always flush if oldest event older than a minute or newer than now
             let borrow = self.queue.borrow();
-            let min = Timestamp::now().sub(UNDO_DELAY);
             if borrow.iter().any(|e| e.created_at < min || e.created_at > Timestamp::now()) {
                 drop(borrow);
                 debug!("Flushing event queue because it is older than a minute");
@@ -94,10 +95,9 @@ impl EventSender {
         }
         let mut queue = self.queue.borrow_mut();
         Ok(event_builder.to_event(&self.keys).inspect(|event| {
-            if event.kind == TRACKING_KIND {
-                queue.retain(|e| {
-                    e.kind != TRACKING_KIND
-                });
+            if event.kind == TRACKING_KIND && event.created_at > min && event.created_at < tasks::now() {
+                // Do not send redundant movements
+                queue.retain(|e| e.kind != TRACKING_KIND);
             }
             queue.push(event.clone());
         })?)
