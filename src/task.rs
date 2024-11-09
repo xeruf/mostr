@@ -1,8 +1,9 @@
 use fmt::Display;
 use std::cmp::Ordering;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::iter::once;
 use std::string::ToString;
 
 use colored::{ColoredString, Colorize};
@@ -12,7 +13,7 @@ use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Event, EventId, Kind, Tag, TagStandard, Timestamp};
 
 use crate::helpers::{format_timestamp_local, some_non_empty};
-use crate::kinds::{is_hashtag, PROCEDURE_KIND, PROCEDURE_KIND_ID, TASK_KIND};
+use crate::kinds::{is_hashtag, Prio, PRIO, PROCEDURE_KIND, PROCEDURE_KIND_ID, TASK_KIND};
 
 pub static MARKER_PARENT: &str = "parent";
 pub static MARKER_DEPENDS: &str = "depends";
@@ -102,10 +103,23 @@ impl Task {
         self.event.kind == TASK_KIND
     }
 
-    /// Whether this is an actionable task - false if stateless
+    /// Whether this is an actionable task - false if stateless activity
     pub(crate) fn is_task(&self) -> bool {
         self.is_task_kind() ||
             self.props.iter().any(|event| State::try_from(event.kind).is_ok())
+    }
+
+    pub(crate) fn priority(&self) -> Option<Prio> {
+        self.priority_raw().and_then(|s| s.parse().ok())
+    }
+
+    pub(crate) fn priority_raw(&self) -> Option<&str> {
+        self.props.iter().rev()
+            .chain(once(&self.event))
+            .find_map(|p| {
+                p.tags.iter().find_map(|t|
+                    t.content().take_if(|_| { t.kind().to_string() == PRIO }))
+            })
     }
 
     fn states(&self) -> impl DoubleEndedIterator<Item=TaskState> + '_ {
@@ -180,6 +194,7 @@ impl Task {
             "created" => Some(format_timestamp_local(&self.event.created_at)),
             "kind" => Some(self.event.kind.to_string()),
             // Dynamic
+            "priority" | "prio" => self.priority_raw().map(|c| c.to_string()),
             "status" => self.state_label().map(|c| c.to_string()),
             "desc" => self.descriptions().last().cloned(),
             "description" => Some(self.descriptions().join(" ")),

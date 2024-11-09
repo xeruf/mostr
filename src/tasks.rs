@@ -155,6 +155,7 @@ impl TasksRelay {
 
             properties: [
                 "author",
+                "prio",
                 "state",
                 "rtime",
                 "hashtags",
@@ -162,7 +163,8 @@ impl TasksRelay {
                 "desc",
             ].into_iter().map(|s| s.to_string()).collect(),
             sorting: [
-                "state",
+                "priority",
+                "status",
                 "author",
                 "hashtags",
                 "rtime",
@@ -537,7 +539,7 @@ impl TasksRelay {
             }
             "progress" => prog_string.clone(),
 
-            "author" => format!("{:.6}", self.get_username(&task.event.pubkey)), // FIXME temporary until proper column alignment
+            "author" | "creator" => format!("{:.6}", self.get_username(&task.event.pubkey)), // FIXME temporary until proper column alignment
             "path" => self.get_task_path(Some(task.event.id)),
             "rpath" => self.relative_path(task.event.id),
             // TODO format strings configurable
@@ -874,7 +876,7 @@ impl TasksRelay {
     pub(crate) fn make_task_with(&mut self, input: &str, tags: impl IntoIterator<Item=Tag>, set_state: bool) -> EventId {
         let (input, input_tags) = extract_tags(input.trim());
         let prio =
-            if input_tags.iter().find(|t| t.kind().to_string() == PRIO).is_some() { None } else { self.priority.map(|p| to_prio_tag(p)) };
+            if input_tags.iter().any(|t| t.kind().to_string() == PRIO) { None } else { self.priority.map(|p| to_prio_tag(p)) };
         let id = self.submit(
             build_task(&input, input_tags, None)
                 .add_tags(self.tags.iter().cloned())
