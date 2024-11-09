@@ -6,6 +6,7 @@ readme = "README.md"
 license = "GPL 3.0"
 authors = ["melonion"]
 version = "0.5.0"
+rust-version = "1.82"
 edition = "2021"
 default-run = "mostr"
 
