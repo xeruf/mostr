@@ -16,6 +16,7 @@ use crate::kinds::{is_hashtag, PROCEDURE_KIND, PROCEDURE_KIND_ID, TASK_KIND};
 
 pub static MARKER_PARENT: &str = "parent";
 pub static MARKER_DEPENDS: &str = "depends";
+pub static MARKER_PROPERTY: &str = "property";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Task {

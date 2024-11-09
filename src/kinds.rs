@@ -74,18 +74,6 @@ pub(crate) fn build_task(name: &str, tags: Vec<Tag>, kind: Option<(&str, Kind)>)
     EventBuilder::new(kind.map(|k| k.1).unwrap_or(TASK_KIND), name, tags)
 }
 
-pub(crate) fn build_prop(
-    kind: Kind,
-    comment: &str,
-    id: EventId,
-) -> EventBuilder {
-    EventBuilder::new(
-        kind,
-        comment,
-        vec![Tag::event(id)],
-    )
-}
-
 /// Return Hashtags embedded in the string.
 pub(crate) fn extract_hashtags(input: &str) -> impl Iterator<Item=Tag> + '_ {
     input.split_ascii_whitespace()

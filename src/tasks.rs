@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use crate::helpers::{format_timestamp_local, format_timestamp_relative, format_timestamp_relative_to, parse_tracking_stamp, some_non_empty, CHARACTER_THRESHOLD};
 use crate::kinds::*;
-use crate::task::{State, Task, TaskState, MARKER_DEPENDS, MARKER_PARENT};
+use crate::task::{State, Task, TaskState, MARKER_DEPENDS, MARKER_PARENT, MARKER_PROPERTY};
 use crate::{EventSender, MostrMessage};
 use colored::Colorize;
 use itertools::{Either, Itertools};
@@ -422,7 +422,7 @@ impl TasksRelay {
         let mut found = false;
         for tag in event.tags.iter() {
             if let Some(TagStandard::Event { event_id, marker, .. }) = tag.as_standardized() {
-                if marker.is_none() {
+                if marker.as_ref().is_none_or(|m| m.to_string() == MARKER_PROPERTY) {
                     self.tasks.get_mut(event_id).map(|t| {
                         found = true;
                         f(t)
@@ -1038,11 +1038,19 @@ impl TasksRelay {
     }
 
     pub(crate) fn set_state_for(&mut self, id: EventId, comment: &str, state: State) -> EventId {
-        let prop = build_prop(
+        let ids =
+            if state == State::Closed {
+                // Close whole subtree
+                ChildIterator::from(self, &id).get_all()
+            } else {
+                vec![&id]
+            };
+        let prop = EventBuilder::new(
             state.into(),
             comment,
-            id,
+            ids.into_iter().map(|e| self.make_event_tag_from_id(*e, MARKER_PROPERTY)),
         );
+        // if self.custom_time.is_none() && self.get_by_id(id).map(|task| {}) {}
         info!("Task status {} set for \"{}\"{}",
             TaskState::get_label_for(&state, comment),
             self.get_task_title(&id),
@@ -1058,8 +1066,12 @@ impl TasksRelay {
     pub(crate) fn make_note(&mut self, note: &str) -> EventId {
         if let Some(id) = self.get_position_ref() {
             if self.get_by_id(id).is_some_and(|t| t.is_task()) {
-                let prop = build_prop(Kind::TextNote, note.trim(), *id);
-                return self.submit(prop)
+                let prop = EventBuilder::new(
+                    Kind::TextNote,
+                    note.trim(),
+                    [Tag::event(*id)],
+                );
+                return self.submit(prop);
             }
         }
         let (input, tags) = extract_tags(note.trim());
@@ -1566,6 +1578,18 @@ mod tasks_test {
         };
     }
 
+
+    #[test]
+    fn test_recursive_closing() {
+        let mut tasks = stub_tasks();
+        let parent = tasks.make_task("parent #tag1");
+        tasks.move_to(Some(parent));
+        let sub = tasks.make_task("sub # tag2");
+        assert_eq!(tasks.all_hashtags().collect_vec(), vec!["tag1", "tag2"]);
+        tasks.update_state("Closing Down", State::Closed);
+        assert_eq!(tasks.get_by_id(&sub).unwrap().pure_state(), State::Closed);
+        assert_eq!(tasks.all_hashtags().next(), None);
+    }
 
     #[test]
     fn test_sibling_dependency() {
