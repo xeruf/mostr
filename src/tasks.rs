@@ -19,6 +19,10 @@ use regex::bytes::Regex;
 use tokio::sync::mpsc::Sender;
 use TagStandard::Hashtag;
 
+const DEFAULT_PRIO: u16 = 25;
+pub const HIGH_PRIO: u16 = 85;
+
+/// Amount of seconds to treat as "now"
 const MAX_OFFSET: u64 = 9;
 fn now() -> Timestamp {
     Timestamp::now() + MAX_OFFSET
@@ -856,7 +860,7 @@ impl TasksRelay {
     pub(crate) fn make_task_with(&mut self, input: &str, tags: impl IntoIterator<Item=Tag>, set_state: bool) -> EventId {
         let (input, input_tags) = extract_tags(input.trim());
         let id = self.submit(
-            build_task(input, input_tags, None)
+            build_task(&input, input_tags, None)
                 .add_tags(self.tags.iter().cloned())
                 .add_tags(tags)
         );
@@ -1060,7 +1064,7 @@ impl TasksRelay {
         }
         let (input, tags) = extract_tags(note.trim());
         self.submit(
-            build_task(input, tags, Some(("activity", Kind::TextNote)))
+            build_task(&input, tags, Some(("activity", Kind::TextNote)))
                 .add_tags(self.parent_tag())
                 .add_tags(self.tags.iter().cloned())
         )

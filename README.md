@@ -82,6 +82,46 @@ as you work.
 
 The currently active task is automatically time-tracked.
 To stop time-tracking completely, simply move to the root of all tasks.
+Time-tracking by default recursively summarizes
+
+### Priorities
+
+Task priorities can be set as any natural number,
+with higher numbers denoting higher priorities.
+The syntax here allows for very convenient incremental usage:
+By default, using priorities between 1 and 9 is recommended,
+with an exemplary interpretation like this:
+
+* 1 Ideas / "Someday"
+* 2 Later
+* 3 Soon
+* 4 Relevant
+* 5 Important
+* 9 DO NOW
+
+Internally, when giving a single digit, a 0 is appended,
+so that the default priorities increment in steps of 10.
+So in case you need more than 10 priorities,
+instead of stacking them on top,
+you can granularly add them in between.
+For example, `12` is in between `1` and `2`
+which are equivalent to `10` and `20`,
+not above `9` but above `09`!
+
+By default, only tasks with priority `35` and upward are shown
+so you can focus on what matters,
+but you can temporarily override that using `**PRIO`.
+
+### Quick Access
+
+Paper-based lists are often popular because you can quickly put down a bunch of items.
+Mostr offers three useful workflows depending on the use-case:
+If you want to TBC...
+
+- temporary task with subtasks (especially handy for progression)
+- Filter by recently created
+- Pin to bookmarks
+- high priority
 
 ## Reference
 

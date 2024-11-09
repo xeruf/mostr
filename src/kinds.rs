@@ -1,10 +1,11 @@
+use crate::task::{State, MARKER_PARENT};
+use crate::tasks::HIGH_PRIO;
 use itertools::Itertools;
 use log::info;
 use nostr_sdk::TagStandard::Hashtag;
-use nostr_sdk::{Alphabet, EventBuilder, EventId, Kind, Tag, TagStandard};
-use std::collections::HashSet;
-
-use crate::task::{State, MARKER_PARENT};
+use nostr_sdk::{Alphabet, EventBuilder, EventId, Kind, Tag, TagKind, TagStandard};
+use std::borrow::Cow;
+use std::iter::once;
 
 pub const TASK_KIND: Kind = Kind::GitIssue;
 pub const PROCEDURE_KIND_ID: u16 = 1639;
@@ -24,6 +25,8 @@ pub const PROP_KINDS: [Kind; 6] = [
     Kind::GitStatusDraft,
     PROCEDURE_KIND,
 ];
+
+pub const PRIO: &str = "priority";
 
 // TODO: use formatting - bold / heading / italics - and generate from code
 /// Helper for available properties.
@@ -95,16 +98,31 @@ pub(crate) fn extract_hashtags(input: &str) -> impl Iterator<Item=Tag> + '_ {
 /// as well as various embedded tags.
 ///
 /// Expects sanitized input.
-pub(crate) fn extract_tags(input: &str) -> (&str, Vec<Tag>) {
-    match input.split_once(" # ") {
-        None => (input, extract_hashtags(input).collect_vec()),
-        Some((name, tags)) => {
-            let tags = extract_hashtags(name)
-                .chain(tags.split_ascii_whitespace().map(to_hashtag))
-                .collect();
-            (name, tags)
+pub(crate) fn extract_tags(input: &str) -> (String, Vec<Tag>) {
+    let words = input.split_ascii_whitespace();
+    let mut prio = None;
+    let result = words.filter(|s| {
+        if s.starts_with('*') {
+            if s.len() == 1 {
+                prio = Some(HIGH_PRIO);
+                return false
+            }
+            return match s[1..].parse::<u16>() {
+                Ok(num) => {
+                    prio = Some(num * (if s.len() > 2 { 1 } else { 10 }));
+                    false
+                },
+                _ => true,
+            }
         }
-    }
+        true
+    }).collect_vec();
+    let mut split = result.split(|e| { e == &"#" });
+    let main = split.next().unwrap().join(" ");
+    let tags = extract_hashtags(&main)
+        .chain(split.flatten().map(|s| to_hashtag(&s)))
+        .chain(prio.map(|p| to_prio_tag(&p.to_string()))).collect();
+    (main, tags)
 }
 
 fn to_hashtag(tag: &str) -> Tag {
@@ -137,9 +155,14 @@ pub(crate) fn is_hashtag(tag: &Tag) -> bool {
         .is_some_and(|letter| letter.character == Alphabet::T)
 }
 
+pub(crate) fn to_prio_tag(value: &str) -> Tag {
+    Tag::custom(TagKind::Custom(Cow::from(PRIO)), [if value.len() < 2 { format!("{value}0") } else { value.to_string() }])
+}
 
 #[test]
 fn test_extract_tags() {
-    assert_eq!(extract_tags("Hello from #mars with #greetings # yeah done-it"),
-               ("Hello from #mars with #greetings", ["mars", "greetings", "yeah", "done-it"].into_iter().map(to_hashtag).collect()))
+    assert_eq!(extract_tags("Hello from #mars with #greetings *4 # yeah done-it"),
+               ("Hello from #mars with #greetings".to_string(),
+                ["mars", "greetings", "yeah", "done-it"].into_iter().map(to_hashtag)
+                    .chain(once(Tag::custom(TagKind::Custom(Cow::from(PRIO)), [40.to_string()]))).collect()))
 }
