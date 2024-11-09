@@ -302,7 +302,6 @@ impl TasksRelay {
         Durations::from(self.get_own_events_history(), &vec![&id]).sum::<Duration>().as_secs()
     }
 
-
     /// Total time in seconds tracked on this task and its subtasks by all users.
     fn total_time_tracked(&self, id: EventId) -> u64 {
         let mut total = 0;
@@ -393,27 +392,27 @@ impl TasksRelay {
     ) -> Vec<&'a Task> {
         iter.sorted_by_cached_key(|task| self.sorting_key(task))
             .flat_map(move |task| {
-            if !self.state.matches(task) {
-                return vec![];
-            }
-            let mut new_depth = depth;
-            if depth > 0 && (!self.recurse_activities || task.is_task()) {
-                new_depth = depth - 1;
-                if sparse && new_depth > self.view_depth && self.filter(task) {
-                    new_depth = self.view_depth;
+                if !self.state.matches(task) {
+                    return vec![];
                 }
-            }
-            if new_depth > 0 {
-                let mut children = self.resolve_tasks_rec(self.tasks.children_of(&task), sparse, new_depth);
-                if !children.is_empty() {
-                    if !sparse {
-                        children.push(task);
+                let mut new_depth = depth;
+                if depth > 0 && (!self.recurse_activities || task.is_task()) {
+                    new_depth = depth - 1;
+                    if sparse && new_depth > self.view_depth && self.filter(task) {
+                        new_depth = self.view_depth;
                     }
-                    return children;
                 }
-            }
-            return if self.filter(task) { vec![task] } else { vec![] };
-        }).collect_vec()
+                if new_depth > 0 {
+                    let mut children = self.resolve_tasks_rec(self.tasks.children_of(&task), sparse, new_depth);
+                    if !children.is_empty() {
+                        if !sparse {
+                            children.push(task);
+                        }
+                        return children;
+                    }
+                }
+                return if self.filter(task) { vec![task] } else { vec![] };
+            }).collect_vec()
     }
 
     /// Executes the given function with each task referenced by this event without marker.
@@ -1256,10 +1255,11 @@ where
 }
 
 /// Formats the given seconds according to the given format.
-/// MMM - minutes
-/// MM - minutes of the hour
-/// HH - hours
-/// Returns an empty string if under a minute.
+/// - MMM - minutes
+/// - MM - minutes of the hour
+/// - HH - hours
+///
+/// Returns an empty string if under one minute.
 fn display_time(format: &str, secs: u64) -> String {
     Some(secs / 60)
         .filter(|t| t > &0)
