@@ -490,7 +490,8 @@ impl TasksRelay {
         current
     }
 
-    pub(crate) fn visible_tasks(&self) -> Vec<&Task> {
+    // TODO this is a relict for tests
+    fn visible_tasks(&self) -> Vec<&Task> {
         if self.search_depth == 0 {
             return vec![];
         }
@@ -589,11 +590,11 @@ impl TasksRelay {
         self.set_filter(|t| t.last_state_update() > time)
     }
 
-    pub(crate) fn get_filtered<P>(&self, predicate: P) -> Vec<EventId>
+    pub(crate) fn get_filtered<P>(&self, position: Option<&EventId>, predicate: P) -> Vec<EventId>
     where
         P: Fn(&&Task) -> bool,
     {
-        self.filtered_tasks(self.get_position_ref(), false)
+        self.filtered_tasks(position, false)
             .into_iter()
             .filter(predicate)
             .map(|t| t.event.id)
@@ -604,7 +605,7 @@ impl TasksRelay {
     where
         P: Fn(&&Task) -> bool,
     {
-        self.set_view(self.get_filtered(predicate))
+        self.set_view(self.get_filtered(self.get_position_ref(), predicate))
     }
 
     pub(crate) fn set_view_bookmarks(&mut self) -> bool {
@@ -1158,8 +1159,8 @@ impl Display for TasksRelay {
         }
 
         let position = self.get_position_ref();
-        let mut current = vec![];
-        let mut roots = self.view.iter().flat_map(|id| self.get_by_id(id)).collect_vec();
+        let mut current: Vec<&Task>;
+        let roots = self.view.iter().flat_map(|id| self.get_by_id(id)).collect_vec();
         if self.search_depth > 0 && roots.is_empty() {
             current = self.resolve_tasks_rec(self.tasks.children_for(position), true, self.search_depth + self.view_depth);
             if current.is_empty() {

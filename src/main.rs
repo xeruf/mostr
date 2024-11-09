@@ -741,7 +741,7 @@ async fn main() -> Result<()> {
                             }
 
                             let filtered =
-                                tasks.get_filtered(|t| {
+                                tasks.get_filtered(pos, |t| {
                                     transform(&t.event.content).contains(&remaining) ||
                                         t.tags.iter().flatten().any(
                                             |tag| tag.content().is_some_and(|s| transform(s).contains(&remaining)))
