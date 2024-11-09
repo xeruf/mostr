@@ -1191,26 +1191,28 @@ impl Display for TasksRelay {
 
         let tree = current.iter().flat_map(|task| self.traverse_up_from(Some(task.event.id))).unique();
         let ids: HashSet<&EventId> = tree.map(|t| t.get_id()).chain(position).collect();
-        let mut bookmarks =
-            // TODO add recent tasks (most time tracked + recently created)
-            self.bookmarks.iter()
-                .chain(self.tasks.values().sorted_unstable().take(3).map(|t| t.get_id()))
-                .filter(|id| !ids.contains(id))
-                .filter_map(|id| self.get_by_id(id))
-                .filter(|t| self.filter(t))
-                .sorted_by_cached_key(|t| self.sorting_key(t))
-                .dedup()
-                .peekable();
-        if bookmarks.peek().is_some() {
-            writeln!(lock, "{}", Colorize::bold("Quick Access"))?;
-            for task in bookmarks {
-                writeln!(
-                    lock,
-                    "{}",
-                    self.properties.iter()
-                        .map(|p| self.get_property(task, p.as_str()))
-                        .join(" \t")
-                )?;
+        if self.view.is_empty() {
+            let mut bookmarks =
+                // TODO add recent tasks (most time tracked + recently created)
+                self.bookmarks.iter()
+                    .chain(self.tasks.values().sorted_unstable().take(3).map(|t| t.get_id()))
+                    .filter(|id| !ids.contains(id))
+                    .filter_map(|id| self.get_by_id(id))
+                    .filter(|t| self.filter(t))
+                    .sorted_by_cached_key(|t| self.sorting_key(t))
+                    .dedup()
+                    .peekable();
+            if bookmarks.peek().is_some() {
+                writeln!(lock, "{}", Colorize::bold("Quick Access"))?;
+                for task in bookmarks {
+                    writeln!(
+                        lock,
+                        "{}",
+                        self.properties.iter()
+                            .map(|p| self.get_property(task, p.as_str()))
+                            .join(" \t")
+                    )?;
+                }
             }
         }
 
