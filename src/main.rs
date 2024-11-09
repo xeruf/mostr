@@ -554,6 +554,7 @@ async fn main() -> Result<()> {
                         match arg {
                             None => match tasks.get_position() {
                                 None => {
+                                    info!("Use | to create dependent sibling task and || to create a procedure");
                                     tasks.set_state_filter(
                                         StateFilter::State(State::Procedure.to_string()));
                                 }
@@ -643,7 +644,7 @@ async fn main() -> Result<()> {
                                     Ok(number) => max = number,
                                     Err(e) => warn!("Unsure what to do with {:?}", e),
                                 }
-                                let (label, mut times) = tasks.times_tracked();
+                                let (label, times) = tasks.times_tracked();
                                 println!("{}\n{}", label.italic(),
                                          times.rev().take(max).collect_vec().iter().rev().join("\n"));
                             } else if let Ok(key) = PublicKey::parse(arg) { // TODO also match name
@@ -658,7 +659,7 @@ async fn main() -> Result<()> {
                                 }
                             }
                         } else {
-                            let (label, mut times) = tasks.times_tracked();
+                            let (label, times) = tasks.times_tracked();
                             println!("{}\n{}", label.italic(),
                                      times.rev().take(80).collect_vec().iter().rev().join("\n"));
                         }
@@ -749,7 +750,6 @@ async fn main() -> Result<()> {
 
                     _ =>
                         if Regex::new("^wss?://").unwrap().is_match(command.trim()) {
-                            tasks.move_to(None);
                             if let Some((url, tasks)) = relays.iter().find(|(key, _)| key.as_ref().is_some_and(|url| url.as_str().starts_with(&command))) {
                                 selected_relay.clone_from(url);
                                 println!("{}", tasks);
@@ -780,7 +780,7 @@ async fn main() -> Result<()> {
                 println!("{}", tasks);
             }
             Err(ReadlineError::Eof) => break 'repl,
-            Err(ReadlineError::Interrupted) => break 'repl, // TODO exit if prompt was empty, or clear
+            Err(ReadlineError::Interrupted) => break 'repl, // TODO exit only if prompt is empty, or clear
             Err(e) => warn!("{}", e),
         }
     }

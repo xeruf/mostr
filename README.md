@@ -131,7 +131,7 @@ If you want to TBC...
 
 - `TASK` - create task
   + prefix with space if you want a task to start with a command character
-  + copy in text with newlines to create one task per line
+  + paste text with newlines to create one task per line
 - `.` - clear all filters
 - `.TASK`
   + activate task by id
@@ -140,7 +140,8 @@ If you want to TBC...
 - `.2` - set view depth to the given number (how many subtask levels to show, default is 1)
 - `/[TEXT]` - activate task or filter by smart-case substring match (empty: move to root)
 - `||TASK` - create and activate a new task procedure (where subtasks automatically depend on the previously created task)
-- `|[TASK]` - (un)mark current task as procedure or create a sibling task depending on the current one and move up
+- `|[TASK]` - mark current task as procedure or create a sibling task depending on the current one and move up
+- sibling task shortcut?
 
 Dot or slash can be repeated to move to parent tasks before acting.
 Append `@TIME` to any task creation or change command to record the action with the given time.
@@ -274,7 +275,7 @@ since they will automatically take on that context.
 By automating these contexts based on triggers, scripts or time,
 relevant tasks can be surfaced automatically.
 
-#### Example
+#### Vision of Work-Life-Balance for Freelancer
 
 In the morning, your groggy brain is good at divergent thinking,
 and you like to do sports in the morning.
