@@ -446,6 +446,9 @@ impl TasksRelay {
 
     fn filter(&self, task: &Task) -> bool {
         self.state.matches(task) &&
+            self.priority.is_none_or(|prio| {
+                task.priority().unwrap_or(DEFAULT_PRIO) >= prio
+            }) &&
             task.tags.as_ref().map_or(true, |tags| {
                 !tags.iter().any(|tag| self.tags_excluded.contains(tag))
             }) &&
@@ -540,6 +543,12 @@ impl TasksRelay {
             "progress" => prog_string.clone(),
 
             "author" | "creator" => format!("{:.6}", self.get_username(&task.event.pubkey)), // FIXME temporary until proper column alignment
+            "prio" => task.priority_raw().map(|p| p.to_string()).unwrap_or_else(||
+                if self.priority.is_some() {
+                    DEFAULT_PRIO.to_string().dimmed().to_string()
+                } else {
+                    "".to_string()
+                }),
             "path" => self.get_task_path(Some(task.event.id)),
             "rpath" => self.relative_path(task.event.id),
             // TODO format strings configurable

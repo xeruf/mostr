@@ -194,7 +194,7 @@ impl Task {
             "created" => Some(format_timestamp_local(&self.event.created_at)),
             "kind" => Some(self.event.kind.to_string()),
             // Dynamic
-            "priority" | "prio" => self.priority_raw().map(|c| c.to_string()),
+            "priority" => self.priority_raw().map(|c| c.to_string()),
             "status" => self.state_label().map(|c| c.to_string()),
             "desc" => self.descriptions().last().cloned(),
             "description" => Some(self.descriptions().join(" ")),
