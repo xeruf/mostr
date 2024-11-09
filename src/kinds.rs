@@ -26,6 +26,7 @@ pub const PROP_KINDS: [Kind; 6] = [
     PROCEDURE_KIND,
 ];
 
+pub type Prio = u16;
 pub const PRIO: &str = "priority";
 
 // TODO: use formatting - bold / heading / italics - and generate from code
@@ -95,7 +96,7 @@ pub(crate) fn extract_tags(input: &str) -> (String, Vec<Tag>) {
                 prio = Some(HIGH_PRIO);
                 return false
             }
-            return match s[1..].parse::<u16>() {
+            return match s[1..].parse::<Prio>() {
                 Ok(num) => {
                     prio = Some(num * (if s.len() > 2 { 1 } else { 10 }));
                     false
@@ -109,7 +110,7 @@ pub(crate) fn extract_tags(input: &str) -> (String, Vec<Tag>) {
     let main = split.next().unwrap().join(" ");
     let tags = extract_hashtags(&main)
         .chain(split.flatten().map(|s| to_hashtag(&s)))
-        .chain(prio.map(|p| to_prio_tag(&p.to_string()))).collect();
+        .chain(prio.map(|p| to_prio_tag(p))).collect();
     (main, tags)
 }
 
@@ -143,8 +144,8 @@ pub(crate) fn is_hashtag(tag: &Tag) -> bool {
         .is_some_and(|letter| letter.character == Alphabet::T)
 }
 
-pub(crate) fn to_prio_tag(value: &str) -> Tag {
-    Tag::custom(TagKind::Custom(Cow::from(PRIO)), [if value.len() < 2 { format!("{value}0") } else { value.to_string() }])
+pub(crate) fn to_prio_tag(value: Prio) -> Tag {
+    Tag::custom(TagKind::Custom(Cow::from(PRIO)), [value.to_string()])
 }
 
 #[test]

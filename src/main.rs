@@ -27,7 +27,7 @@ use tokio::time::error::Elapsed;
 use tokio::time::timeout;
 
 use crate::helpers::*;
-use crate::kinds::{BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS, TRACKING_KIND};
+use crate::kinds::{Prio, BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS, TRACKING_KIND};
 use crate::task::{State, Task, TaskState, MARKER_DEPENDS};
 use crate::tasks::{PropertyCollection, StateFilter, TasksRelay};
 
@@ -536,8 +536,7 @@ async fn main() -> Result<()> {
                         match arg {
                             None => match tasks.get_position() {
                                 None => {
-                                    info!("Filtering for bookmarked tasks");
-                                    tasks.set_view_bookmarks();
+                                    tasks.set_priority(None);
                                 }
                                 Some(pos) =>
                                     match or_warn!(tasks.toggle_bookmark(pos)) {
@@ -546,7 +545,16 @@ async fn main() -> Result<()> {
                                         None => {}
                                     }
                             },
-                            Some(arg) => info!("Setting priority not yet implemented"),
+                            Some(arg) => {
+                                if arg == "*" {
+                                    info!("Showing only bookmarked tasks");
+                                    tasks.set_view_bookmarks();
+                                } else {
+                                    tasks.set_priority(arg.parse()
+                                        .inspect_err(|e| warn!("Invalid Priority {arg}: {e}")).ok()
+                                        .map(|p: Prio| p * (if arg.len() < 2 { 10 } else { 1 })));
+                                }
+                            },
                         }
                     }
 

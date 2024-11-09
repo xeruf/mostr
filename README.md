@@ -156,7 +156,6 @@ Append `@TIME` to any task creation or change command to record the action with 
 - `<[TEXT]` - close active task and move up, with optional status description
 - `!TEXT` - set status for current task from text and move up; empty: Open
 - `!TIME: REASON` - defer current task to date
-- TBI: `*[INT]` - set priority - can also be used in task creation, with any digit
 - `,[TEXT]` - list notes or add text (activity / task description)
 - TBI: `;[TEXT]` - list comments or comment on task
 - TBI: show status history and creation with attribution
@@ -171,9 +170,9 @@ Property Filters:
 - `#TAG1 TAG2` - set tag filter
 - `+TAG` - add tag filter (empty: list all used tags)
 - `-TAG` - remove tag filters (by prefix)
-- `?STATUS` - filter by status (type or description) - plain `?` to reset, `??` to show all
+- `?STATUS` - set status filter (type or description) - plain `?` to reset, `??` to show all
+- `*INT` - set priority filter
 - `@[AUTHOR|TIME]` - filter by time or author (pubkey, or `@` for self, TBI: id prefix, name prefix)
-- TBI: `**INT` - filter by priority
 
 Status descriptions can be used for example for Kanban columns or review flows.
 An active tag or status filter will also set that attribute for newly created tasks.

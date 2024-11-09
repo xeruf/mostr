@@ -19,8 +19,8 @@ use regex::bytes::Regex;
 use tokio::sync::mpsc::Sender;
 use TagStandard::Hashtag;
 
-const DEFAULT_PRIO: u16 = 25;
-pub const HIGH_PRIO: u16 = 85;
+const DEFAULT_PRIO: Prio = 25;
+pub const HIGH_PRIO: Prio = 85;
 
 /// Amount of seconds to treat as "now"
 const MAX_OFFSET: u64 = 9;
@@ -80,6 +80,8 @@ pub(crate) struct TasksRelay {
     tags_excluded: BTreeSet<Tag>,
     /// Current active state
     state: StateFilter,
+    /// Current priority for filtering and new tasks
+    priority: Option<Prio>,
 
     sender: EventSender,
     overflow: VecDeque<Event>,
@@ -171,6 +173,8 @@ impl TasksRelay {
             tags: Default::default(),
             tags_excluded: Default::default(),
             state: Default::default(),
+            priority: None,
+
             search_depth: 4,
             view_depth: 0,
             recurse_activities: true,
@@ -356,6 +360,7 @@ impl TasksRelay {
             .chain(self.tags_excluded.iter()
                 .map(|t| format!(" -#{}", t.content().unwrap())))
             .chain(once(self.state.indicator()))
+            .chain(self.priority.map(|p| format!(" *{:02}", p)))
             .join("")
     }
 
@@ -655,6 +660,15 @@ impl TasksRelay {
         }
     }
 
+    pub(crate) fn set_priority(&mut self, priority: Option<Prio>) {
+        self.view.clear();
+        match priority {
+            None => info!("Removing priority filter"),
+            Some(prio) => info!("Filtering for priority {}", prio),
+        }
+        self.priority = priority;
+    }
+
     pub(crate) fn set_state_filter(&mut self, state: StateFilter) {
         self.view.clear();
         info!("Filtering for {}", state);
@@ -858,10 +872,13 @@ impl TasksRelay {
     /// Sanitizes input
     pub(crate) fn make_task_with(&mut self, input: &str, tags: impl IntoIterator<Item=Tag>, set_state: bool) -> EventId {
         let (input, input_tags) = extract_tags(input.trim());
+        let prio =
+            if input_tags.iter().find(|t| t.kind().to_string() == PRIO).is_some() { None } else { self.priority.map(|p| to_prio_tag(p)) };
         let id = self.submit(
             build_task(&input, input_tags, None)
                 .add_tags(self.tags.iter().cloned())
                 .add_tags(tags)
+                .add_tags(prio)
         );
         if set_state {
             self.state.as_option().inspect(|s| self.set_state_for_with(id, s));
