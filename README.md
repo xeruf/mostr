@@ -163,6 +163,7 @@ Append `@TIME` to any task creation or change command to record the action with 
   - with string argument, find first matching task in history
   - with int argument, jump back X tasks in history
   - undo last action (moving in place or upwards confirms pending actions)
+- `*` - (un)bookmark current task or list all bookmarks
 - `wss://...` - switch or subscribe to relay (prefix with space to forcibly add a new one)
 
 Property Filters:
@@ -171,7 +172,7 @@ Property Filters:
 - `+TAG` - add tag filter (empty: list all used tags)
 - `-TAG` - remove tag filters (by prefix)
 - `?STATUS` - set status filter (type or description) - plain `?` to reset, `??` to show all
-- `*INT` - set priority filter
+- `*INT` - set priority filter - `**` to reset
 - `@[AUTHOR|TIME]` - filter by time or author (pubkey, or `@` for self, TBI: id prefix, name prefix)
 
 Status descriptions can be used for example for Kanban columns or review flows.

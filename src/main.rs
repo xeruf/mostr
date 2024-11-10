@@ -537,7 +537,8 @@ async fn main() -> Result<()> {
                         match arg {
                             None => match tasks.get_position() {
                                 None => {
-                                    tasks.set_priority(None);
+                                    info!("Showing only bookmarked tasks");
+                                    tasks.set_view_bookmarks();
                                 }
                                 Some(pos) =>
                                     match or_warn!(tasks.toggle_bookmark(pos)) {
@@ -548,8 +549,7 @@ async fn main() -> Result<()> {
                             },
                             Some(arg) => {
                                 if arg == "*" {
-                                    info!("Showing only bookmarked tasks");
-                                    tasks.set_view_bookmarks();
+                                    tasks.set_priority(None);
                                 } else {
                                     tasks.set_priority(arg.parse()
                                         .inspect_err(|e| warn!("Invalid Priority {arg}: {e}")).ok()
