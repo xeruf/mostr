@@ -448,20 +448,18 @@ async fn main() -> Result<()> {
                     Some(',') =>
                         match arg {
                             None => {
-                                match tasks.get_current_task() {
-                                    None => {
-                                        info!("With a task selected, use ,NOTE to attach NOTE and , to list all its notes");
-                                        tasks.recurse_activities = !tasks.recurse_activities;
-                                        info!("Toggled activities recursion to {}", tasks.recurse_activities);
-                                    }
-                                    Some(task) => {
+                                if let Some(task) = tasks.get_current_task() {
+                                    let mut desc = task.description_events().peekable();
+                                    if desc.peek().is_some() {
                                         println!("{}",
-                                                 task.description_events()
-                                                     .map(|e| format!("{} {}", format_timestamp_local(&e.created_at), e.content))
+                                                 desc.map(|e| format!("{} {}", format_timestamp_local(&e.created_at), e.content))
                                                      .join("\n"));
                                         continue 'repl;
                                     }
                                 }
+                                info!("With a task selected, use ,NOTE to attach NOTE and , to list all its notes");
+                                tasks.recurse_activities = !tasks.recurse_activities;
+                                info!("Toggled activities recursion to {}", tasks.recurse_activities);
                             }
                             Some(arg) => {
                                 if arg.len() < CHARACTER_THRESHOLD {
