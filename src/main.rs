@@ -4,8 +4,7 @@ use std::env::{args, var};
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
-use std::iter::once;
-use std::ops::{Add, Sub};
+use std::ops::Sub;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
@@ -28,7 +27,7 @@ use tokio::time::timeout;
 
 use crate::helpers::*;
 use crate::kinds::{Prio, BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS, TRACKING_KIND};
-use crate::task::{State, Task, TaskState, MARKER_DEPENDS};
+use crate::task::{State, Task, TaskState};
 use crate::tasks::{PropertyCollection, StateFilter, TasksRelay};
 
 mod helpers;
@@ -621,18 +620,21 @@ async fn main() -> Result<()> {
                             }
                         }
 
-                    Some('#') =>
-                        tasks.set_tags(arg_default.split_whitespace().map(|s| Hashtag(s.to_string()).into())),
+                    Some('#') => {
+                        if !tasks.update_tags(arg_default.split_whitespace().map(|s| Hashtag(s.to_string()).into())) {
+                            continue;
+                        }
+                    }
 
                     Some('+') =>
                         match arg {
                             Some(arg) => tasks.add_tag(arg.to_string()),
                             None => {
-                                println!("Hashtags of all known tasks:\n{}", tasks.all_hashtags().join(" ").italic());
+                                tasks.print_hashtags();
                                 if tasks.has_tag_filter() {
                                     println!("Use # to remove tag filters and . to remove all filters.")
                                 }
-                                continue 'repl;
+                                continue;
                             }
                         }
 

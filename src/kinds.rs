@@ -5,7 +5,6 @@ use log::info;
 use nostr_sdk::TagStandard::Hashtag;
 use nostr_sdk::{Alphabet, EventBuilder, EventId, Kind, Tag, TagKind, TagStandard};
 use std::borrow::Cow;
-use std::iter::once;
 
 pub const TASK_KIND: Kind = Kind::GitIssue;
 pub const PROCEDURE_KIND_ID: u16 = 1639;
@@ -150,8 +149,10 @@ pub(crate) fn to_prio_tag(value: Prio) -> Tag {
 
 #[test]
 fn test_extract_tags() {
-    assert_eq!(extract_tags("Hello from #mars with #greetings *4 # yeah done-it"),
+    assert_eq!(extract_tags("Hello from #mars with #greetings *4 # # yeah done-it"),
                ("Hello from #mars with #greetings".to_string(),
                 ["mars", "greetings", "yeah", "done-it"].into_iter().map(to_hashtag)
-                    .chain(once(Tag::custom(TagKind::Custom(Cow::from(PRIO)), [40.to_string()]))).collect()))
+                    .chain(std::iter::once(Tag::custom(TagKind::Custom(Cow::from(PRIO)), [40.to_string()]))).collect()));
+    assert_eq!(extract_tags("So tagless #"),
+               ("So tagless".to_string(), vec![]));
 }

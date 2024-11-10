@@ -647,7 +647,26 @@ impl TasksRelay {
         !self.tags.is_empty() || !self.tags_excluded.is_empty()
     }
 
-    pub(crate) fn set_tags(&mut self, tags: impl IntoIterator<Item=Tag>) {
+    pub(crate) fn print_hashtags(&self) {
+        println!("Hashtags of all known tasks:\n{}", self.all_hashtags().join(" ").italic());
+    }
+
+    /// Returns true if tags have been updated, false if it printed something
+    pub(crate) fn update_tags(&mut self, tags: impl IntoIterator<Item=Tag>) -> bool {
+        let mut peekable = tags.into_iter().peekable();
+        if self.tags.is_empty() && peekable.peek().is_none() {
+            if !self.tags_excluded.is_empty() {
+                self.tags_excluded.clear();
+            }
+            self.print_hashtags();
+            false
+        } else {
+            self.set_tags(peekable);
+            true
+        }
+    }
+
+    fn set_tags(&mut self, tags: impl IntoIterator<Item=Tag>) {
         self.tags.clear();
         self.tags.extend(tags);
     }
