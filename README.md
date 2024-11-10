@@ -2,6 +2,12 @@
 
 An immutable nested collaborative task manager, powered by nostr!
 
+> Mostr is beta software. 
+> Do not entrust it exclusively with your data unless you know what you are doing!
+
+> Intermediate versions might not properly persist all changes.
+> A failed relay connection currently looses all intermediate changes.
+
 ## Quickstart
 
 First, start a nostr relay, such as
@@ -23,6 +29,11 @@ Both are currently saved in plain text to the above files.
 Install latest build:
 
     cargo install --path .
+
+This one-liner can help you stay on the latest version
+(optionally add a `cd` to your mostr-directory in front):
+
+    git pull && cargo install --path . && mostr
 
 Creating a test task externally:
 `nostril --envelope --content "test task" --kind 1621 | websocat ws://localhost:4736`
