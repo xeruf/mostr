@@ -656,16 +656,16 @@ async fn main() -> Result<()> {
                                     }
                                 }
                                 let (label, times) = tasks.times_tracked();
-                                let mut times = times.peekable();
+                                let vec = times.rev().take(max).collect_vec();
                                 println!("{}\n{}",
-                                         if times.peek().is_some() {
+                                         if vec.is_empty() {
+                                             label
+                                         } else {
                                              format!("{} {}",
                                                      if max == usize::MAX { "All".to_string() } else { format!("Latest {max} entries of") },
                                                      label)
-                                         } else {
-                                             label
                                          },
-                                         times.rev().take(max).collect_vec().iter().rev().join("\n"));
+                                         vec.iter().rev().join("\n"));
                             } else if let Ok(key) = PublicKey::parse(arg) { // TODO also match name
                                 let (label, mut times) = tasks.times_tracked_for(&key);
                                 println!("{}\n{}", label.italic(),
