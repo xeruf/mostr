@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt::{Display, Formatter};
-use std::io::{stdout, Error, Write};
+use std::io::Write;
 use std::iter::{empty, once, FusedIterator};
 use std::ops::{Div, Rem};
 use std::str::FromStr;
@@ -11,7 +11,7 @@ use crate::helpers::{format_timestamp_local, format_timestamp_relative, format_t
 use crate::kinds::*;
 use crate::task::{State, Task, TaskState, MARKER_DEPENDS, MARKER_PARENT, MARKER_PROPERTY};
 use colored::Colorize;
-use itertools::{Either, Itertools};
+use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::prelude::Marker;
 use nostr_sdk::{Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey, Tag, TagStandard, Timestamp, UncheckedUrl, Url};

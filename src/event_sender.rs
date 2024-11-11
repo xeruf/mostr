@@ -1,36 +1,12 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
-use std::env::{args, var};
-use std::fs;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
 use std::ops::Sub;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::time::Duration;
 
-use chrono::Local;
-use colored::Colorize;
-use directories::ProjectDirs;
-use env_logger::{Builder, Target, WriteStyle};
-use itertools::Itertools;
 use nostr_sdk::prelude::*;
-use nostr_sdk::TagStandard::Hashtag;
-use regex::Regex;
-use rustyline::config::Configurer;
-use rustyline::error::ReadlineError;
-use rustyline::DefaultEditor;
-use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
-use tokio::time::error::Elapsed;
-use tokio::time::timeout;
 
-use crate::helpers::*;
-use crate::kinds::{Prio, BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS, TRACKING_KIND};
-use crate::task::{State, Task, TaskState};
+use crate::kinds::TRACKING_KIND;
 use crate::tasks;
-use crate::tasks::{PropertyCollection, StateFilter, TasksRelay};
-use log::{debug, error, info, trace, warn, LevelFilter};
+use log::{debug, error, info, trace, warn};
 use nostr_sdk::Event;
 
 const UNDO_DELAY: u64 = 60;

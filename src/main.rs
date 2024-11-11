@@ -1,17 +1,15 @@
-use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::env::{args, var};
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
-use std::ops::Sub;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
 use crate::event_sender::MostrMessage;
 use crate::helpers::*;
-use crate::kinds::{Prio, BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS, TRACKING_KIND};
+use crate::kinds::{Prio, BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS};
 use crate::task::{State, Task, TaskState};
 use crate::tasks::{PropertyCollection, StateFilter, TasksRelay};
 use chrono::Local;
@@ -27,7 +25,6 @@ use rustyline::config::Configurer;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::Sender;
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
 

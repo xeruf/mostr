@@ -1,4 +1,4 @@
-use crate::task::{State, MARKER_PARENT};
+use crate::task::MARKER_PARENT;
 use crate::tasks::HIGH_PRIO;
 use itertools::Itertools;
 use log::info;
