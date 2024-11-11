@@ -543,7 +543,7 @@ impl TasksRelay {
             "progress" => prog_string.clone(),
 
             "author" | "creator" => format!("{:.6}", self.get_username(&task.event.pubkey)), // FIXME temporary until proper column alignment
-            "prio" => task.priority_raw().map(|p| p.to_string()).unwrap_or_else(||
+            "prio" => self.traverse_up_from(Some(*task.get_id())).find_map(Task::priority_raw).map(|p| p.to_string()).unwrap_or_else(||
                 if self.priority.is_some() {
                     DEFAULT_PRIO.to_string().dimmed().to_string()
                 } else {
