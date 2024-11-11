@@ -6,10 +6,10 @@ use std::ops::{Div, Rem};
 use std::str::FromStr;
 use std::time::Duration;
 
+use crate::event_sender::{EventSender, MostrMessage};
 use crate::helpers::{format_timestamp_local, format_timestamp_relative, format_timestamp_relative_to, parse_tracking_stamp, some_non_empty, CHARACTER_THRESHOLD};
 use crate::kinds::*;
 use crate::task::{State, Task, TaskState, MARKER_DEPENDS, MARKER_PARENT, MARKER_PROPERTY};
-use crate::{EventSender, MostrMessage};
 use colored::Colorize;
 use itertools::{Either, Itertools};
 use log::{debug, error, info, trace, warn};
