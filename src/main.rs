@@ -417,8 +417,8 @@ async fn main() -> Result<()> {
                             }
                             warn!("No connected relay contains {:?}", command);
                             continue 'repl;
-                        } 
-                        
+                        }
+
                         let mut iter = arg_default.chars();
                         let next = iter.next();
                         let remaining = iter.collect::<String>().trim().to_string();
@@ -552,7 +552,7 @@ async fn main() -> Result<()> {
                                         .inspect_err(|e| warn!("Invalid Priority {arg}: {e}")).ok()
                                         .map(|p: Prio| p * (if arg.len() < 2 { 10 } else { 1 })));
                                 }
-                            },
+                            }
                         }
                     }
 
@@ -649,12 +649,22 @@ async fn main() -> Result<()> {
                             let (first, remaining) = arg.split_at(1);
                             if first == "(" {
                                 let mut max = usize::MAX;
-                                match remaining.parse::<usize>() {
-                                    Ok(number) => max = number,
-                                    Err(e) => warn!("Unsure what to do with {:?}", e),
+                                if remaining.len() > 0 {
+                                    match remaining.parse::<usize>() {
+                                        Ok(number) => max = number,
+                                        Err(e) => warn!("Ignoring extra {:?}: {}\nSyntax: ((INT", remaining, e),
+                                    }
                                 }
                                 let (label, times) = tasks.times_tracked();
-                                println!("{}\n{}", label.italic(),
+                                let mut times = times.peekable();
+                                println!("{}\n{}",
+                                         if times.peek().is_some() {
+                                             format!("{} {}",
+                                                     if max == usize::MAX { "All".to_string() } else { format!("Latest {max} entries of") },
+                                                     label)
+                                         } else {
+                                             label
+                                         },
                                          times.rev().take(max).collect_vec().iter().rev().join("\n"));
                             } else if let Ok(key) = PublicKey::parse(arg) { // TODO also match name
                                 let (label, mut times) = tasks.times_tracked_for(&key);

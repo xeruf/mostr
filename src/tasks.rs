@@ -278,7 +278,7 @@ impl TasksRelay {
                 }
             }
             Some(id) => {
-                // TODO consider pubkey
+                // TODO show current recursive with pubkey
                 let ids = vec![id];
                 let history =
                     self.history.iter().flat_map(|(key, set)| {
