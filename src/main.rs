@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use chrono::Local;
 use colored::Colorize;
+use directories::ProjectDirs;
 use env_logger::{Builder, Target, WriteStyle};
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn, LevelFilter};
@@ -167,14 +168,15 @@ async fn main() -> Result<()> {
     );
     builder.init();
 
-    let config_dir = or_warn!(xdg::BaseDirectories::new(), "Could not determine config directory")
-        .and_then(|d| or_warn!(d.create_config_directory("mostr"), "Could not create config directory"))
-        .unwrap_or(PathBuf::new());
+    let config_dir =
+        ProjectDirs::from("", "", "mostr")
+            .map(|p| p.config_dir().to_path_buf())
+            .unwrap_or(PathBuf::new());
     let keysfile = config_dir.join("key");
     let relayfile = config_dir.join("relays");
 
-    let keys = if let Ok(Ok(key)) = fs::read_to_string(&keysfile).map(|s| Keys::from_str(&s)) {
-        key
+    let keys = if let Ok(Ok(keys)) = fs::read_to_string(&keysfile).map(|s| Keys::from_str(&s)) {
+        keys
     } else {
         warn!("Could not read keys from {}", keysfile.to_string_lossy());
         let line = rl.readline("Secret key? (leave blank to generate and save a new keypair) ")?;
