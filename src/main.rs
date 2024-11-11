@@ -170,8 +170,15 @@ async fn main() -> Result<()> {
 
     let config_dir =
         ProjectDirs::from("", "", "mostr")
-            .map(|p| p.config_dir().to_path_buf())
-            .unwrap_or(PathBuf::new());
+            .map(|p| {
+                let config = p.config_dir();
+                or_warn!(fs::create_dir_all(config), "Could not create config directory");
+                config.to_path_buf()
+            })
+            .unwrap_or_else(|| {
+                warn!("Could not determine config directory, using current directory");
+                PathBuf::new()
+            });
     let keysfile = config_dir.join("key");
     let relayfile = config_dir.join("relays");
 
