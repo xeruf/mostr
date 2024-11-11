@@ -66,12 +66,11 @@ where
     )
 }
 
-/// Build a task with informational output and optional labeled kind
-pub(crate) fn build_task(name: &str, tags: Vec<Tag>, kind: Option<(&str, Kind)>) -> EventBuilder {
-    info!("Created {} \"{name}\" with tags [{}]",
-        kind.map(|k| k.0).unwrap_or("task"),
-        tags.iter().map(format_tag).join(", "));
-    EventBuilder::new(kind.map(|k| k.1).unwrap_or(TASK_KIND), name, tags)
+pub fn join<'a, T>(tags: T) -> String
+where
+    T: IntoIterator<Item=&'a Tag>,
+{
+    tags.into_iter().map(format_tag).join(", ")
 }
 
 /// Return Hashtags embedded in the string.

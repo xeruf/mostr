@@ -905,14 +905,17 @@ impl TasksRelay {
         let (input, input_tags) = extract_tags(input.trim());
         let prio =
             if input_tags.iter().any(|t| t.kind().to_string() == PRIO) { None } else { self.priority.map(|p| to_prio_tag(p)) };
+        info!("Created task \"{input}\" with tags [{}]", join(&input_tags));
         let id = self.submit(
-            build_task(&input, input_tags, None)
+            EventBuilder::new(TASK_KIND, &input, input_tags)
                 .add_tags(self.tags.iter().cloned())
                 .add_tags(tags)
                 .add_tags(prio)
         );
         if set_state {
-            self.state.as_option().inspect(|s| self.set_state_for_with(id, s));
+            self.state
+                .as_option()
+                .inspect(|s| self.set_state_for_with(id, s));
         }
         id
     }
@@ -1110,23 +1113,27 @@ impl TasksRelay {
         Some(self.set_state_for(*id, comment, state))
     }
 
+    /// Creates a note or activity, depending on whether the parent is a task.
+    /// Sanitizes Input.
     pub(crate) fn make_note(&mut self, note: &str) -> EventId {
-        if let Some(id) = self.get_position_ref() {
-            if self.get_by_id(id).is_some_and(|t| t.is_task()) {
-                let prop = EventBuilder::new(
-                    Kind::TextNote,
-                    note.trim(),
-                    [Tag::event(*id)],
-                );
-                return self.submit(prop);
-            }
-        }
-        let (input, tags) = extract_tags(note.trim());
+        let (name, tags) = extract_tags(note.trim());
+        let format = format!("\"{name}\" with tags [{}]", join(&tags));
+        let mut prop =
+            EventBuilder::new(Kind::TextNote, name, tags);
+        //.filter(|id| self.get_by_id(id).is_some_and(|t| t.is_task()))
+        //.map(|id| 
+        let marker =
+            if self.get_current_task().is_some_and(|t| t.is_task()) {
+                MARKER_PROPERTY
+            } else {
+                // Activity if parent is not a task
+                prop = prop.add_tags(self.tags.iter().cloned());
+                MARKER_PARENT
+            };
+        info!("Created {} {format}", if marker == MARKER_PROPERTY { "note" } else { "activity" } );
         self.submit(
-            build_task(&input, tags, Some(("activity", Kind::TextNote)))
-                .add_tags(self.parent_tag())
-                .add_tags(self.tags.iter().cloned())
-        )
+            prop.add_tags(
+                self.get_position().map(|pos| self.make_event_tag_from_id(pos, marker))))
     }
 
     // Properties
@@ -1645,8 +1652,11 @@ mod tasks_test {
     fn test_sibling_dependency() {
         let mut tasks = stub_tasks();
         let parent = tasks.make_task("parent");
-        let sub = tasks.submit(
-            build_task("sub", vec![tasks.make_event_tag_from_id(parent, MARKER_PARENT)], None));
+        let sub = tasks.submit(EventBuilder::new(
+            TASK_KIND,
+            "sub",
+            [tasks.make_event_tag_from_id(parent, MARKER_PARENT)],
+        ));
         assert_eq!(tasks.visible_tasks().len(), 1);
         tasks.track_at(Timestamp::now(), Some(sub));
         assert_eq!(tasks.get_own_events_history().count(), 1);
@@ -1674,7 +1684,11 @@ mod tasks_test {
         assert_eq!(tasks.filtered_tasks(Some(&pin), false).len(), 0);
         assert_eq!(tasks.filtered_tasks(Some(&zero), false).len(), 0);
 
-        tasks.submit(EventBuilder::new(Kind::Bookmarks, "", [Tag::event(pin), Tag::event(zero)]));
+        tasks.submit(EventBuilder::new(
+            Kind::Bookmarks,
+            "",
+            [Tag::event(pin), Tag::event(zero)],
+        ));
         assert_eq!(tasks.visible_tasks().len(), 1);
         assert_eq!(tasks.filtered_tasks(Some(&pin), true).len(), 0);
         assert_eq!(tasks.filtered_tasks(Some(&pin), false).len(), 0);
@@ -1702,10 +1716,12 @@ mod tasks_test {
         let mut tasks = stub_tasks();
         tasks.make_task_and_enter("proc # tags", State::Procedure);
         assert_eq!(tasks.get_own_events_history().count(), 1);
-        let side = tasks.submit(
-            build_task("side", vec![tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)], None));
-        assert_eq!(tasks.visible_tasks(),
-                   Vec::<&Task>::new());
+        let side = tasks.submit(EventBuilder::new(
+            TASK_KIND,
+            "side",
+            [tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)],
+        ));
+        assert_eq!(tasks.visible_tasks(), Vec::<&Task>::new());
         let sub_id = tasks.make_task("sub");
         assert_tasks!(tasks, [sub_id]);
         assert_eq!(tasks.len(), 3);
