@@ -18,13 +18,13 @@ Install rustup and run a development build with:
 
     cargo run
 
-A `relay` list and private `key` can be placed in config files
+A `relay` list can be placed in a config file
 under `${XDG_CONFIG_HOME:-$HOME/.config}/mostr/`.
 Ideally any project with different collaborators has its own relay.
 If not saved, mostr will ask for a relay url
 (entering none is fine too, but your data will not be persisted between sessions)
 and a private key, alternatively generating one on the fly.
-Both are currently saved in plain text to the above files.
+The key is saved in the system keychain.
 
 Install latest build:
 

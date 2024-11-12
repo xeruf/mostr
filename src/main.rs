@@ -17,6 +17,7 @@ use colored::Colorize;
 use directories::ProjectDirs;
 use env_logger::{Builder, Target, WriteStyle};
 use itertools::Itertools;
+use keyring::Entry;
 use log::{debug, error, info, trace, warn, LevelFilter};
 use nostr_sdk::prelude::*;
 use nostr_sdk::TagStandard::Hashtag;
@@ -59,17 +60,34 @@ macro_rules! or_warn {
     }
 }
 
+fn read_keys(readline: &mut DefaultEditor) -> Result<Keys> {
+    let keys_entry = Entry::new("mostr", "keys")?;
+    if let Ok(pass) = keys_entry.get_secret() {
+        return Ok(SecretKey::from_slice(&pass).map(|s| Keys::new(s))
+            .inspect_err(|e| eprintln!("Invalid key in keychain: {e}"))?)
+    }
+    let line = readline.readline("Secret key? (leave blank to generate and save a new keypair) ")?;
+    let keys = if line.is_empty() {
+        info!("Generating and persisting new key");
+        Keys::generate()
+    } else {
+        Keys::from_str(&line)
+            .inspect_err(|e| eprintln!("Invalid key provided: {e}"))?
+    };
+    or_warn!(keys_entry.set_secret(keys.secret_key()?.as_secret_bytes()),
+        "Could not persist keys");
+    Ok(keys)
+}
+
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut rl = DefaultEditor::new()?;
-    rl.set_auto_add_history(true);
-
     let mut args = args().skip(1).peekable();
     let mut builder = if args.peek().is_some_and(|arg| arg == "--debug") {
         args.next();
         let mut builder = Builder::new();
         builder.filter(None, LevelFilter::Debug)
-            //.filter(Some("mostr"), LevelFilter::Trace)
+            .filter(Some("mostr"), LevelFilter::Trace)
             .parse_default_env();
         builder
     } else {
@@ -78,14 +96,6 @@ async fn main() -> Result<()> {
         //.filter(Some("nostr-relay-pool::relay::internal"), LevelFilter::Off)
         builder
     };
-    or_warn!(
-        rl.create_external_writer().map(
-            |wr| builder
-                .filter(Some("rustyline"), LevelFilter::Warn)
-                .write_style(WriteStyle::Always)
-                .target(Target::Pipe(wr)))
-    );
-    builder.init();
 
     let config_dir =
         ProjectDirs::from("", "", "mostr")
@@ -98,35 +108,21 @@ async fn main() -> Result<()> {
                 warn!("Could not determine config directory, using current directory");
                 PathBuf::new()
             });
-    let keysfile = config_dir.join("key");
-    let relayfile = config_dir.join("relays");
 
-    let keys = if let Ok(Ok(keys)) = fs::read_to_string(&keysfile).map(|s| Keys::from_str(&s)) {
-        keys
-    } else {
-        warn!("Could not read keys from {}", keysfile.to_string_lossy());
-        let line = rl.readline("Secret key? (leave blank to generate and save a new keypair) ")?;
-        let keys = if line.is_empty() {
-            info!("Generating and persisting new key");
-            Keys::generate()
-        } else {
-            Keys::from_str(&line).inspect_err(|_| eprintln!())?
-        };
-        let mut file = match File::create_new(&keysfile) {
-            Ok(file) => file,
-            Err(e) => {
-                let line = rl.readline(&format!("Overwrite {}? (enter anything to abort) ", keysfile.to_string_lossy()))?;
-                if line.is_empty() {
-                    File::create(&keysfile)?
-                } else {
-                    eprintln!();
-                    Err(e)?
-                }
-            }
-        };
-        file.write_all(keys.secret_key().unwrap().to_string().as_bytes())?;
-        keys
-    };
+    let mut rl = DefaultEditor::new()?;
+    rl.set_auto_add_history(true);
+    or_warn!(
+        rl.create_external_writer().map(
+            |wr| builder
+                // Without this filter at least at Info, the program hangs
+                .filter(Some("rustyline"), LevelFilter::Warn)
+                .write_style(WriteStyle::Always)
+                .target(Target::Pipe(wr)))
+    );
+    builder.init();
+
+    let keys = read_keys(&mut rl)?;
+    let relayfile = config_dir.join("relays");
 
     let client = ClientBuilder::new()
         .opts(Options::new()
