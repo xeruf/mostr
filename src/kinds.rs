@@ -146,10 +146,10 @@ pub(crate) fn to_prio_tag(value: Prio) -> Tag {
 
 #[test]
 fn test_extract_tags() {
-    assert_eq!(extract_tags("Hello from #mars with #greetings *4 # # yeah done-it"),
-               ("Hello from #mars with #greetings".to_string(),
-                ["mars", "greetings", "yeah", "done-it"].into_iter().map(to_hashtag)
-                    .chain(std::iter::once(Tag::custom(TagKind::Custom(Cow::from(PRIO)), [40.to_string()]))).collect()));
+    assert_eq!(extract_tags("Hello from #mars with #greetings #yeah *4 # # yeah done-it"),
+               ("Hello from #mars with #greetings #yeah".to_string(),
+                std::iter::once(Tag::custom(TagKind::Custom(Cow::from(PRIO)), [40.to_string()]))
+                    .chain(["done-it", "greetings", "mars", "yeah"].into_iter().map(to_hashtag)).collect()));
     assert_eq!(extract_tags("So tagless #"),
                ("So tagless".to_string(), vec![]));
 }

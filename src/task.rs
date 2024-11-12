@@ -10,7 +10,7 @@ use colored::{ColoredString, Colorize};
 use itertools::Either::{Left, Right};
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use nostr_sdk::{Event, EventId, Kind, Tag, TagStandard, Timestamp};
+use nostr_sdk::{Alphabet, Event, EventId, Kind, Tag, TagStandard, Timestamp};
 
 use crate::helpers::{format_timestamp_local, some_non_empty};
 use crate::kinds::{is_hashtag, Prio, PRIO, PROCEDURE_KIND, PROCEDURE_KIND_ID, TASK_KIND};
@@ -23,8 +23,8 @@ pub static MARKER_PROPERTY: &str = "property";
 pub(crate) struct Task {
     /// Event that defines this task
     pub(crate) event: Event,
-    /// Cached sorted tags of the event with references remove - do not modify!
-    pub(crate) tags: Option<BTreeSet<Tag>>,
+    /// Cached sorted tags of the event with references removed
+    tags: Option<BTreeSet<Tag>>,
     /// Task references derived from the event tags
     refs: Vec<(String, EventId)>,
     /// Events belonging to this task, such as state updates and notes
@@ -172,16 +172,26 @@ impl Task {
         }
     }
 
-    fn filter_tags<P>(&self, predicate: P) -> Option<String>
+    pub(crate) fn get_hashtags(&self) -> impl Iterator<Item=&Tag> {
+        self.tags().filter(|t| is_hashtag(t))
+    }
+
+    fn tags(&self) -> impl Iterator<Item=&Tag> {
+        self.props.iter().flat_map(|e| e.tags.iter()
+            .filter(|t| t.single_letter_tag().is_none_or(|s| s.character != Alphabet::E)))
+            .chain(self.tags.iter().flatten())
+    }
+
+    fn join_tags<P>(&self, predicate: P) -> String
     where
         P: FnMut(&&Tag) -> bool,
     {
-        self.tags.as_ref().map(|tags| {
-            tags.iter()
-                .filter(predicate)
-                .map(|t| t.content().unwrap().to_string())
-                .join(" ")
-        })
+        self.tags()
+            .filter(predicate)
+            .map(|t| t.content().unwrap().to_string())
+            .sorted_unstable()
+            .dedup()
+            .join(" ")
     }
 
     pub(crate) fn get(&self, property: &str) -> Option<String> {
@@ -198,8 +208,8 @@ impl Task {
             "status" => self.state_label().map(|c| c.to_string()),
             "desc" => self.descriptions().last().cloned(),
             "description" => Some(self.descriptions().join(" ")),
-            "hashtags" => self.filter_tags(|tag| { is_hashtag(tag) }),
-            "tags" => self.filter_tags(|_| true),
+            "hashtags" => Some(self.join_tags(|tag| { is_hashtag(tag) })),
+            "tags" => Some(self.join_tags(|_| true)),
             "alltags" => Some(format!("{:?}", self.tags)),
             "refs" => Some(format!("{:?}", self.refs.iter().map(|re| format!("{}: {}", re.0, re.1)).collect_vec())),
             "props" => Some(format!(

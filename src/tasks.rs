@@ -241,8 +241,7 @@ impl TasksRelay {
     pub(crate) fn all_hashtags(&self) -> impl Iterator<Item=&str> {
         self.tasks.values()
             .filter(|t| t.pure_state() != State::Closed)
-            .filter_map(|t| t.tags.as_ref()).flatten()
-            .filter(|tag| is_hashtag(tag))
+            .flat_map(|t| t.get_hashtags())
             .filter_map(|tag| tag.content().map(|s| s.trim()))
             .sorted_unstable()
             .dedup()
@@ -449,14 +448,11 @@ impl TasksRelay {
             self.priority.is_none_or(|prio| {
                 task.priority().unwrap_or(DEFAULT_PRIO) >= prio
             }) &&
-            task.tags.as_ref().map_or(true, |tags| {
-                !tags.iter().any(|tag| self.tags_excluded.contains(tag))
-            }) &&
-            (self.tags.is_empty() ||
-                task.tags.as_ref().map_or(false, |tags| {
-                    let mut iter = tags.iter();
-                    self.tags.iter().all(|tag| iter.any(|t| t == tag))
-                }))
+            !task.get_hashtags().any(|tag| self.tags_excluded.contains(tag)) &&
+            (self.tags.is_empty() || {
+                let mut iter = task.get_hashtags().sorted_unstable();
+                self.tags.iter().all(|tag| iter.any(|t| t == tag))
+            })
     }
 
     pub(crate) fn filtered_tasks<'a>(&'a self, position: Option<&'a EventId>, sparse: bool) -> Vec<&'a Task> {
@@ -1654,6 +1650,10 @@ mod tasks_test {
         tasks.move_to(Some(parent));
         let sub = tasks.make_task("sub # tag2");
         assert_eq!(tasks.all_hashtags().collect_vec(), vec!["tag1", "tag2"]);
+        tasks.make_note("note with #tag3 # yeah");
+        assert_eq!(tasks.all_hashtags().collect_vec(), vec!["tag1", "tag2", "tag3", "yeah"]);
+        tasks.update_state("Done #yei", State::Done);
+        // TODO assert_eq!(tasks.all_hashtags().collect_vec(), vec!["tag1", "tag2", "tag3", "yeah", "yei"]);
         tasks.update_state("Closing Down", State::Closed);
         assert_eq!(tasks.get_by_id(&sub).unwrap().pure_state(), State::Closed);
         assert_eq!(tasks.all_hashtags().next(), None);

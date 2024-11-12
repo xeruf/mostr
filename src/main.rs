@@ -677,7 +677,7 @@ async fn main() -> Result<()> {
                             let filtered =
                                 tasks.get_filtered(pos, |t| {
                                     transform(&t.event.content).contains(&remaining) ||
-                                        t.tags.iter().flatten().any(
+                                        t.get_hashtags().any(
                                             |tag| tag.content().is_some_and(|s| transform(s).contains(&remaining)))
                                 });
                             if filtered.len() == 1 {
