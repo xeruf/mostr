@@ -1,8 +1,6 @@
 use crate::task::MARKER_PARENT;
 use crate::tasks::HIGH_PRIO;
 use itertools::Itertools;
-use log::info;
-use nostr_sdk::TagStandard::Hashtag;
 use nostr_sdk::{Alphabet, EventBuilder, EventId, Kind, Tag, TagKind, TagStandard};
 use std::borrow::Cow;
 
@@ -106,14 +104,17 @@ pub(crate) fn extract_tags(input: &str) -> (String, Vec<Tag>) {
     }).collect_vec();
     let mut split = result.split(|e| { e == &"#" });
     let main = split.next().unwrap().join(" ");
-    let tags = extract_hashtags(&main)
+    let mut tags = extract_hashtags(&main)
         .chain(split.flatten().map(|s| to_hashtag(&s)))
-        .chain(prio.map(|p| to_prio_tag(p))).collect();
+        .chain(prio.map(|p| to_prio_tag(p)))
+        .collect_vec();
+    tags.sort();
+    tags.dedup();
     (main, tags)
 }
 
 fn to_hashtag(tag: &str) -> Tag {
-    Hashtag(tag.to_string()).into()
+    TagStandard::Hashtag(tag.to_string()).into()
 }
 
 fn format_tag(tag: &Tag) -> String {
@@ -130,10 +131,7 @@ fn format_tag(tag: &Tag) -> String {
              }) => format!("Key{}: {:.8}", public_key, alias.as_ref().map(|s| format!(" {s}")).unwrap_or_default()),
         Some(TagStandard::Hashtag(content)) =>
             format!("#{content}"),
-        _ => tag.content().map_or_else(
-            || format!("Kind {}", tag.kind()),
-            |content| content.to_string(),
-        )
+        _ => tag.as_vec().join(" ")
     }
 }
 
