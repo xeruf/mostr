@@ -1232,7 +1232,18 @@ impl Display for TasksRelay {
             let mut bookmarks =
                 // TODO add recent tasks (most time tracked + recently created)
                 self.bookmarks.iter()
-                    .chain(self.tasks.values().sorted_unstable().take(3).map(|t| t.get_id()))
+                    .chain(
+                        // Latest
+                        self.tasks.values()
+                            .sorted_unstable().rev()
+                            .take(3).map(|t| t.get_id()))
+                    .chain(
+                        // Highest Prio
+                        self.tasks.values()
+                            .filter_map(|t| t.priority().filter(|p| *p > 35).map(|p| (p, t)))
+                            .sorted_unstable()
+                            .take(3).map(|(_, t)| t.get_id())
+                    )
                     .filter(|id| !ids.contains(id))
                     .filter_map(|id| self.get_by_id(id))
                     .filter(|t| self.filter(t))
