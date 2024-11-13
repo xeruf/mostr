@@ -1646,14 +1646,21 @@ mod tasks_test {
     #[test]
     fn test_recursive_closing() {
         let mut tasks = stub_tasks();
+
+        tasks.custom_time = Some(Timestamp::zero());
         let parent = tasks.make_task("parent #tag1");
         tasks.move_to(Some(parent));
-        let sub = tasks.make_task("sub # tag2");
-        assert_eq!(tasks.all_hashtags().collect_vec(), vec!["tag1", "tag2"]);
+        let sub = tasks.make_task("sub #oi # tag2");
+        assert_eq!(tasks.all_hashtags().collect_vec(), vec!["oi", "tag1", "tag2"]);
         tasks.make_note("note with #tag3 # yeah");
-        assert_eq!(tasks.all_hashtags().collect_vec(), vec!["tag1", "tag2", "tag3", "yeah"]);
-        tasks.update_state("Done #yei", State::Done);
-        // TODO assert_eq!(tasks.all_hashtags().collect_vec(), vec!["tag1", "tag2", "tag3", "yeah", "yei"]);
+        assert_eq!(tasks.all_hashtags().collect_vec(), vec!["oi", "tag1", "tag2", "tag3", "yeah"]);
+
+        tasks.custom_time = Some(Timestamp::now());
+        tasks.update_state("Finished #yeah # oi", State::Done);
+        assert_eq!(tasks.get_by_id(&parent).unwrap().get_hashtags().cloned().collect_vec(), ["tag1", "tag3", "yeah", "oi", "yeah"].map(to_hashtag));
+        assert_eq!(tasks.all_hashtags().collect_vec(), vec!["oi", "tag1", "tag2", "tag3", "yeah"]);
+
+        tasks.custom_time = Some(now());
         tasks.update_state("Closing Down", State::Closed);
         assert_eq!(tasks.get_by_id(&sub).unwrap().pure_state(), State::Closed);
         assert_eq!(tasks.all_hashtags().next(), None);

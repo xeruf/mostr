@@ -14,6 +14,7 @@ use nostr_sdk::{Alphabet, Event, EventId, Kind, Tag, TagStandard, Timestamp};
 
 use crate::helpers::{format_timestamp_local, some_non_empty};
 use crate::kinds::{is_hashtag, Prio, PRIO, PROCEDURE_KIND, PROCEDURE_KIND_ID, TASK_KIND};
+use crate::tasks::now;
 
 pub static MARKER_PARENT: &str = "parent";
 pub static MARKER_DEPENDS: &str = "depends";
@@ -137,7 +138,7 @@ impl Task {
     }
 
     pub(crate) fn state(&self) -> Option<TaskState> {
-        let now = Timestamp::now();
+        let now = now();
         // TODO do not iterate constructed state objects
         let state = self.states().rev().take_while_inclusive(|ts| ts.time > now);
         state.last().map(|ts| {
@@ -177,9 +178,10 @@ impl Task {
     }
 
     fn tags(&self) -> impl Iterator<Item=&Tag> {
-        self.props.iter().flat_map(|e| e.tags.iter()
-            .filter(|t| t.single_letter_tag().is_none_or(|s| s.character != Alphabet::E)))
-            .chain(self.tags.iter().flatten())
+        self.tags.iter().flatten().chain(
+            self.props.iter().flat_map(|e| e.tags.iter()
+                .filter(|t| t.single_letter_tag().is_none_or(|s| s.character != Alphabet::E)))
+        )
     }
 
     fn join_tags<P>(&self, predicate: P) -> String
@@ -200,7 +202,7 @@ impl Task {
             "id" => Some(self.event.id.to_string()),
             "parentid" => self.parent_id().map(|i| i.to_string()),
             "name" => Some(self.event.content.clone()),
-            "pubkey" => Some(self.event.pubkey.to_string()),
+            "key" | "pubkey" => Some(self.event.pubkey.to_string()),
             "created" => Some(format_timestamp_local(&self.event.created_at)),
             "kind" => Some(self.event.kind.to_string()),
             // Dynamic
@@ -209,7 +211,7 @@ impl Task {
             "desc" => self.descriptions().last().cloned(),
             "description" => Some(self.descriptions().join(" ")),
             "hashtags" => Some(self.join_tags(|tag| { is_hashtag(tag) })),
-            "tags" => Some(self.join_tags(|_| true)),
+            "tags" => Some(self.join_tags(|_| true)), // TODO test these!
             "alltags" => Some(format!("{:?}", self.tags)),
             "refs" => Some(format!("{:?}", self.refs.iter().map(|re| format!("{}: {}", re.0, re.1)).collect_vec())),
             "props" => Some(format!(

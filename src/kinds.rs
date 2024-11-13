@@ -113,7 +113,7 @@ pub(crate) fn extract_tags(input: &str) -> (String, Vec<Tag>) {
     (main, tags)
 }
 
-fn to_hashtag(tag: &str) -> Tag {
+pub fn to_hashtag(tag: &str) -> Tag {
     TagStandard::Hashtag(tag.to_string()).into()
 }
 
