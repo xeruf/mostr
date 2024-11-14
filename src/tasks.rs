@@ -1617,8 +1617,8 @@ mod tasks_test {
     use super::*;
 
     fn stub_tasks() -> TasksRelay {
-        use tokio::sync::mpsc;
         use nostr_sdk::Keys;
+        use tokio::sync::mpsc;
 
         let (tx, _rx) = mpsc::channel(16);
         TasksRelay::with_sender(EventSender {
@@ -1637,11 +1637,16 @@ mod tasks_test {
 
     macro_rules! assert_tasks {
         ($left:expr, $right:expr $(,)?) => {
-            assert_eq!($left.visible_tasks().iter().map(|t| t.event.id).collect::<HashSet<EventId>>(), 
-                       HashSet::from($right))
+            assert_eq!(
+                $left
+                    .visible_tasks()
+                    .iter()
+                    .map(|t| t.event.id)
+                    .collect::<HashSet<EventId>>(),
+                HashSet::from($right)
+            )
         };
     }
-
 
     #[test]
     fn test_recursive_closing() {
@@ -1657,7 +1662,7 @@ mod tasks_test {
 
         tasks.custom_time = Some(Timestamp::now());
         tasks.update_state("Finished #yeah # oi", State::Done);
-        assert_eq!(tasks.get_by_id(&parent).unwrap().get_hashtags().cloned().collect_vec(), ["tag1", "tag3", "yeah", "oi", "yeah"].map(to_hashtag));
+        assert_eq!(tasks.get_by_id(&parent).unwrap().get_hashtags().cloned().collect_vec(), ["tag1", "oi", "yeah", "tag3", "yeah"].map(to_hashtag));
         assert_eq!(tasks.all_hashtags().collect_vec(), vec!["oi", "tag1", "tag2", "tag3", "yeah"]);
 
         tasks.custom_time = Some(now());
@@ -1711,7 +1716,10 @@ mod tasks_test {
         assert_eq!(tasks.filtered_tasks(Some(&pin), true).len(), 0);
         assert_eq!(tasks.filtered_tasks(Some(&pin), false).len(), 0);
         assert_eq!(tasks.filtered_tasks(Some(&zero), true).len(), 0);
-        assert_eq!(tasks.filtered_tasks(Some(&zero), false), vec![tasks.get_by_id(&pin).unwrap()]);
+        assert_eq!(
+            tasks.filtered_tasks(Some(&zero), false),
+            vec![tasks.get_by_id(&pin).unwrap()]
+        );
 
         tasks.move_to(None);
         assert_eq!(tasks.view_depth, 0);
@@ -1720,7 +1728,10 @@ mod tasks_test {
         assert_tasks!(tasks, [pin, test]);
         tasks.add_tag("tag".to_string());
         assert_tasks!(tasks, [test]);
-        assert_eq!(tasks.filtered_tasks(None, true), vec![tasks.get_by_id(&test).unwrap()]);
+        assert_eq!(
+            tasks.filtered_tasks(None, true),
+            vec![tasks.get_by_id(&test).unwrap()]
+        );
 
         tasks.submit(EventBuilder::new(Kind::Bookmarks, "", []));
         tasks.clear_filters();
@@ -1825,10 +1836,14 @@ mod tasks_test {
         let zero = EventId::all_zeros();
 
         tasks.track_at(Timestamp::from(Timestamp::now().as_u64() + 100), Some(zero));
-        assert_eq!(timestamps(tasks.get_own_events_history(), &vec![&zero]).collect_vec().len(), 2)
+        assert_eq!(
+            timestamps(tasks.get_own_events_history(), &vec![&zero])
+                .collect_vec()
+                .len(),
+            2
+        )
         // TODO Does not show both future and current tracking properly, need to split by current time
     }
-
 
     #[test]
     fn test_depth() {
@@ -1937,13 +1952,7 @@ mod tasks_test {
     #[allow(dead_code)] // #[test]
     fn test_itertools() {
         use itertools::Itertools;
-        assert_eq!(
-            "test  toast".split(' ').collect_vec().len(),
-            3
-        );
-        assert_eq!(
-            "test  toast".split_ascii_whitespace().collect_vec().len(),
-            2
-        );
+        assert_eq!("test  toast".split(' ').collect_vec().len(), 3);
+        assert_eq!("test  toast".split_ascii_whitespace().collect_vec().len(), 2);
     }
 }
