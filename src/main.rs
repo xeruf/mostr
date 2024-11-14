@@ -101,7 +101,8 @@ async fn main() -> Result<()> {
         ProjectDirs::from("", "", "mostr")
             .map(|p| {
                 let config = p.config_dir();
-                or_warn!(fs::create_dir_all(config), "Could not create config directory");
+                debug!("Config Directory: {:?}", config);
+                or_warn!(fs::create_dir_all(config), "Could not create config directory '{:?}'", config);
                 config.to_path_buf()
             })
             .unwrap_or_else(|| {
