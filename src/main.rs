@@ -97,6 +97,18 @@ async fn main() -> Result<()> {
         builder
     };
 
+    let mut rl = DefaultEditor::new()?;
+    rl.set_auto_add_history(true);
+    or_warn!(
+        rl.create_external_writer().map(
+            |wr| builder
+                // Without this filter at least at Info, the program hangs
+                .filter(Some("rustyline"), LevelFilter::Warn)
+                .write_style(WriteStyle::Always)
+                .target(Target::Pipe(wr)))
+    );
+    builder.init();
+
     let config_dir =
         ProjectDirs::from("", "", "mostr")
             .map(|p| {
@@ -110,17 +122,13 @@ async fn main() -> Result<()> {
                 PathBuf::new()
             });
 
-    let mut rl = DefaultEditor::new()?;
-    rl.set_auto_add_history(true);
-    or_warn!(
-        rl.create_external_writer().map(
-            |wr| builder
-                // Without this filter at least at Info, the program hangs
-                .filter(Some("rustyline"), LevelFilter::Warn)
-                .write_style(WriteStyle::Always)
-                .target(Target::Pipe(wr)))
-    );
-    builder.init();
+    let key_file = config_dir.join("key");
+    if let Ok(Some(keys)) = fs::read_to_string(key_file.as_path()).map(|s| or_warn!(Keys::from_str(&s.trim()))) {
+        info!("Migrating private key from plaintext file {}", key_file.to_string_lossy());
+        or_warn!(Entry::new("mostr", "keys")
+            .and_then(|e| e.set_secret(keys.secret_key().unwrap().as_secret_bytes()))
+            .inspect(|_| { or_warn!(fs::remove_file(key_file)); }));
+    }
 
     let keys = read_keys(&mut rl)?;
     let relayfile = config_dir.join("relays");
