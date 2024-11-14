@@ -115,7 +115,7 @@ impl Task {
     }
 
     pub(crate) fn priority_raw(&self) -> Option<&str> {
-        self.props.iter().rev()
+        self.props.iter()
             .chain(once(&self.event))
             .find_map(|p| {
                 p.tags.iter().find_map(|t|
@@ -140,7 +140,7 @@ impl Task {
     pub(crate) fn state(&self) -> Option<TaskState> {
         let now = now();
         // TODO do not iterate constructed state objects
-        let state = self.states().rev().take_while_inclusive(|ts| ts.time > now);
+        let state = self.states().take_while_inclusive(|ts| ts.time > now);
         state.last().map(|ts| {
             if ts.time <= now {
                 ts
