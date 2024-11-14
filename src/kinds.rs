@@ -131,7 +131,7 @@ fn format_tag(tag: &Tag) -> String {
              }) => format!("Key{}: {:.8}", public_key, alias.as_ref().map(|s| format!(" {s}")).unwrap_or_default()),
         Some(TagStandard::Hashtag(content)) =>
             format!("#{content}"),
-        _ => tag.as_vec().join(" ")
+        _ => tag.as_slice().join(" ")
     }
 }
 

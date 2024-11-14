@@ -120,7 +120,7 @@ where
 {
     match Local.timestamp_opt(stamp.as_u64() as i64 + 1, 0) {
         Single(time) => formatter(time),
-        _ => stamp.to_human_datetime(),
+        _ => stamp.to_human_datetime().to_string(),
     }
 }
 

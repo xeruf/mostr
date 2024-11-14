@@ -53,7 +53,7 @@ impl EventSender {
             }
         }
         let mut queue = self.queue.borrow_mut();
-        Ok(event_builder.to_event(&self.keys).inspect(|event| {
+        Ok(event_builder.sign_with_keys(&self.keys).inspect(|event| {
             if event.kind == TRACKING_KIND
                 && event.created_at > min
                 && event.created_at < tasks::now()

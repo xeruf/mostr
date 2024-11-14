@@ -354,23 +354,23 @@ mod tasks_test {
         let keys = Keys::generate();
         let mut task = Task::new(
             EventBuilder::new(TASK_KIND, "task", [Tag::hashtag("tag1")])
-                .to_event(&keys).unwrap());
+                .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Open);
         assert_eq!(task.get_hashtags().count(), 1);
         task.props.insert(
             EventBuilder::new(State::Done.into(), "", [])
-                .to_event(&keys).unwrap());
+                .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Done);
         task.props.insert(
             EventBuilder::new(State::Open.into(), "", [Tag::hashtag("tag2")])
                 .custom_created_at(Timestamp::from(Timestamp::now() - 2))
-                .to_event(&keys).unwrap());
+                .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Done);
         assert_eq!(task.get_hashtags().count(), 2);
         task.props.insert(
             EventBuilder::new(State::Closed.into(), "", [])
                 .custom_created_at(Timestamp::from(Timestamp::now() + 1))
-                .to_event(&keys).unwrap());
+                .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Closed);
     }
 }

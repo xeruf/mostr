@@ -64,7 +64,7 @@ fn read_keys(readline: &mut DefaultEditor) -> Result<Keys> {
     let keys_entry = Entry::new("mostr", "keys")?;
     if let Ok(pass) = keys_entry.get_secret() {
         return Ok(SecretKey::from_slice(&pass).map(|s| Keys::new(s))
-            .inspect_err(|e| eprintln!("Invalid key in keychain: {e}"))?)
+            .inspect_err(|e| eprintln!("Invalid key in keychain: {e}"))?);
     }
     let line = readline.readline("Secret key? (leave blank to generate and save a new keypair) ")?;
     let keys = if line.is_empty() {
@@ -74,7 +74,7 @@ fn read_keys(readline: &mut DefaultEditor) -> Result<Keys> {
         Keys::from_str(&line)
             .inspect_err(|e| eprintln!("Invalid key provided: {e}"))?
     };
-    or_warn!(keys_entry.set_secret(keys.secret_key()?.as_secret_bytes()),
+    or_warn!(keys_entry.set_secret(keys.secret_key().as_secret_bytes()),
         "Could not persist keys");
     Ok(keys)
 }
@@ -126,7 +126,7 @@ async fn main() -> Result<()> {
     if let Ok(Some(keys)) = fs::read_to_string(key_file.as_path()).map(|s| or_warn!(Keys::from_str(&s.trim()))) {
         info!("Migrating private key from plaintext file {}", key_file.to_string_lossy());
         or_warn!(Entry::new("mostr", "keys")
-            .and_then(|e| e.set_secret(keys.secret_key().unwrap().as_secret_bytes()))
+            .and_then(|e| e.set_secret(keys.secret_key().as_secret_bytes()))
             .inspect(|_| { or_warn!(fs::remove_file(key_file)); }));
     }
 
@@ -136,8 +136,9 @@ async fn main() -> Result<()> {
     let client = ClientBuilder::new()
         .opts(Options::new()
             .automatic_authentication(true)
-            .pool(RelayPoolOptions::new().notification_channel_size(8192)))
-        .signer(&keys)
+              //.notification_channel_size(8192)
+        )
+        .signer(keys.clone())
         .build();
     info!("My public key: {}", keys.public_key());
 
@@ -232,7 +233,7 @@ async fn main() -> Result<()> {
                             queue = Some((queue_url, queue_events));
                         } else {
                             info!("Sending {} events to {queue_url} due to relay change", queue_events.len());
-                            client.batch_event_to(vec![queue_url], queue_events, RelaySendOptions::new()).await;
+                            client.batch_event_to(vec![queue_url], queue_events).await;
                             queue = None;
                         }
                     }
@@ -244,7 +245,7 @@ async fn main() -> Result<()> {
                 Ok(Some(MostrMessage::Flush)) | Err(Elapsed { .. }) => if let Some((url, events)) = queue {
                     info!("Sending {} events to {url} due to {}", events.len(),
                         result_received.map_or("inactivity", |_| "flush message"));
-                    client.batch_event_to(vec![url], events, RelaySendOptions::new()).await;
+                    client.batch_event_to(vec![url], events).await;
                     queue = None;
                 }
                 Ok(None) => {
@@ -255,7 +256,7 @@ async fn main() -> Result<()> {
         }
         if let Some((url, events)) = queue {
             info!("Sending {} events to {url} before exiting", events.len());
-            client.batch_event_to(vec![url], events, RelaySendOptions::new()).await;
+            client.batch_event_to(vec![url], events).await;
         }
         info!("Shutting down nostr communication thread");
     });
@@ -296,7 +297,7 @@ async fn main() -> Result<()> {
                     {
                         debug!(
                             "At {} found {} kind {} content \"{}\" tags {:?}",
-                            event.created_at, event.id, event.kind, event.content, event.tags.iter().map(|tag| tag.as_vec()).collect_vec()
+                            event.created_at, event.id, event.kind, event.content, event.tags.iter().map(|tag| tag.as_slice()).collect_vec()
                         );
                         match relays.get_mut(&Some(relay_url.clone())) {
                             Some(tasks) => tasks.add(*event),

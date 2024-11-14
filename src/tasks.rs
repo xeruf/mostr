@@ -978,7 +978,7 @@ impl TasksRelay {
         match event.kind {
             Kind::GitIssue => self.add_task(event),
             Kind::Metadata =>
-                match Metadata::from_json(event.content()) {
+                match Metadata::from_json(event.content.as_str()) {
                     Ok(metadata) => { self.users.insert(event.pubkey, metadata); }
                     Err(e) => warn!("Cannot parse metadata: {} from {:?}", e, event)
                 }
