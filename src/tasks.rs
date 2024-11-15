@@ -179,7 +179,7 @@ impl TasksRelay {
 
             search_depth: 4,
             view_depth: 0,
-            recurse_activities: true,
+            recurse_activities: false,
 
             sender,
             overflow: Default::default(),
