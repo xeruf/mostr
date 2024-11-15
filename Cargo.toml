@@ -30,7 +30,7 @@ itertools = "0.12"
 chrono = "0.4"
 parse_datetime = "0.5.0"
 interim = { version = "0.1", features = ["chrono"] }
-nostr-sdk = "0.36" # { git = "https://github.com/xeruf/rust-nostr-sdk", rev = "7b556e1e" }
+nostr-sdk = { git = "https://github.com/rust-nostr/nostr", rev = "829e8cad6e68f54fb3a8d056d9ce4d1ceeeb84cb" }
 
 [dev-dependencies]
 tokio = { version = "1.41", features = ["rt", "rt-multi-thread", "macros", "io-std"] }

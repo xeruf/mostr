@@ -7,14 +7,14 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use crate::event_sender::{EventSender, MostrMessage};
-use crate::helpers::{format_timestamp_local, format_timestamp_relative, format_timestamp_relative_to, parse_tracking_stamp, some_non_empty, CHARACTER_THRESHOLD};
+use crate::helpers::{format_timestamp_local, format_timestamp_relative, format_timestamp_relative_to, parse_tracking_stamp, some_non_empty, to_string_or_default, CHARACTER_THRESHOLD};
 use crate::kinds::*;
 use crate::task::{State, Task, TaskState, MARKER_DEPENDS, MARKER_PARENT, MARKER_PROPERTY};
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::prelude::Marker;
-use nostr_sdk::{Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey, Tag, TagStandard, Timestamp, UncheckedUrl, Url};
+use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey, SingleLetterTag, Tag, TagKind, TagStandard, Timestamp, UncheckedUrl, Url};
 use regex::bytes::Regex;
 use tokio::sync::mpsc::Sender;
 use TagStandard::Hashtag;
@@ -824,21 +824,20 @@ impl TasksRelay {
     // Updates
 
     pub(crate) fn make_event_tag_from_id(&self, id: EventId, marker: &str) -> Tag {
-        Tag::from(TagStandard::Event {
-            event_id: id,
-            relay_url: self.sender.url.as_ref().map(|url| UncheckedUrl::new(url.as_str())),
-            marker: Some(Marker::Custom(marker.to_string())),
-            public_key: self.get_by_id(&id).map(|e| e.event.pubkey),
-        })
+        Tag::custom(TagKind::SingleLetter(SingleLetterTag::lowercase(Alphabet::E)), [
+            id.to_string(),
+            to_string_or_default(self.sender.url.as_ref()),
+            marker.to_string(),
+        ])
     }
 
     pub(crate) fn make_event_tag(&self, event: &Event, marker: &str) -> Tag {
-        Tag::from(TagStandard::Event {
-            event_id: event.id,
-            relay_url: self.sender.url.as_ref().map(|url| UncheckedUrl::new(url.as_str())),
-            marker: Some(Marker::Custom(marker.to_string())),
-            public_key: Some(event.pubkey),
-        })
+        Tag::custom(TagKind::SingleLetter(SingleLetterTag::lowercase(Alphabet::E)), [
+            event.id.to_string(),
+            to_string_or_default(self.sender.url.as_ref()),
+            marker.to_string(),
+            event.pubkey.to_string(),
+        ])
     }
 
     pub(crate) fn parent_tag(&self) -> Option<Tag> {

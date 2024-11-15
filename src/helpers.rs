@@ -7,6 +7,10 @@ use nostr_sdk::Timestamp;
 
 pub const CHARACTER_THRESHOLD: usize = 3;
 
+pub fn to_string_or_default(arg: Option<impl ToString>) -> String {
+    arg.map(|arg| arg.to_string()).unwrap_or_default()
+}
+
 pub fn some_non_empty(str: &str) -> Option<String> {
     if str.is_empty() { None } else { Some(str.to_string()) }
 }
