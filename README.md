@@ -14,7 +14,7 @@ First, start a nostr relay, such as
 - https://github.com/coracle-social/bucket for local development
 - https://github.com/rnostr/rnostr for production use
 
-Install rustup and run a development build with:
+Install rust(up) and run a development build with:
 
     cargo run
 

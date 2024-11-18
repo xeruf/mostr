@@ -4,7 +4,7 @@
 
 All used nostr kinds are listed on the top of [kinds.rs](./src/kinds.rs)
 
-Mostr mainly uses the following NIPs:
+Mostr mainly uses the following [NIPs](https://github.com/nostr-protocol/nips):
 
 - Kind 1 for task descriptions and permanent tasks, can contain task property updates (tags, priority)
 - Issue Tracking: https://github.com/nostr-protocol/nips/blob/master/34.md
