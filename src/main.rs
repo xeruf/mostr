@@ -82,6 +82,8 @@ fn read_keys(readline: &mut DefaultEditor) -> Result<Keys> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    println!("Running Mostr Version {}", env!("CARGO_PKG_VERSION"));
+    
     let mut args = args().skip(1).peekable();
     let mut builder = if args.peek().is_some_and(|arg| arg == "--debug") {
         args.next();
