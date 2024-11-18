@@ -10,10 +10,10 @@ use colored::{ColoredString, Colorize};
 use itertools::Either::{Left, Right};
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use nostr_sdk::{Alphabet, Event, EventId, Kind, Tag, TagStandard, Timestamp};
+use nostr_sdk::{Alphabet, Event, EventId, Kind, Tag, Timestamp};
 
 use crate::helpers::{format_timestamp_local, some_non_empty};
-use crate::kinds::{is_hashtag, Prio, PRIO, PROCEDURE_KIND, PROCEDURE_KIND_ID, TASK_KIND};
+use crate::kinds::{is_hashtag, match_event_tag, Prio, PRIO, PROCEDURE_KIND, PROCEDURE_KIND_ID, TASK_KIND};
 use crate::tasks::now;
 
 pub static MARKER_PARENT: &str = "parent";
@@ -52,10 +52,10 @@ impl Hash for Task {
 
 impl Task {
     pub(crate) fn new(event: Event) -> Task {
-        let (refs, tags) = event.tags.iter().partition_map(|tag| match tag.as_standardized() {
-            Some(TagStandard::Event { event_id, marker, .. }) =>
-                Left((marker.as_ref().map_or(MARKER_PARENT.to_string(), |m| m.to_string()), *event_id)),
-            _ => Right(tag.clone()),
+        let (refs, tags) = event.tags.iter().partition_map(|tag| if let Some(et) = match_event_tag(tag) {
+            Left((et.marker.as_ref().map_or(MARKER_PARENT.to_string(), |m| m.to_string()), et.id))
+        } else {
+            Right(tag.clone())
         });
         // Separate refs for dependencies
         Task {

@@ -13,8 +13,7 @@ use crate::task::{State, Task, TaskState, MARKER_DEPENDS, MARKER_PARENT, MARKER_
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use nostr_sdk::prelude::Marker;
-use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey, SingleLetterTag, Tag, TagKind, TagStandard, Timestamp, UncheckedUrl, Url};
+use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey, SingleLetterTag, Tag, TagKind, TagStandard, Timestamp, Url};
 use regex::bytes::Regex;
 use tokio::sync::mpsc::Sender;
 use TagStandard::Hashtag;
@@ -31,22 +30,20 @@ pub(crate) fn now() -> Timestamp {
 type TaskMap = HashMap<EventId, Task>;
 trait TaskMapMethods {
     fn children_of<'a>(&'a self, task: &'a Task) -> impl Iterator<Item=&Task> + 'a;
-    fn children_for<'a>(&'a self, id: Option<&'a EventId>) -> impl Iterator<Item=&Task> + 'a;
-    fn children_ids_for<'a>(&'a self, id: &'a EventId) -> impl Iterator<Item=&EventId> + 'a;
+    fn children_for<'a>(&'a self, id: Option<EventId>) -> impl Iterator<Item=&Task> + 'a;
+    fn children_ids_for<'a>(&'a self, id: EventId) -> impl Iterator<Item=&EventId> + 'a;
 }
 impl TaskMapMethods for TaskMap {
     fn children_of<'a>(&'a self, task: &'a Task) -> impl Iterator<Item=&Task> + 'a {
-        self.children_for(Some(task.get_id()))
+        self.children_for(Some(task.event.id))
     }
 
-    fn children_for<'a>(&'a self, id: Option<&'a EventId>) -> impl Iterator<Item=&Task> + 'a {
-        self.values()
-            .filter(move |t| t.parent_id() == id)
+    fn children_for<'a>(&'a self, id: Option<EventId>) -> impl Iterator<Item=&Task> + 'a {
+        self.values().filter(move |t| t.parent_id() == id.as_ref())
     }
 
-    fn children_ids_for<'a>(&'a self, id: &'a EventId) -> impl Iterator<Item=&EventId> + 'a {
-        self.children_for(Some(id))
-            .map(|t| t.get_id())
+    fn children_ids_for<'a>(&'a self, id: EventId) -> impl Iterator<Item=&EventId> + 'a {
+        self.children_for(Some(id)).map(|t| t.get_id())
     }
 }
 
@@ -207,16 +204,14 @@ impl TasksRelay {
     // Accessors
 
     #[inline]
-    pub(crate) fn get_by_id(&self, id: &EventId) -> Option<&Task> { self.tasks.get(id) }
+    pub(crate) fn get_by_id(&self, id: &EventId) -> Option<&Task> {
+        self.tasks.get(id)
+    }
 
     #[inline]
     pub(crate) fn len(&self) -> usize { self.tasks.len() }
 
     pub(crate) fn get_position(&self) -> Option<EventId> {
-        self.get_position_ref().cloned()
-    }
-
-    pub(crate) fn get_position_ref(&self) -> Option<&EventId> {
         self.get_position_at(now()).1
     }
 
@@ -229,18 +224,23 @@ impl TasksRelay {
 
     // TODO binary search
     /// Gets last position change before the given timestamp
-    fn get_position_at(&self, timestamp: Timestamp) -> (Timestamp, Option<&EventId>) {
+    fn get_position_at(&self, timestamp: Timestamp) -> (Timestamp, Option<EventId>) {
         self.history_from(timestamp)
             .last()
             .filter(|e| e.created_at <= timestamp)
             .map_or_else(
                 || (Timestamp::now(), None),
-                |e| (e.created_at, referenced_event(e)))
+                |e| (e.created_at, referenced_event(e)),
+            )
+    }
+
+    fn nonclosed_tasks(&self) -> impl Iterator<Item=&Task> {
+        self.tasks.values()
+            .filter(|t| t.pure_state() != State::Closed)
     }
 
     pub(crate) fn all_hashtags(&self) -> impl Iterator<Item=&str> {
-        self.tasks.values()
-            .filter(|t| t.pure_state() != State::Closed)
+        self.nonclosed_tasks()
             .flat_map(|t| t.get_hashtags())
             .filter_map(|tag| tag.content().map(|s| s.trim()))
             .sorted_unstable()
@@ -252,8 +252,11 @@ impl TasksRelay {
         self.times_tracked_for(&self.sender.pubkey())
     }
 
-    pub(crate) fn times_tracked_for(&self, key: &PublicKey) -> (String, Box<dyn DoubleEndedIterator<Item=String>>) {
-        match self.get_position_ref() {
+    pub(crate) fn times_tracked_for(
+        &self,
+        key: &PublicKey,
+    ) -> (String, Box<dyn DoubleEndedIterator<Item=String>>) {
+        match self.get_position() {
             None => {
                 if let Some(hist) = self.history.get(key) {
                     let mut last = None;
@@ -278,7 +281,7 @@ impl TasksRelay {
             }
             Some(id) => {
                 // TODO show current recursive with pubkey
-                let ids = vec![id];
+                let ids = [id];
                 let history =
                     self.history.iter().flat_map(|(key, set)| {
                         let mut vec = Vec::with_capacity(set.len() / 2);
@@ -297,21 +300,26 @@ impl TasksRelay {
                                 vec.push(format!("{} started by {}", format_timestamp_local(stamp), self.get_username(key))));
                         vec
                     }).sorted_unstable(); // TODO sorting depends on timestamp format - needed to interleave different people
-                (format!("Times Tracked on {:?}", self.get_task_title(id)), Box::from(history))
+                (
+                    format!("Times Tracked on {:?}", self.get_task_title(&id)),
+                    Box::from(history),
+                )
             }
         }
     }
 
     /// Total time in seconds tracked on this task by the current user.
     pub(crate) fn time_tracked(&self, id: EventId) -> u64 {
-        Durations::from(self.get_own_events_history(), &vec![&id]).sum::<Duration>().as_secs()
+        Durations::from(self.get_own_events_history(), &[id])
+            .sum::<Duration>()
+            .as_secs()
     }
 
     /// Total time in seconds tracked on this task and its subtasks by all users.
     fn total_time_tracked(&self, id: EventId) -> u64 {
         let mut total = 0;
 
-        let children = ChildIterator::from(&self, &id).get_all();
+        let children = ChildIterator::from(&self, id).get_all();
         for user in self.history.values() {
             total += Durations::from(user.values(), &children).sum::<Duration>().as_secs();
         }
@@ -325,7 +333,10 @@ impl TasksRelay {
             _ => {
                 let mut sum = 0f32;
                 let mut count = 0;
-                for prog in self.tasks.children_ids_for(task.get_id()).filter_map(|e| self.total_progress(e)) {
+                for prog in self.tasks
+                    .children_ids_for(task.event.id)
+                    .filter_map(|e| self.total_progress(e))
+                {
                     sum += prog;
                     count += 1;
                 }
@@ -342,12 +353,13 @@ impl TasksRelay {
 
     // Parents
 
-    pub(crate) fn up_by(&self, count: usize) -> Option<&EventId> {
-        let mut pos = self.get_position_ref();
+    pub(crate) fn up_by(&self, count: usize) -> Option<EventId> {
+        let pos = self.get_position();
+        let mut result = pos.as_ref();
         for _ in 0..count {
-            pos = self.get_parent(pos);
+            result = self.get_parent(result);
         }
-        pos
+        result.cloned()
     }
 
     pub(crate) fn get_parent(&self, id: Option<&EventId>) -> Option<&EventId> {
@@ -383,7 +395,7 @@ impl TasksRelay {
     fn relative_path(&self, id: EventId) -> String {
         join_tasks(
             self.traverse_up_from(Some(id))
-                .take_while(|t| Some(&t.event.id) != self.get_position_ref()),
+                .take_while(|t| Some(t.event.id) != self.get_position()),
             false,
         ).unwrap_or(id.to_string())
     }
@@ -421,16 +433,19 @@ impl TasksRelay {
             }).collect_vec()
     }
 
-    /// Executes the given function with each task referenced by this event without marker.
+    /// Executes the given function with each task referenced by this event with no or property marker.
     /// Returns true if any task was found.
     pub(crate) fn referenced_tasks<F: Fn(&mut Task)>(&mut self, event: &Event, f: F) -> bool {
         let mut found = false;
         for tag in event.tags.iter() {
-            if let Some(TagStandard::Event { event_id, marker, .. }) = tag.as_standardized() {
-                if marker.as_ref().is_none_or(|m| m.to_string() == MARKER_PROPERTY) {
-                    self.tasks.get_mut(event_id).map(|t| {
+            if let Some(event_tag) = match_event_tag(tag) {
+                if event_tag.marker
+                    .as_ref()
+                    .is_none_or(|m| m.to_string() == MARKER_PROPERTY)
+                {
+                    self.tasks.get_mut(&event_tag.id).map(|t| {
                         found = true;
-                        f(t)
+                        f(t);
                     });
                 }
             }
@@ -440,7 +455,7 @@ impl TasksRelay {
 
     #[inline]
     pub(crate) fn get_current_task(&self) -> Option<&Task> {
-        self.get_position_ref().and_then(|id| self.get_by_id(id))
+        self.get_position().and_then(|id| self.get_by_id(&id))
     }
 
     fn filter(&self, task: &Task) -> bool {
@@ -455,12 +470,17 @@ impl TasksRelay {
             })
     }
 
-    pub(crate) fn filtered_tasks<'a>(&'a self, position: Option<&'a EventId>, sparse: bool) -> Vec<&'a Task> {
+    // TODO sparse is deprecated
+    pub(crate) fn filtered_tasks(
+        &self,
+        position: Option<EventId>,
+        sparse: bool,
+    ) -> Vec<&Task> {
         let roots = self.tasks.children_for(position);
         let mut current = self.resolve_tasks_rec(roots, sparse, self.search_depth + self.view_depth);
         if current.is_empty() {
             if !self.tags.is_empty() {
-                let mut children = self.tasks.children_for(self.get_position_ref()).peekable();
+                let mut children = self.tasks.children_for(position).peekable();
                 if children.peek().is_some() {
                     current = self.resolve_tasks_rec(children, true, 9);
                     if sparse {
@@ -481,7 +501,7 @@ impl TasksRelay {
             } else {
                 // TODO highlight bookmarks
                 self.bookmarks.iter()
-                    .filter(|id| !position.is_some_and(|p| &p == id) && !ids.contains(id))
+                    .filter(|id| !position.is_some_and(|p| &&p == id) && !ids.contains(id))
                     .filter_map(|id| self.get_by_id(id))
                     .filter(|t| self.filter(t))
                     .collect_vec()
@@ -499,7 +519,7 @@ impl TasksRelay {
         if !self.view.is_empty() {
             return self.view.iter().flat_map(|id| self.get_by_id(id)).collect();
         }
-        self.filtered_tasks(self.get_position_ref(), true)
+        self.filtered_tasks(self.get_position(), true)
     }
 
     fn get_property(&self, task: &Task, str: &str) -> String {
@@ -597,7 +617,7 @@ impl TasksRelay {
         self.set_filter(|t| t.last_state_update() > time)
     }
 
-    pub(crate) fn get_filtered<P>(&self, position: Option<&EventId>, predicate: P) -> Vec<EventId>
+    pub(crate) fn get_filtered<P>(&self, position: Option<EventId>, predicate: P) -> Vec<EventId>
     where
         P: Fn(&&Task) -> bool,
     {
@@ -612,7 +632,7 @@ impl TasksRelay {
     where
         P: Fn(&&Task) -> bool,
     {
-        self.set_view(self.get_filtered(self.get_position_ref(), predicate))
+        self.set_view(self.get_filtered(self.get_position(), predicate))
     }
 
     pub(crate) fn set_view_bookmarks(&mut self) -> bool {
@@ -717,7 +737,7 @@ impl TasksRelay {
     /// - single case-insensitive exact name match in all tasks
     /// - visible tasks starting with given arg case-sensitive
     /// - visible tasks where any word starts with given arg case-insensitive
-    pub(crate) fn get_matching(&self, position: Option<&EventId>, arg: &str) -> Vec<EventId> {
+    pub(crate) fn get_matching(&self, position: Option<EventId>, arg: &str) -> Vec<EventId> {
         if let Ok(id) = EventId::parse(arg) {
             return vec![id];
         }
@@ -751,7 +771,7 @@ impl TasksRelay {
             filtered = filtered_fuzzy;
         }
         let immediate = filtered.iter().filter(
-            |t| self.get_by_id(t).is_some_and(|t| t.parent_id() == position)).collect_vec();
+            |t| self.get_by_id(t).is_some_and(|t| t.parent_id() == position.as_ref())).collect_vec();
         if immediate.len() == 1 {
             return immediate.into_iter().cloned().collect_vec();
         }
@@ -763,7 +783,11 @@ impl TasksRelay {
     /// - entering the only matching task
     /// - creating a new task
     /// Returns an EventId if a new Task was created.
-    pub(crate) fn filter_or_create(&mut self, position: Option<&EventId>, arg: &str) -> Option<EventId> {
+    pub(crate) fn filter_or_create(
+        &mut self,
+        position: Option<EventId>,
+        arg: &str,
+    ) -> Option<EventId> {
         let filtered = self.get_matching(position, arg);
         match filtered.len() {
             0 => {
@@ -782,7 +806,7 @@ impl TasksRelay {
             }
             _ => {
                 // Multiple match, filter
-                self.move_to(position.cloned());
+                self.move_to(position);
                 self.set_view(filtered);
                 None
             }
@@ -798,14 +822,17 @@ impl TasksRelay {
 
     pub(crate) fn move_to(&mut self, target: Option<EventId>) {
         self.view.clear();
-        let pos = self.get_position_ref();
-        if target.as_ref() == pos {
+        let pos = self.get_position();
+        if target == pos {
             debug!("Flushing Tasks because of move in place");
             self.flush();
             return;
         }
 
-        if !target.and_then(|id| self.tasks.get(&id)).is_some_and(|t| t.parent_id() == pos) {
+        if !target
+            .and_then(|id| self.get_by_id(&id))
+            .is_some_and(|t| t.parent_id() == pos.as_ref())
+        {
             debug!("Flushing Tasks because of move beyond child");
             self.flush();
         }
@@ -841,25 +868,26 @@ impl TasksRelay {
     }
 
     pub(crate) fn parent_tag(&self) -> Option<Tag> {
-        self.get_position_ref().map(|p| self.make_event_tag_from_id(*p, MARKER_PARENT))
+        self.get_position()
+            .map(|p| self.make_event_tag_from_id(p, MARKER_PARENT))
     }
 
     pub(crate) fn position_tags(&self) -> Vec<Tag> {
-        self.position_tags_for(self.get_position_ref())
+        self.position_tags_for(self.get_position())
     }
 
-    pub(crate) fn position_tags_for(&self, position: Option<&EventId>) -> Vec<Tag> {
+    pub(crate) fn position_tags_for(&self, position: Option<EventId>) -> Vec<Tag> {
         position.map_or(vec![], |pos| {
             let mut tags = Vec::with_capacity(2);
-            tags.push(self.make_event_tag_from_id(*pos, MARKER_PARENT));
-            self.get_by_id(pos)
-                .map(|task| {
-                    if task.pure_state() == State::Procedure {
-                        self.tasks.children_of(task)
-                            .max()
-                            .map(|t| tags.push(self.make_event_tag(&t.event, MARKER_DEPENDS)));
-                    }
-                });
+            tags.push(self.make_event_tag_from_id(pos, MARKER_PARENT));
+            self.get_by_id(&pos).map(|task| {
+                if task.pure_state() == State::Procedure {
+                    self.tasks
+                        .children_of(task)
+                        .max()
+                        .map(|t| tags.push(self.make_event_tag(&t.event, MARKER_DEPENDS)));
+                }
+            });
             tags
         })
     }
@@ -938,23 +966,31 @@ impl TasksRelay {
             }
         }
         let current_pos = self.get_position_at(time);
-        if (time < Timestamp::now() || target.is_none()) && current_pos.1 == target.as_ref() {
-            warn!("Already {} from {}",
-                target.map_or("stopped time-tracking".to_string(), 
-                    |id| format!("tracking \"{}\"", self.get_task_title(&id))),
+        if (time < Timestamp::now() || target.is_none()) && current_pos.1 == target {
+            warn!(
+                "Already {} from {}",
+                target.map_or("stopped time-tracking".to_string(), |id| format!(
+                    "tracking \"{}\"",
+                    self.get_task_title(&id)
+                )),
                 format_timestamp_relative(&current_pos.0),
             );
             return None;
         }
         info!("{}", match target {
-            None => format!("Stopping time-tracking of \"{}\" at {}", 
-                            current_pos.1.map_or("???".to_string(), |id| self.get_task_title(id)), 
-                            format_timestamp_relative(&time)),
-            Some(new_id) => format!("Tracking \"{}\" from {}{}", 
-                                self.get_task_title(&new_id), 
-                                format_timestamp_relative(&time),
-                                current_pos.1.filter(|id| id != &&new_id).map(
-                                     |id| format!(" replacing \"{}\"", self.get_task_title(id))).unwrap_or_default()),
+            None => format!(
+                "Stopping time-tracking of \"{}\" at {}",
+                current_pos.1.map_or("???".to_string(), |id| self.get_task_title(&id)),
+                format_timestamp_relative(&time)
+            ),
+            Some(new_id) => format!(
+                "Tracking \"{}\" from {}{}",
+                self.get_task_title(&new_id),
+                format_timestamp_relative(&time),
+                current_pos.1.filter(|id| id != &new_id).map(|id|
+                    format!(" replacing \"{}\"", self.get_task_title(&id)))
+                    .unwrap_or_default()
+            )
         });
         self.submit(
             build_tracking(target)
@@ -983,14 +1019,19 @@ impl TasksRelay {
                 }
             Kind::Bookmarks => {
                 if event.pubkey == self.sender.pubkey() {
-                    self.bookmarks = referenced_events(&event).cloned().collect_vec()
+                    self.bookmarks = referenced_events(&event).collect_vec()
                 }
             }
             _ => {
                 if event.kind == TRACKING_KIND {
                     match self.history.get_mut(&event.pubkey) {
-                        Some(c) => { c.insert(event.created_at, event); }
-                        None => { self.history.insert(event.pubkey, BTreeMap::from([(event.created_at, event)])); }
+                        Some(c) => {
+                            c.insert(event.created_at, event);
+                        }
+                        None => {
+                            self.history
+                                .insert(event.pubkey, BTreeMap::from([(event.created_at, event)]));
+                        }
                     }
                 } else {
                     if let Some(event) = self.add_prop(event) {
@@ -1044,12 +1085,13 @@ impl TasksRelay {
 
     pub(crate) fn move_back_to(&mut self, str: &str) -> bool {
         let lower = str.to_ascii_lowercase();
-        let found = self.history_before_now()
-            .find(|e| referenced_event(e)
-                .and_then(|id| self.get_by_id(id))
-                .is_some_and(|t| t.event.content.to_ascii_lowercase().contains(&lower)));
+        let found = self.history_before_now().find(|e| {
+            referenced_event(e)
+                .and_then(|id| self.get_by_id(&id))
+                .is_some_and(|t| t.event.content.to_ascii_lowercase().contains(&lower))
+        });
         if let Some(event) = found {
-            self.move_to(referenced_event(event).cloned());
+            self.move_to(referenced_event(event));
             return true;
         }
         false
@@ -1058,7 +1100,7 @@ impl TasksRelay {
     pub(crate) fn move_back_by(&mut self, steps: usize) {
         let id = self.history_before_now().nth(steps)
             .and_then(|e| referenced_event(e));
-        self.move_to(id.cloned())
+        self.move_to(id)
     }
 
     pub(crate) fn undo(&mut self) {
@@ -1073,9 +1115,12 @@ impl TasksRelay {
     fn remove(&mut self, event: &Event) {
         self.tasks.remove(&event.id);
         self.history.get_mut(&self.sender.pubkey())
-            .map(|t| t.retain(|t, e| e != event &&
-                !referenced_event(e).is_some_and(|id| id == &event.id)));
-        self.referenced_tasks(event, |t| { t.props.remove(event); });
+            .map(|t| {
+                t.retain(|_, e| e != event && !referenced_event(e).is_some_and(|id| id == event.id))
+            });
+        self.referenced_tasks(event, |t| {
+            t.props.remove(event);
+        });
     }
 
     pub(crate) fn set_state_for_with(&mut self, id: EventId, comment: &str) {
@@ -1086,26 +1131,33 @@ impl TasksRelay {
         let ids =
             if state == State::Closed {
                 // Close whole subtree
-                ChildIterator::from(self, &id).get_all()
+                ChildIterator::from(self, id).get_all()
             } else {
-                vec![&id]
+                vec![id]
             };
+        let (desc, tags) = extract_tags(comment);
         let prop = EventBuilder::new(
             state.into(),
-            comment,
-            ids.into_iter().map(|e| self.make_event_tag_from_id(*e, MARKER_PROPERTY)),
+            desc,
+            ids.into_iter()
+                .map(|e| self.make_event_tag_from_id(e, MARKER_PROPERTY))
+                .chain(tags),
         );
         // if self.custom_time.is_none() && self.get_by_id(id).map(|task| {}) {}
-        info!("Task status {} set for \"{}\"{}",
+        info!(
+            "Task status {} set for \"{}\"{}",
             TaskState::get_label_for(&state, comment),
             self.get_task_title(&id),
-            self.custom_time.map(|ts| format!(" at {}", format_timestamp_relative(&ts))).unwrap_or_default());
+            self.custom_time
+                .map(|ts| format!(" at {}", format_timestamp_relative(&ts)))
+                .unwrap_or_default()
+        );
         self.submit(prop)
     }
 
     pub(crate) fn update_state(&mut self, comment: &str, state: State) -> Option<EventId> {
-        let id = self.get_position_ref()?;
-        Some(self.set_state_for(*id, comment, state))
+        let id = self.get_position()?;
+        Some(self.set_state_for(id, comment, state))
     }
 
     /// Creates a note or activity, depending on whether the parent is a task.
@@ -1172,7 +1224,7 @@ impl Display for TasksRelay {
             let now = &now();
             let mut tracking_stamp: Option<Timestamp> = None;
             for elem in
-                timestamps(self.get_own_events_history(), &[t.get_id()])
+                timestamps(self.get_own_events_history(), &[t.event.id])
                     .map(|(e, _)| e) {
                 if tracking_stamp.is_some() && elem > now {
                     break;
@@ -1190,11 +1242,17 @@ impl Display for TasksRelay {
             writeln!(lock, "{}", t.descriptions().join("\n"))?;
         }
 
-        let position = self.get_position_ref();
+        let position = self.get_position();
         let mut current: Vec<&Task>;
-        let roots = self.view.iter().flat_map(|id| self.get_by_id(id)).collect_vec();
-        if self.search_depth > 0 && roots.is_empty() {
-            current = self.resolve_tasks_rec(self.tasks.children_for(position), true, self.search_depth + self.view_depth);
+        let view = self.view.iter()
+            .flat_map(|id| self.get_by_id(id))
+            .collect_vec();
+        if self.search_depth > 0 && view.is_empty() {
+            current = self.resolve_tasks_rec(
+                self.tasks.children_for(position),
+                true,
+                self.search_depth + self.view_depth,
+            );
             if current.is_empty() {
                 if !self.tags.is_empty() {
                     let mut children = self.tasks.children_for(position).peekable();
@@ -1209,7 +1267,7 @@ impl Display for TasksRelay {
                 }
             }
         } else {
-            current = self.resolve_tasks_rec(roots.iter().cloned(), true, self.view_depth);
+            current = self.resolve_tasks_rec(view.into_iter(), true, self.view_depth);
         }
 
         if current.is_empty() {
@@ -1221,8 +1279,10 @@ impl Display for TasksRelay {
             return Ok(());
         }
 
-        let tree = current.iter().flat_map(|task| self.traverse_up_from(Some(task.event.id))).unique();
-        let ids: HashSet<&EventId> = tree.map(|t| t.get_id()).chain(position).collect();
+        let tree = current.iter()
+            .flat_map(|task| self.traverse_up_from(Some(task.event.id)))
+            .unique();
+        let ids: HashSet<&EventId> = tree.map(|t| t.get_id()).chain(position.as_ref()).collect();
         if self.view.is_empty() {
             let mut bookmarks =
                 // TODO add recent tasks (most time tracked + recently created)
@@ -1311,7 +1371,7 @@ where
         if self.get(index) == Some(&property) {
             self.remove_at(index);
         } else {
-            info!("Added property column \"{property}\" at position {}", index + 1);
+            info!("Added property column \"{property}\" at position {}",index + 1);
             self.insert(index, property);
         }
     }
@@ -1355,25 +1415,27 @@ pub(crate) fn join_tasks<'a>(
         })
 }
 
-fn referenced_events(event: &Event) -> impl Iterator<Item=&EventId> {
-    event.tags.iter().filter_map(|tag| match tag.as_standardized() {
-        Some(TagStandard::Event { event_id, .. }) => Some(event_id),
-        _ => None
-    })
+fn referenced_events(event: &Event) -> impl Iterator<Item=EventId> + use < '_ > {
+event.tags.iter()
+.filter_map(| tag | match_event_tag(tag).map(| t | t.id))
 }
 
-fn referenced_event(event: &Event) -> Option<&EventId> {
+fn referenced_event(event: &Event) -> Option<EventId> {
     referenced_events(event).next()
 }
 
 /// Returns the id of a referenced event if it is contained in the provided ids list.
-fn matching_tag_id<'a>(event: &'a Event, ids: &'a [&'a EventId]) -> Option<&'a EventId> {
+fn matching_tag_id<'a>(event: &'a Event, ids: &'a [EventId]) -> Option<EventId> {
     referenced_events(event).find(|id| ids.contains(id))
 }
 
 /// Filters out event timestamps to those that start or stop one of the given events
-fn timestamps<'a>(events: impl Iterator<Item=&'a Event>, ids: &'a [&'a EventId]) -> impl Iterator<Item=(&Timestamp, Option<&EventId>)> {
-    events.map(|event| (&event.created_at, matching_tag_id(event, ids)))
+fn timestamps<'a>(
+    events: impl Iterator<Item=&'a Event>,
+    ids: &'a [EventId],
+) -> impl Iterator<Item=(&Timestamp, Option<EventId>)> {
+    events
+        .map(|event| (&event.created_at, matching_tag_id(event, ids)))
         .dedup_by(|(_, e1), (_, e2)| e1 == e2)
         .skip_while(|element| element.1.is_none())
 }
@@ -1382,11 +1444,14 @@ fn timestamps<'a>(events: impl Iterator<Item=&'a Event>, ids: &'a [&'a EventId])
 /// Expects a sorted iterator
 struct Durations<'a> {
     events: Box<dyn Iterator<Item=&'a Event> + 'a>,
-    ids: &'a Vec<&'a EventId>,
+    ids: &'a [EventId],
     threshold: Option<Timestamp>,
 }
 impl Durations<'_> {
-    fn from<'b>(events: impl IntoIterator<Item=&'b Event> + 'b, ids: &'b Vec<&EventId>) -> Durations<'b> {
+    fn from<'b>(
+        events: impl IntoIterator<Item=&'b Event> + 'b,
+        ids: &'b [EventId],
+    ) -> Durations<'b> {
         Durations {
             events: Box::new(events.into_iter()),
             ids,
@@ -1438,7 +1503,7 @@ impl ChildIteratorFilter {
 struct ChildIterator<'a> {
     tasks: &'a TaskMap,
     /// Found Events
-    queue: Vec<&'a EventId>,
+    queue: Vec<EventId>,
     /// Index of the next element in the queue
     index: usize,
     /// Depth of the next element
@@ -1453,13 +1518,13 @@ impl<'a> ChildIterator<'a> {
             &mut tasks
                 .values()
                 .filter(move |t| t.parent_id() == id)
-                .map(|t| t.get_id())
+                .map(|t| t.event.id)
                 .collect_vec()
         );
         Self::with_queue(tasks, queue)
     }
 
-    fn with_queue(tasks: &'a TaskMap, queue: Vec<&'a EventId>) -> Self {
+    fn with_queue(tasks: &'a TaskMap, queue: Vec<EventId>) -> Self {
         ChildIterator {
             tasks: &tasks,
             next_depth_at: queue.len(),
@@ -1469,8 +1534,8 @@ impl<'a> ChildIterator<'a> {
         }
     }
 
-    fn from(tasks: &'a TasksRelay, id: &'a EventId) -> Self {
-        let mut queue = Vec::with_capacity(30);
+    fn from(tasks: &'a TasksRelay, id: EventId) -> Self {
+        let mut queue = Vec::with_capacity(64);
         queue.push(id);
         ChildIterator {
             tasks: &tasks.tasks,
@@ -1493,37 +1558,14 @@ impl<'a> ChildIterator<'a> {
     }
 
     /// Get all children
-    fn get_all(mut self) -> Vec<&'a EventId> {
+    fn get_all(mut self) -> Vec<EventId> {
         while self.next().is_some() {}
         self.queue
     }
 
     /// Get all tasks until the specified depth
-    fn get_depth(mut self, depth: usize) -> Vec<&'a EventId> {
+    fn get_depth(mut self, depth: usize) -> Vec<EventId> {
         self.process_depth(depth);
-        self.queue
-    }
-
-    /// Get all tasks until the specified depth matching the filter
-    fn get_depth_filtered<F>(mut self, depth: usize, filter: F) -> Vec<&'a EventId>
-    where
-        F: Fn(&Task) -> ChildIteratorFilter,
-    {
-        while self.depth < depth {
-            if self.next_filtered(&filter).is_none() {
-                // TODO this can easily recurse beyond the intended depth
-                break;
-            }
-        }
-        while self.index < self.queue.len() {
-            if let Some(task) = self.tasks.get(self.queue[self.index]) {
-                if !filter(task).takes_self() {
-                    self.queue.remove(self.index);
-                    continue;
-                }
-            }
-            self.index += 1;
-        }
         self.queue
     }
 
@@ -1535,7 +1577,7 @@ impl<'a> ChildIterator<'a> {
     }
 
     /// Get next id and advance, without adding children
-    fn next_task(&mut self) -> Option<&'a EventId> {
+    fn next_task(&mut self) -> Option<EventId> {
         if self.index >= self.queue.len() {
             return None;
         }
@@ -1550,7 +1592,7 @@ impl<'a> ChildIterator<'a> {
         F: Fn(&Task) -> ChildIteratorFilter,
     {
         self.next_task().and_then(|id| {
-            if let Some(task) = self.tasks.get(id) {
+            if let Some(task) = self.tasks.get(&id) {
                 let take = filter(task);
                 if take.takes_children() {
                     self.queue_children_of(&task);
@@ -1566,12 +1608,12 @@ impl<'a> ChildIterator<'a> {
     }
 
     fn queue_children_of(&mut self, task: &'a Task) {
-        self.queue.extend(self.tasks.children_ids_for(task.get_id()));
+        self.queue.extend(self.tasks.children_ids_for(task.event.id));
     }
 }
 impl FusedIterator for ChildIterator<'_> {}
 impl<'a> Iterator for ChildIterator<'a> {
-    type Item = &'a EventId;
+    type Item = EventId;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next_task().inspect(|id| {
@@ -1579,8 +1621,8 @@ impl<'a> Iterator for ChildIterator<'a> {
                 None => {
                     // Unknown task, might still find children, just slower
                     for task in self.tasks.values() {
-                        if task.parent_id().is_some_and(|i| i == *id) {
-                            self.queue.push(task.get_id());
+                        if task.parent_id().is_some_and(|i| i == id) {
+                            self.queue.push(task.event.id);
                         }
                     }
                 }
@@ -1630,7 +1672,7 @@ mod tasks_test {
 
     macro_rules! assert_position {
         ($left:expr, $right:expr $(,)?) => {
-            assert_eq!($left.get_position_ref(), Some(&$right))
+            assert_eq!($left.get_position(), Some($right))
         };
     }
 
@@ -1667,6 +1709,8 @@ mod tasks_test {
         tasks.custom_time = Some(now());
         tasks.update_state("Closing Down", State::Closed);
         assert_eq!(tasks.get_by_id(&sub).unwrap().pure_state(), State::Closed);
+        assert_eq!(tasks.get_by_id(&parent).unwrap().pure_state(), State::Closed);
+        assert_eq!(tasks.nonclosed_tasks().next(), None);
         assert_eq!(tasks.all_hashtags().next(), None);
     }
 
@@ -1701,10 +1745,10 @@ mod tasks_test {
         tasks.search_depth = 1;
         assert_eq!(tasks.filtered_tasks(None, true).len(), 2);
         assert_eq!(tasks.filtered_tasks(None, false).len(), 2);
-        assert_eq!(tasks.filtered_tasks(Some(&zero), false).len(), 0);
-        assert_eq!(tasks.visible_tasks().len(), 1);
-        assert_eq!(tasks.filtered_tasks(Some(&pin), false).len(), 0);
-        assert_eq!(tasks.filtered_tasks(Some(&zero), false).len(), 0);
+        assert_eq!(tasks.filtered_tasks(Some(zero), false).len(), 0);
+        assert_eq!(tasks.filtered_tasks(Some(parent), false).len(), 1);
+        assert_eq!(tasks.filtered_tasks(Some(pin), false).len(), 0);
+        assert_eq!(tasks.filtered_tasks(Some(zero), false).len(), 0);
 
         tasks.submit(EventBuilder::new(
             Kind::Bookmarks,
@@ -1712,11 +1756,11 @@ mod tasks_test {
             [Tag::event(pin), Tag::event(zero)],
         ));
         assert_eq!(tasks.visible_tasks().len(), 1);
-        assert_eq!(tasks.filtered_tasks(Some(&pin), true).len(), 0);
-        assert_eq!(tasks.filtered_tasks(Some(&pin), false).len(), 0);
-        assert_eq!(tasks.filtered_tasks(Some(&zero), true).len(), 0);
+        assert_eq!(tasks.filtered_tasks(Some(pin), true).len(), 0);
+        assert_eq!(tasks.filtered_tasks(Some(pin), false).len(), 0);
+        assert_eq!(tasks.filtered_tasks(Some(zero), true).len(), 0);
         assert_eq!(
-            tasks.filtered_tasks(Some(&zero), false),
+            tasks.filtered_tasks(Some(zero), false),
             vec![tasks.get_by_id(&pin).unwrap()]
         );
 
@@ -1761,19 +1805,19 @@ mod tasks_test {
     fn test_filter_or_create() {
         let mut tasks = stub_tasks();
         let zeros = EventId::all_zeros();
-        let zero = Some(&zeros);
+        let zero = Some(zeros);
 
         let id1 = tasks.filter_or_create(zero, "newer");
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks.visible_tasks().len(), 0);
-        assert_eq!(tasks.get_by_id(&id1.unwrap()).unwrap().parent_id(), zero);
+        assert_eq!(tasks.get_by_id(&id1.unwrap()).unwrap().parent_id(), zero.as_ref());
 
-        tasks.move_to(zero.cloned());
+        tasks.move_to(zero);
         assert_eq!(tasks.visible_tasks().len(), 1);
         let sub = tasks.make_task("test");
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks.visible_tasks().len(), 2);
-        assert_eq!(tasks.get_by_id(&sub).unwrap().parent_id(), zero);
+        assert_eq!(tasks.get_by_id(&sub).unwrap().parent_id(), zero.as_ref());
 
         // Do not substring match invisible subtask
         let id2 = tasks.filter_or_create(None, "#new-is gold wrapped").unwrap();
@@ -1783,8 +1827,8 @@ mod tasks_test {
         assert_eq!(new2.props, Default::default());
 
         tasks.move_up();
-        assert_eq!(tasks.get_matching(tasks.get_position_ref(), "wrapped").len(), 1);
-        assert_eq!(tasks.get_matching(tasks.get_position_ref(), "new-i").len(), 1);
+        assert_eq!(tasks.get_matching(tasks.get_position(), "wrapped").len(), 1);
+        assert_eq!(tasks.get_matching(tasks.get_position(), "new-i").len(), 1);
         tasks.filter_or_create(None, "is gold");
         assert_position!(tasks, id2);
 
@@ -1836,7 +1880,7 @@ mod tasks_test {
 
         tasks.track_at(Timestamp::from(Timestamp::now().as_u64() + 100), Some(zero));
         assert_eq!(
-            timestamps(tasks.get_own_events_history(), &vec![&zero])
+            timestamps(tasks.get_own_events_history(), &[zero])
                 .collect_vec()
                 .len(),
             2
@@ -1881,13 +1925,13 @@ mod tasks_test {
         tasks.view_depth = 2;
         assert_tasks!(tasks, [t111]);
 
-        assert_eq!(ChildIterator::from(&tasks, &EventId::all_zeros()).get_all().len(), 1);
-        assert_eq!(ChildIterator::from(&tasks, &EventId::all_zeros()).get_depth(0).len(), 1);
-        assert_eq!(ChildIterator::from(&tasks, &t1).get_depth(0).len(), 1);
-        assert_eq!(ChildIterator::from(&tasks, &t1).get_depth(1).len(), 3);
-        assert_eq!(ChildIterator::from(&tasks, &t1).get_depth(2).len(), 4);
-        assert_eq!(ChildIterator::from(&tasks, &t1).get_depth(9).len(), 4);
-        assert_eq!(ChildIterator::from(&tasks, &t1).get_all().len(), 4);
+        assert_eq!(ChildIterator::from(&tasks, EventId::all_zeros()).get_all().len(), 1);
+        assert_eq!(ChildIterator::from(&tasks, EventId::all_zeros()).get_depth(0).len(), 1);
+        assert_eq!(ChildIterator::from(&tasks, t1).get_depth(0).len(), 1);
+        assert_eq!(ChildIterator::from(&tasks, t1).get_depth(1).len(), 3);
+        assert_eq!(ChildIterator::from(&tasks, t1).get_depth(2).len(), 4);
+        assert_eq!(ChildIterator::from(&tasks, t1).get_depth(9).len(), 4);
+        assert_eq!(ChildIterator::from(&tasks, t1).get_all().len(), 4);
 
         tasks.move_to(Some(t1));
         assert_position!(tasks, t1);

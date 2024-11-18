@@ -639,7 +639,7 @@ async fn main() -> Result<()> {
                         let pos = tasks.up_by(dots - 1);
 
                         if remaining.is_empty() {
-                            tasks.move_to(pos.cloned());
+                            tasks.move_to(pos);
                             if dots > 1 {
                                 info!("Moving up {} tasks", dots - 1)
                             } else {
@@ -648,13 +648,13 @@ async fn main() -> Result<()> {
                         } else {
                             match remaining.parse::<usize>() {
                                 Ok(depth) if depth < 10 => {
-                                    if pos != tasks.get_position_ref() {
-                                        tasks.move_to(pos.cloned());
+                                    if pos != tasks.get_position() {
+                                        tasks.move_to(pos);
                                     }
                                     tasks.set_view_depth(depth);
                                 }
                                 _ => {
-                                    tasks.filter_or_create(pos.cloned().as_ref(), &remaining).map(|id| tasks.move_to(Some(id)));
+                                    tasks.filter_or_create(pos, &remaining).map(|id| tasks.move_to(Some(id)));
                                 }
                             }
                         }
@@ -667,13 +667,13 @@ async fn main() -> Result<()> {
                         let pos = tasks.up_by(dots - 1);
 
                         if remaining.is_empty() {
-                            tasks.move_to(pos.cloned());
+                            tasks.move_to(pos);
                             if dots > 1 {
                                 info!("Moving up {} tasks", dots - 1)
                             }
                         } else if let Ok(depth) = remaining.parse::<usize>() {
-                            if pos != tasks.get_position_ref() {
-                                tasks.move_to(pos.cloned());
+                            if pos != tasks.get_position() {
+                                tasks.move_to(pos);
                             }
                             tasks.set_search_depth(depth);
                         } else {
@@ -693,7 +693,7 @@ async fn main() -> Result<()> {
                             if filtered.len() == 1 {
                                 tasks.move_to(filtered.into_iter().next());
                             } else {
-                                tasks.move_to(pos.cloned());
+                                tasks.move_to(pos);
                                 if !tasks.set_view(filtered) {
                                     continue 'repl;
                                 }
@@ -726,7 +726,7 @@ async fn main() -> Result<()> {
                                 }
                             });
                         } else {
-                            tasks.filter_or_create(tasks.get_position().as_ref(), &command);
+                            tasks.filter_or_create(tasks.get_position(), &command);
                         }
                 }
                 tasks.custom_time = None;

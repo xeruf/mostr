@@ -53,6 +53,23 @@ Utilities:
 - TBI `depends` - list all tasks this task depends on before it becomes actionable
 Debugging: `kind`, `pubkey`, `props`, `alltags`, `descriptions`";
 
+pub struct EventTag {
+    pub id: EventId,
+    pub marker: Option<String>,
+}
+
+/// Return event tag if existing
+pub(crate) fn match_event_tag(tag: &Tag) -> Option<EventTag> {
+    let mut vec = tag.as_slice().into_iter();
+    if vec.next() == Some(&"e".to_string()) {
+        if let Some(id) = vec.next().and_then(|v| EventId::parse(v).ok()) { 
+            vec.next();
+            return Some(EventTag { id, marker: vec.next().cloned() });
+        }
+    }
+    None
+}
+
 pub(crate) fn build_tracking<I>(id: I) -> EventBuilder
 where
     I: IntoIterator<Item=EventId>,
@@ -118,12 +135,12 @@ pub fn to_hashtag(tag: &str) -> Tag {
 }
 
 fn format_tag(tag: &Tag) -> String {
+    if let Some(et) = match_event_tag(tag) {
+        return format!("{}: {:.8}", 
+                       et.marker.as_ref().map(|m| m.to_string()).unwrap_or(MARKER_PARENT.to_string()), 
+                       et.id)
+    }
     match tag.as_standardized() {
-        Some(TagStandard::Event {
-                 event_id,
-                 marker,
-                 ..
-             }) => format!("{}: {:.8}", marker.as_ref().map(|m| m.to_string()).unwrap_or(MARKER_PARENT.to_string()), event_id),
         Some(TagStandard::PublicKey {
                  public_key,
                  alias,
