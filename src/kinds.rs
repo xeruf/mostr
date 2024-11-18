@@ -62,7 +62,7 @@ pub struct EventTag {
 pub(crate) fn match_event_tag(tag: &Tag) -> Option<EventTag> {
     let mut vec = tag.as_slice().into_iter();
     if vec.next() == Some(&"e".to_string()) {
-        if let Some(id) = vec.next().and_then(|v| EventId::parse(v).ok()) { 
+        if let Some(id) = vec.next().and_then(|v| EventId::parse(v).ok()) {
             vec.next();
             return Some(EventTag { id, marker: vec.next().cloned() });
         }
@@ -107,15 +107,15 @@ pub(crate) fn extract_tags(input: &str) -> (String, Vec<Tag>) {
         if s.starts_with('*') {
             if s.len() == 1 {
                 prio = Some(HIGH_PRIO);
-                return false
+                return false;
             }
             return match s[1..].parse::<Prio>() {
                 Ok(num) => {
                     prio = Some(num * (if s.len() > 2 { 1 } else { 10 }));
                     false
-                },
+                }
                 _ => true,
-            }
+            };
         }
         true
     }).collect_vec();
@@ -136,9 +136,9 @@ pub fn to_hashtag(tag: &str) -> Tag {
 
 fn format_tag(tag: &Tag) -> String {
     if let Some(et) = match_event_tag(tag) {
-        return format!("{}: {:.8}", 
-                       et.marker.as_ref().map(|m| m.to_string()).unwrap_or(MARKER_PARENT.to_string()), 
-                       et.id)
+        return format!("{}: {:.8}",
+                       et.marker.as_ref().map(|m| m.to_string()).unwrap_or(MARKER_PARENT.to_string()),
+                       et.id);
     }
     match tag.as_standardized() {
         Some(TagStandard::PublicKey {

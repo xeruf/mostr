@@ -197,7 +197,10 @@ impl TasksRelay {
             }
         }
         if elements > 0 {
-            info!("Reprocessed {elements} updates with {issues} issues{}", self.sender.url.clone().map(|url| format!(" from {url}")).unwrap_or_default());
+            info!(
+                "Reprocessed {elements} updates with {issues} issues{}",
+                self.sender.url.as_ref().map(|url| format!(" from {url}")).unwrap_or_default()
+            );
         }
     }
 
@@ -269,14 +272,24 @@ impl TasksRelay {
                         if new != last {
                             // TODO omit intervals <2min - but I think I need threeway for that
                             // TODO alternate color with grey between days
-                            full.push(format!("{} {}", format_timestamp_local(&event.created_at), new.as_ref().unwrap_or(&"---".to_string())));
+                            full.push(format!(
+                                "{} {}",
+                                format_timestamp_local(&event.created_at),
+                                new.as_ref().unwrap_or(&"---".to_string())
+                            ));
                             last = new;
                         }
                     }
                     // TODO show history for active tags
-                    ("Your Time-Tracking History:".to_string(), Box::from(full.into_iter()))
+                    (
+                        "Your Time-Tracking History:".to_string(),
+                        Box::from(full.into_iter()),
+                    )
                 } else {
-                    ("You have nothing time-tracked yet".to_string(), Box::from(empty()))
+                    (
+                        "You have nothing time-tracked yet".to_string(),
+                        Box::from(empty()),
+                    )
                 }
             }
             Some(id) => {
@@ -289,15 +302,21 @@ impl TasksRelay {
                         while let Some(((start, _), (end, _))) = iter.next() {
                             // Filter out intervals <2 mins
                             if start.as_u64() + 120 < end.as_u64() {
-                                vec.push(format!("{} - {} by {}",
-                                                 format_timestamp_local(start),
-                                                 format_timestamp_relative_to(end, start),
-                                                 self.get_username(key)))
+                                vec.push(format!(
+                                    "{} - {} by {}",
+                                    format_timestamp_local(start),
+                                    format_timestamp_relative_to(end, start),
+                                    self.get_username(key)
+                                ))
                             }
                         }
-                        iter.into_buffer()
-                            .for_each(|(stamp, _)|
-                                vec.push(format!("{} started by {}", format_timestamp_local(stamp), self.get_username(key))));
+                        iter.into_buffer().for_each(|(stamp, _)| {
+                            vec.push(format!(
+                                "{} started by {}",
+                                format_timestamp_local(stamp),
+                                self.get_username(key)
+                            ))
+                        });
                         vec
                     }).sorted_unstable(); // TODO sorting depends on timestamp format - needed to interleave different people
                 (
@@ -321,7 +340,9 @@ impl TasksRelay {
 
         let children = ChildIterator::from(&self, id).get_all();
         for user in self.history.values() {
-            total += Durations::from(user.values(), &children).sum::<Duration>().as_secs();
+            total += Durations::from(user.values(), &children)
+                .sum::<Duration>()
+                .as_secs();
         }
         total
     }
@@ -340,13 +361,7 @@ impl TasksRelay {
                     sum += prog;
                     count += 1;
                 }
-                Some(
-                    if count > 0 {
-                        sum / (count as f32)
-                    } else {
-                        0.0
-                    }
-                )
+                Some(if count > 0 { sum / (count as f32) } else { 0.0 })
             }
         })
     }
@@ -421,7 +436,8 @@ impl TasksRelay {
                     }
                 }
                 if new_depth > 0 {
-                    let mut children = self.resolve_tasks_rec(self.tasks.children_of(&task), sparse, new_depth);
+                    let mut children =
+                        self.resolve_tasks_rec(self.tasks.children_of(&task), sparse, new_depth);
                     if !children.is_empty() {
                         if !sparse {
                             children.push(task);
@@ -430,7 +446,8 @@ impl TasksRelay {
                     }
                 }
                 return if self.filter(task) { vec![task] } else { vec![] };
-            }).collect_vec()
+            })
+            .collect_vec()
     }
 
     /// Executes the given function with each task referenced by this event with no or property marker.
@@ -477,7 +494,8 @@ impl TasksRelay {
         sparse: bool,
     ) -> Vec<&Task> {
         let roots = self.tasks.children_for(position);
-        let mut current = self.resolve_tasks_rec(roots, sparse, self.search_depth + self.view_depth);
+        let mut current =
+            self.resolve_tasks_rec(roots, sparse, self.search_depth + self.view_depth);
         if current.is_empty() {
             if !self.tags.is_empty() {
                 let mut children = self.tasks.children_for(position).peekable();
@@ -512,6 +530,7 @@ impl TasksRelay {
     }
 
     // TODO this is a relict for tests
+    #[deprecated]
     fn visible_tasks(&self) -> Vec<&Task> {
         if self.search_depth == 0 {
             return vec![];
@@ -546,8 +565,15 @@ impl TasksRelay {
                 }
             }
             "state" => {
-                if let Some(task) = task.get_dependendees().iter().filter_map(|id| self.get_by_id(id)).find(|t| t.pure_state().is_open()) {
-                    return format!("Blocked by \"{}\"", task.get_title()).bright_red().to_string();
+                if let Some(task) = task
+                    .get_dependendees()
+                    .iter()
+                    .filter_map(|id| self.get_by_id(id))
+                    .find(|t| t.pure_state().is_open())
+                {
+                    return format!("Blocked by \"{}\"", task.get_title())
+                        .bright_red()
+                        .to_string();
                 }
                 let state = task.pure_state();
                 if state.is_open() && progress.is_some_and(|p| p > 0.1) {
@@ -559,11 +585,16 @@ impl TasksRelay {
             "progress" => prog_string.clone(),
 
             "author" | "creator" => format!("{:.6}", self.get_username(&task.event.pubkey)), // FIXME temporary until proper column alignment
-            "prio" => self.traverse_up_from(Some(*task.get_id())).find_map(Task::priority_raw).map(|p| p.to_string()).unwrap_or_else(||
-                if self.priority.is_some() {
-                    DEFAULT_PRIO.to_string().dimmed().to_string()
-                } else {
-                    "".to_string()
+            "prio" => self
+                .traverse_up_from(Some(task.event.id))
+                .find_map(Task::priority_raw)
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| {
+                    if self.priority.is_some() {
+                        DEFAULT_PRIO.to_string().dimmed().to_string()
+                    } else {
+                        "".to_string()
+                    }
                 }),
             "path" => self.get_task_path(Some(task.event.id)),
             "rpath" => self.relative_path(task.event.id),
@@ -602,9 +633,11 @@ impl TasksRelay {
                 false
             }
         };
-        self.sender.submit(
-            EventBuilder::new(Kind::Bookmarks, "mostr pins",
-                              self.bookmarks.iter().map(|id| Tag::event(*id))))?;
+        self.sender.submit(EventBuilder::new(
+            Kind::Bookmarks,
+            "mostr pins",
+            self.bookmarks.iter().map(|id| Tag::event(*id)),
+        ))?;
         Ok(added)
     }
 
@@ -664,7 +697,10 @@ impl TasksRelay {
     }
 
     pub(crate) fn print_hashtags(&self) {
-        println!("Hashtags of all known tasks:\n{}", self.all_hashtags().join(" ").italic());
+        println!(
+            "Hashtags of all known tasks:\n{}",
+            self.all_hashtags().join(" ").italic()
+        );
     }
 
     /// Returns true if tags have been updated, false if it printed something
@@ -698,7 +734,9 @@ impl TasksRelay {
     pub(crate) fn remove_tag(&mut self, tag: &str) {
         self.view.clear();
         let len = self.tags.len();
-        self.tags.retain(|t| !t.content().is_some_and(|value| value.to_string().starts_with(tag)));
+        self.tags.retain(|t| {
+            !t.content().is_some_and(|value| value.to_string().starts_with(tag))
+        });
         if self.tags.len() < len {
             info!("Removed tag filters starting with {tag}");
         } else {
@@ -762,7 +800,8 @@ impl TasksRelay {
         for task in self.tasks.values() {
             if task.get_filter_title().to_ascii_lowercase() == lowercase_arg &&
                 // exclude closed tasks and their subtasks
-                !self.traverse_up_from(Some(*task.get_id())).any(|t| !t.pure_state().is_open()) {
+                !self.traverse_up_from(Some(*task.get_id())).any(|t| !t.pure_state().is_open())
+            {
                 return vec![task.event.id];
             }
         }
@@ -815,9 +854,10 @@ impl TasksRelay {
 
     /// Returns all recent events from history until the first event at or before the given timestamp.
     fn history_from(&self, stamp: Timestamp) -> impl Iterator<Item=&Event> {
-        self.history.get(&self.sender.pubkey()).map(|hist| {
-            hist.values().rev().take_while_inclusive(move |e| e.created_at > stamp)
-        }).into_iter().flatten()
+        self.history.get(&self.sender.pubkey())
+            .map(|hist| {
+                hist.values().rev().take_while_inclusive(move |e| e.created_at > stamp)
+            }).into_iter().flatten()
     }
 
     pub(crate) fn move_to(&mut self, target: Option<EventId>) {
@@ -838,13 +878,16 @@ impl TasksRelay {
         }
 
         let now = Timestamp::now();
-        let offset: u64 = self.history_from(now).skip_while(|e| e.created_at.as_u64() > now.as_u64() + MAX_OFFSET).count() as u64;
+        let offset: u64 = self
+            .history_from(now)
+            .skip_while(|e| e.created_at.as_u64() > now.as_u64() + MAX_OFFSET)
+            .count() as u64;
         if offset >= MAX_OFFSET {
             warn!("Whoa you are moving around quickly! Give me a few seconds to process.")
         }
         self.submit(
             build_tracking(target)
-                .custom_created_at(Timestamp::from(now.as_u64() + offset))
+                .custom_created_at(Timestamp::from(now.as_u64() + offset)),
         );
     }
 
@@ -913,9 +956,12 @@ impl TasksRelay {
             self.move_up();
             self.make_task_with(
                 input,
-                self.get_position().map(|par| self.make_event_tag_from_id(par, MARKER_PARENT))
-                    .into_iter().chain(once(self.make_event_tag_from_id(pos, MARKER_DEPENDS))),
-                true);
+                self.get_position()
+                    .map(|par| self.make_event_tag_from_id(par, MARKER_PARENT))
+                    .into_iter()
+                    .chain(once(self.make_event_tag_from_id(pos, MARKER_DEPENDS))),
+                true,
+            );
             return true;
         }
         false
@@ -944,7 +990,7 @@ impl TasksRelay {
     }
 
     pub(crate) fn get_task_title(&self, id: &EventId) -> String {
-        self.tasks.get(id).map_or(id.to_string(), |t| t.get_title())
+        self.get_by_id(id).map_or(id.to_string(), |t| t.get_title())
     }
 
     /// Parse relative time string and track for current position
@@ -956,7 +1002,11 @@ impl TasksRelay {
             .is_some()
     }
 
-    pub(crate) fn track_at(&mut self, mut time: Timestamp, target: Option<EventId>) -> Option<EventId> {
+    pub(crate) fn track_at(
+        &mut self,
+        mut time: Timestamp,
+        target: Option<EventId>,
+    ) -> Option<EventId> {
         if target.is_none() {
             // Prevent random overlap with tracking started in the same second
             time = time - 1;
@@ -1012,11 +1062,10 @@ impl TasksRelay {
     pub(crate) fn add(&mut self, event: Event) {
         match event.kind {
             Kind::GitIssue => self.add_task(event),
-            Kind::Metadata =>
-                match Metadata::from_json(event.content.as_str()) {
-                    Ok(metadata) => { self.users.insert(event.pubkey, metadata); }
-                    Err(e) => warn!("Cannot parse metadata: {} from {:?}", e, event)
-                }
+            Kind::Metadata => match Metadata::from_json(event.content.as_str()) {
+                Ok(metadata) => { self.users.insert(event.pubkey, metadata); }
+                Err(e) => warn!("Cannot parse metadata: {} from {:?}", e, event),
+            },
             Kind::Bookmarks => {
                 if event.pubkey == self.sender.pubkey() {
                     self.bookmarks = referenced_events(&event).collect_vec()
@@ -1073,7 +1122,9 @@ impl TasksRelay {
     }
 
     fn get_own_events_history(&self) -> impl DoubleEndedIterator<Item=&Event> + '_ {
-        self.history.get(&self.sender.pubkey()).into_iter().flat_map(|t| t.values())
+        self.history.get(&self.sender.pubkey())
+            .into_iter()
+            .flat_map(|t| t.values())
     }
 
     fn history_before_now(&self) -> impl Iterator<Item=&Event> {
@@ -1098,7 +1149,9 @@ impl TasksRelay {
     }
 
     pub(crate) fn move_back_by(&mut self, steps: usize) {
-        let id = self.history_before_now().nth(steps)
+        let id = self
+            .history_before_now()
+            .nth(steps)
             .and_then(|e| referenced_event(e));
         self.move_to(id)
     }
@@ -1336,7 +1389,10 @@ impl Display for TasksRelay {
             total_time += self.total_time_tracked(task.event.id) // TODO include parent if it matches
         }
 
-        writeln!(lock, "{} visible tasks{}", count, display_time(" tracked a total of HHhMMm", total_time))?;
+        writeln!(lock,
+                 "{count} visible tasks{}",
+                 display_time(" tracked a total of HHhMMm", total_time)
+        )?;
         Ok(())
     }
 }
@@ -1389,7 +1445,7 @@ fn display_time(format: &str, secs: u64) -> String {
         .map_or(String::new(), |mins| format
             .replace("MMM", &format!("{:3}", mins))
             .replace("HH", &format!("{:02}", mins.div(60)))
-            .replace("MM", &format!("{:02}", mins.rem(60))),
+            .replace("MM", &format!("{:02}", mins.rem(60)))
         )
 }
 
@@ -1402,8 +1458,7 @@ pub(crate) fn join_tasks<'a>(
         .iter()
         .map(|t| t.get_title())
         .chain(if include_last_id {
-            tasks
-                .last()
+            tasks.last()
                 .and_then(|t| t.parent_id())
                 .map(|id| id.to_string())
                 .into_iter()
@@ -1411,7 +1466,10 @@ pub(crate) fn join_tasks<'a>(
             None.into_iter()
         })
         .fold(None, |acc, val| {
-            Some(acc.map_or_else(|| val.clone(), |cur| format!("{}{}{}", val, ">".dimmed(), cur)))
+            Some(acc.map_or_else(
+                || val.clone(),
+                |cur| format!("{}{}{}", val, ">".dimmed(), cur),
+            ))
         })
 }
 
@@ -1477,7 +1535,8 @@ impl Iterator for Durations<'_> {
             }
         }
         let now = self.threshold.unwrap_or(Timestamp::now()).as_u64();
-        start.filter(|t| t < &now).map(|stamp| Duration::from_secs(now.saturating_sub(stamp)))
+        start.filter(|t| t < &now)
+            .map(|stamp| Duration::from_secs(now.saturating_sub(stamp)))
     }
 }
 
@@ -1635,7 +1694,6 @@ impl<'a> Iterator for ChildIterator<'a> {
     }
 }
 
-
 struct ParentIterator<'a> {
     tasks: &'a TaskMap,
     current: Option<EventId>,
@@ -1653,9 +1711,8 @@ impl<'a> Iterator for ParentIterator<'a> {
 
 #[cfg(test)]
 mod tasks_test {
-    use std::collections::HashSet;
-
     use super::*;
+    use std::collections::HashSet;
 
     fn stub_tasks() -> TasksRelay {
         use nostr_sdk::Keys;
