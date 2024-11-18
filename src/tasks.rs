@@ -633,11 +633,10 @@ impl TasksRelay {
                 false
             }
         };
-        self.sender.submit(EventBuilder::new(
-            Kind::Bookmarks,
-            "mostr pins",
-            self.bookmarks.iter().map(|id| Tag::event(*id)),
-        ))?;
+        self.sender.submit(
+            EventBuilder::new(Kind::Bookmarks, "mostr pins")
+                .tags(self.bookmarks.iter().map(|id| Tag::event(*id)))
+        )?;
         Ok(added)
     }
 
@@ -976,10 +975,11 @@ impl TasksRelay {
             if input_tags.iter().any(|t| t.kind().to_string() == PRIO) { None } else { self.priority.map(|p| to_prio_tag(p)) };
         info!("Created task \"{input}\" with tags [{}]", join(&input_tags));
         let id = self.submit(
-            EventBuilder::new(TASK_KIND, &input, input_tags)
-                .add_tags(self.tags.iter().cloned())
-                .add_tags(tags)
-                .add_tags(prio)
+            EventBuilder::new(TASK_KIND, &input)
+                .tags(input_tags)
+                .tags(self.tags.iter().cloned())
+                .tags(tags)
+                .tags(prio)
         );
         if set_state {
             self.state
@@ -1189,13 +1189,11 @@ impl TasksRelay {
                 vec![id]
             };
         let (desc, tags) = extract_tags(comment);
-        let prop = EventBuilder::new(
-            state.into(),
-            desc,
-            ids.into_iter()
-                .map(|e| self.make_event_tag_from_id(e, MARKER_PROPERTY))
-                .chain(tags),
-        );
+        let prop =
+            EventBuilder::new(state.into(), desc)
+                .tags(ids.into_iter()
+                    .map(|e| self.make_event_tag_from_id(e, MARKER_PROPERTY)))
+                .tags(tags);
         // if self.custom_time.is_none() && self.get_by_id(id).map(|task| {}) {}
         info!(
             "Task status {} set for \"{}\"{}",
@@ -1219,7 +1217,7 @@ impl TasksRelay {
         let (name, tags) = extract_tags(note.trim());
         let format = format!("\"{name}\" with tags [{}]", join(&tags));
         let mut prop =
-            EventBuilder::new(Kind::TextNote, name, tags);
+            EventBuilder::new(Kind::TextNote, name).tags(tags);
         //.filter(|id| self.get_by_id(id).is_some_and(|t| t.is_task()))
         //.map(|id| 
         let marker =
@@ -1445,7 +1443,7 @@ fn display_time(format: &str, secs: u64) -> String {
         .map_or(String::new(), |mins| format
             .replace("MMM", &format!("{:3}", mins))
             .replace("HH", &format!("{:02}", mins.div(60)))
-            .replace("MM", &format!("{:02}", mins.rem(60)))
+            .replace("MM", &format!("{:02}", mins.rem(60))),
         )
 }
 
@@ -1775,11 +1773,10 @@ mod tasks_test {
     fn test_sibling_dependency() {
         let mut tasks = stub_tasks();
         let parent = tasks.make_task("parent");
-        let sub = tasks.submit(EventBuilder::new(
-            TASK_KIND,
-            "sub",
-            [tasks.make_event_tag_from_id(parent, MARKER_PARENT)],
-        ));
+        let sub = tasks.submit(
+            EventBuilder::new(TASK_KIND, "sub")
+                .tags([tasks.make_event_tag_from_id(parent, MARKER_PARENT)])
+        );
         assert_eq!(tasks.visible_tasks().len(), 1);
         tasks.track_at(Timestamp::now(), Some(sub));
         assert_eq!(tasks.get_own_events_history().count(), 1);
@@ -1807,11 +1804,10 @@ mod tasks_test {
         assert_eq!(tasks.filtered_tasks(Some(pin), false).len(), 0);
         assert_eq!(tasks.filtered_tasks(Some(zero), false).len(), 0);
 
-        tasks.submit(EventBuilder::new(
-            Kind::Bookmarks,
-            "",
-            [Tag::event(pin), Tag::event(zero)],
-        ));
+        tasks.submit(
+            EventBuilder::new(Kind::Bookmarks, "")
+                .tags([Tag::event(pin), Tag::event(zero)])
+        );
         assert_eq!(tasks.visible_tasks().len(), 1);
         assert_eq!(tasks.filtered_tasks(Some(pin), true).len(), 0);
         assert_eq!(tasks.filtered_tasks(Some(pin), false).len(), 0);
@@ -1833,7 +1829,7 @@ mod tasks_test {
             vec![tasks.get_by_id(&test).unwrap()]
         );
 
-        tasks.submit(EventBuilder::new(Kind::Bookmarks, "", []));
+        tasks.submit(EventBuilder::new(Kind::Bookmarks, ""));
         tasks.clear_filters();
         assert_tasks!(tasks, [pin, test]);
         tasks.set_view_depth(0);
@@ -1845,11 +1841,10 @@ mod tasks_test {
         let mut tasks = stub_tasks();
         tasks.make_task_and_enter("proc # tags", State::Procedure);
         assert_eq!(tasks.get_own_events_history().count(), 1);
-        let side = tasks.submit(EventBuilder::new(
-            TASK_KIND,
-            "side",
-            [tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)],
-        ));
+        let side = tasks.submit(
+            EventBuilder::new(TASK_KIND, "side")
+                .tags([tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)])
+        );
         assert_eq!(tasks.visible_tasks(), Vec::<&Task>::new());
         let sub_id = tasks.make_task("sub");
         assert_tasks!(tasks, [sub_id]);

@@ -74,11 +74,8 @@ pub(crate) fn build_tracking<I>(id: I) -> EventBuilder
 where
     I: IntoIterator<Item=EventId>,
 {
-    EventBuilder::new(
-        Kind::from(TRACKING_KIND),
-        "",
-        id.into_iter().map(Tag::event),
-    )
+    EventBuilder::new(Kind::from(TRACKING_KIND), "")
+        .tags(id.into_iter().map(Tag::event))
 }
 
 pub fn join<'a, T>(tags: T) -> String

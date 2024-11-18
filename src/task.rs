@@ -353,22 +353,22 @@ mod tasks_test {
     fn test_state() {
         let keys = Keys::generate();
         let mut task = Task::new(
-            EventBuilder::new(TASK_KIND, "task", [Tag::hashtag("tag1")])
+            EventBuilder::new(TASK_KIND, "task").tags([Tag::hashtag("tag1")])
                 .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Open);
         assert_eq!(task.get_hashtags().count(), 1);
         task.props.insert(
-            EventBuilder::new(State::Done.into(), "", [])
+            EventBuilder::new(State::Done.into(), "")
                 .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Done);
         task.props.insert(
-            EventBuilder::new(State::Open.into(), "", [Tag::hashtag("tag2")])
+            EventBuilder::new(State::Open.into(), "").tags([Tag::hashtag("tag2")])
                 .custom_created_at(Timestamp::from(Timestamp::now() - 2))
                 .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Done);
         assert_eq!(task.get_hashtags().count(), 2);
         task.props.insert(
-            EventBuilder::new(State::Closed.into(), "", [])
+            EventBuilder::new(State::Closed.into(), "")
                 .custom_created_at(Timestamp::from(Timestamp::now() + 1))
                 .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Closed);
