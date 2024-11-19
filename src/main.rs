@@ -3,14 +3,15 @@ use std::env::{args, var};
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
+use std::iter::once;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
 use crate::event_sender::MostrMessage;
 use crate::helpers::*;
-use crate::kinds::{Prio, BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS};
-use crate::task::{State, Task, TaskState};
+use crate::kinds::{join, match_event_tag, Prio, BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS};
+use crate::task::{State, Task, TaskState, MARKER_PROPERTY};
 use crate::tasks::{PropertyCollection, StateFilter, TasksRelay};
 use chrono::Local;
 use colored::Colorize;
@@ -384,17 +385,27 @@ async fn main() -> Result<()> {
                         match arg {
                             None => {
                                 if let Some(task) = tasks.get_current_task() {
-                                    let mut desc = task.description_events().peekable();
-                                    if desc.peek().is_some() {
-                                        println!("{}",
-                                                 desc.map(|e| format!("{} {}", format_timestamp_local(&e.created_at), e.content))
-                                                     .join("\n"));
-                                        continue 'repl;
+                                    for e in once(&task.event).chain(task.props.iter().rev()) {
+                                        let content = match State::try_from(e.kind) {
+                                            Ok(state) => {
+                                                format!("State: {state}{}",
+                                                        if e.content.is_empty() { String::new() } else { format!(" - {}", e.content) })
+                                            }
+                                            Err(_) => {
+                                                e.content.to_string()
+                                            }
+                                        };
+                                        println!("{} {} [{}]",
+                                                 format_timestamp_local(&e.created_at),
+                                                 content,
+                                                 join(e.tags.iter().filter(|t| match_event_tag(t).unwrap().marker.is_none_or(|m| m != MARKER_PROPERTY))));
                                     }
+                                    continue 'repl;
+                                } else {
+                                    info!("With a task selected, use ,NOTE to attach NOTE and , to list all its updates");
+                                    tasks.recurse_activities = !tasks.recurse_activities;
+                                    info!("Toggled activities recursion to {}", tasks.recurse_activities);
                                 }
-                                info!("With a task selected, use ,NOTE to attach NOTE and , to list all its notes");
-                                tasks.recurse_activities = !tasks.recurse_activities;
-                                info!("Toggled activities recursion to {}", tasks.recurse_activities);
                             }
                             Some(arg) => {
                                 if arg.len() < CHARACTER_THRESHOLD {
