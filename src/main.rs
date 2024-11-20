@@ -457,7 +457,7 @@ async fn main() -> Result<()> {
                             None => {
                                 let today = Timestamp::now() - 80_000;
                                 info!("Filtering for tasks from the last 22 hours");
-                                if !tasks.set_filter_from(today) {
+                                if !tasks.set_filter_since(today) {
                                     continue 'repl;
                                 }
                             }
@@ -475,7 +475,7 @@ async fn main() -> Result<()> {
                                         .or_else(|| parse_date(arg).map(|utc| utc.with_timezone(&Local)))
                                         .map(|time| {
                                             info!("Filtering for tasks from {}", format_datetime_relative(time));
-                                            tasks.set_filter_from(time.to_timestamp())
+                                            tasks.set_filter_since(time.to_timestamp())
                                         })
                                         .is_none_or(|b| !b) {
                                         continue 'repl;

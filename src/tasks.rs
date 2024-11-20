@@ -673,7 +673,7 @@ impl TasksRelay {
         self.pubkey = Some(key)
     }
 
-    pub(crate) fn set_filter_from(&mut self, time: Timestamp) -> bool {
+    pub(crate) fn set_filter_since(&mut self, time: Timestamp) -> bool {
         // TODO filter at both ends
         self.set_filter(|t| t.last_state_update() > time)
     }
