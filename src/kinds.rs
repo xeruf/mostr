@@ -132,12 +132,16 @@ pub fn to_hashtag(tag: &str) -> Tag {
     TagStandard::Hashtag(tag.to_string()).into()
 }
 
-fn format_tag(tag: &Tag) -> String {
+pub fn format_tag(tag: &Tag) -> String {
     if let Some(et) = match_event_tag(tag) {
         return format!("{}: {:.8}",
                        et.marker.as_ref().map(|m| m.to_string()).unwrap_or(MARKER_PARENT.to_string()),
                        et.id);
     }
+    format_tag_basic(tag)
+}
+
+pub fn format_tag_basic(tag: &Tag) -> String {
     match tag.as_standardized() {
         Some(TagStandard::PublicKey {
                  public_key,
@@ -150,12 +154,12 @@ fn format_tag(tag: &Tag) -> String {
     }
 }
 
-pub(crate) fn is_hashtag(tag: &Tag) -> bool {
+pub fn is_hashtag(tag: &Tag) -> bool {
     tag.single_letter_tag()
         .is_some_and(|letter| letter.character == Alphabet::T)
 }
 
-pub(crate) fn to_prio_tag(value: Prio) -> Tag {
+pub fn to_prio_tag(value: Prio) -> Tag {
     Tag::custom(TagKind::Custom(Cow::from(PRIO)), [value.to_string()])
 }
 

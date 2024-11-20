@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use crate::event_sender::MostrMessage;
 use crate::helpers::*;
-use crate::kinds::{join_tags, match_event_tag, Prio, BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS};
+use crate::kinds::{format_tag_basic, match_event_tag, Prio, BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS};
 use crate::task::{State, Task, TaskState, MARKER_PROPERTY};
 use crate::tasks::{PropertyCollection, StateFilter, TasksRelay};
 use chrono::Local;
@@ -385,20 +385,29 @@ async fn main() -> Result<()> {
                         match arg {
                             None => {
                                 if let Some(task) = tasks.get_current_task() {
+                                    println!("Change History:");
                                     for e in once(&task.event).chain(task.props.iter().rev()) {
-                                        let content = match State::try_from(e.kind) {
-                                            Ok(state) => {
-                                                format!("State: {state}{}",
-                                                        if e.content.is_empty() { String::new() } else { format!(" - {}", e.content) })
-                                            }
-                                            Err(_) => {
-                                                e.content.to_string()
-                                            }
-                                        };
                                         println!("{} {} [{}]",
-                                                 format_timestamp_local(&e.created_at),
-                                                 content,
-                                                 join_tags(e.tags.iter().filter(|t| match_event_tag(t).is_some_and(|e| e.marker.as_ref().is_none_or(|m| m != MARKER_PROPERTY)))));
+                                                 format_timestamp_full(&e.created_at),
+                                                 match State::try_from(e.kind) {
+                                                     Ok(state) => {
+                                                         format!("State: {state}{}",
+                                                                 if e.content.is_empty() { String::new() } else { format!(" - {}", e.content) })
+                                                     }
+                                                     Err(_) => {
+                                                         e.content.to_string()
+                                                     }
+                                                 },
+                                                 e.tags.iter().filter_map(|t| {
+                                                     match match_event_tag(t) {
+                                                         Some(et) =>
+                                                             Some(et).take_if(|et| et.marker.as_ref().is_some_and(|m| m != MARKER_PROPERTY))
+                                                                 .map(|et| format!("{}: {}", et.marker.as_ref().unwrap(), tasks.get_relative_path(et.id))),
+                                                         None => 
+                                                             Some(format_tag_basic(t)),
+                                                     }
+                                                 }).join(", ")
+                                        )
                                     }
                                     continue 'repl;
                                 } else {

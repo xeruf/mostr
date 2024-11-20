@@ -146,6 +146,11 @@ pub fn format_timestamp_local(stamp: &Timestamp) -> String {
     format_timestamp(stamp, "%y-%m-%d %a %H:%M")
 }
 
+/// Format nostr timestamp with seconds precision.
+pub fn format_timestamp_full(stamp: &Timestamp) -> String {
+    format_timestamp(stamp, "%y-%m-%d %a %H:%M:%S")
+}
+
 pub fn format_timestamp_relative_to(stamp: &Timestamp, reference: &Timestamp) -> String {
     // Rough difference in days
     match (stamp.as_u64() as i64 - reference.as_u64() as i64) / 80_000 {
