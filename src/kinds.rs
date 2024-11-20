@@ -45,6 +45,7 @@ Task:
 - `time` - time tracked on this task by you
 Utilities:
 - `state` - indicator of current progress
+- `owner` - author or task assignee
 - `rtime` - time tracked on this tasks and its subtree by everyone
 - `progress` - recursive subtask completion in percent
 - `subtasks` - how many direct subtasks are complete

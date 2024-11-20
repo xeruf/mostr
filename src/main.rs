@@ -453,37 +453,37 @@ async fn main() -> Result<()> {
                     }
 
                     Some('@') => {
-                        let success = match arg {
+                        match arg {
                             None => {
                                 let today = Timestamp::now() - 80_000;
                                 info!("Filtering for tasks from the last 22 hours");
-                                tasks.set_filter_from(today)
+                                if !tasks.set_filter_from(today) {
+                                    continue 'repl;
+                                }
                             }
                             Some(arg) => {
                                 if arg == "@" {
-                                    info!("Filtering for own tasks");
-                                    tasks.set_filter_author(keys.public_key())
+                                    info!("Showing everybody's tasks");
+                                    tasks.set_filter_author(None)
                                 } else if let Ok(key) = PublicKey::from_str(arg) {
-                                    let author = tasks.get_username(&key);
-                                    info!("Filtering for tasks by {author}");
-                                    tasks.set_filter_author(key)
+                                    info!("Showing {}'s tasks", tasks.get_username(&key));
+                                    tasks.set_filter_author(Some(key))
                                 } else if let Some((key, meta)) = tasks.find_user(arg) {
-                                    info!("Filtering for tasks by {}", meta.display_name.as_ref().unwrap_or(meta.name.as_ref().unwrap_or(&key.to_string())));
-                                    tasks.set_filter_author(key.clone())
+                                    info!("Showing {}'s tasks", meta.display_name.as_ref().unwrap_or(meta.name.as_ref().unwrap_or(&key.to_string())));
+                                    tasks.set_filter_author(Some(key.clone()))
                                 } else {
-                                    parse_hour(arg, 1)
+                                    if parse_hour(arg, 1)
                                         .or_else(|| parse_date(arg).map(|utc| utc.with_timezone(&Local)))
                                         .map(|time| {
                                             info!("Filtering for tasks from {}", format_datetime_relative(time));
                                             tasks.set_filter_from(time.to_timestamp())
                                         })
-                                        .unwrap_or(false)
+                                        .is_none_or(|b| !b) {
+                                        continue 'repl;
+                                    }
                                 }
                             }
                         };
-                        if !success {
-                            continue 'repl;
-                        }
                     }
 
                     Some('*') => {

@@ -79,6 +79,7 @@ pub(crate) struct TasksRelay {
     state: StateFilter,
     /// Current priority for filtering and new tasks
     priority: Option<Prio>,
+    pubkey: Option<PublicKey>,
 
     sender: EventSender,
     overflow: VecDeque<Event>,
@@ -173,6 +174,7 @@ impl TasksRelay {
             tags_excluded: Default::default(),
             state: Default::default(),
             priority: None,
+            pubkey: Some(sender.pubkey()),
 
             search_depth: 4,
             view_depth: 0,
@@ -382,14 +384,28 @@ impl TasksRelay {
             .and_then(|t| t.parent_id())
     }
 
+    // TODO test with context elements
+    /// Visual representation of current context
     pub(crate) fn get_prompt_suffix(&self) -> String {
-        self.tags.iter()
-            .map(|t| format!(" #{}", t.content().unwrap()))
-            .chain(self.tags_excluded.iter()
-                .map(|t| format!(" -#{}", t.content().unwrap())))
-            .chain(once(self.state.indicator()))
-            .chain(self.priority.map(|p| format!(" *{:02}", p)))
-            .join("")
+        let mut prompt = String::with_capacity(128);
+        match self.pubkey {
+            None => { prompt.push_str(" @ALL"); }
+            Some(key) =>
+                if key != self.sender.pubkey() {
+                    prompt.push_str(" ");
+                    prompt.push_str(&self.get_username(&key))
+                },
+        }
+        for tag in self.tags.iter() {
+            prompt.push_str(&format!(" #{}", tag.content().unwrap()));
+        }
+        for tag in self.tags_excluded.iter() {
+            prompt.push_str(&format!(" -#{}", tag.content().unwrap()));
+        }
+        prompt.push_str(&self.state.indicator());
+        self.priority.map(|p| 
+            prompt.push_str(&format!(" *{:02}", p)));
+        prompt
     }
 
     pub(crate) fn get_task_path(&self, id: Option<EventId>) -> String {
@@ -478,6 +494,7 @@ impl TasksRelay {
 
     fn filter(&self, task: &Task) -> bool {
         self.state.matches(task) &&
+            self.pubkey.is_none_or(|p| p == task.event.pubkey) &&
             self.priority.is_none_or(|prio| {
                 task.priority().unwrap_or(DEFAULT_PRIO) >= prio
             }) &&
@@ -641,8 +658,8 @@ impl TasksRelay {
         Ok(added)
     }
 
-    pub(crate) fn set_filter_author(&mut self, key: PublicKey) -> bool {
-        self.set_filter(|t| t.event.pubkey == key)
+    pub(crate) fn set_filter_author(&mut self, key: Option<PublicKey>) {
+        self.pubkey = key
     }
 
     pub(crate) fn set_filter_from(&mut self, time: Timestamp) -> bool {
