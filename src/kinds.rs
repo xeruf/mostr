@@ -78,7 +78,8 @@ where
         .tags(id.into_iter().map(Tag::event))
 }
 
-pub fn join<'a, T>(tags: T) -> String
+/// Formats and joins the tags with commata
+pub fn join_tags<'a, T>(tags: T) -> String
 where
     T: IntoIterator<Item=&'a Tag>,
 {

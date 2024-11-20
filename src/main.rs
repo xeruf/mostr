@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use crate::event_sender::MostrMessage;
 use crate::helpers::*;
-use crate::kinds::{join, match_event_tag, Prio, BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS};
+use crate::kinds::{join_tags, match_event_tag, Prio, BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS};
 use crate::task::{State, Task, TaskState, MARKER_PROPERTY};
 use crate::tasks::{PropertyCollection, StateFilter, TasksRelay};
 use chrono::Local;
@@ -84,7 +84,7 @@ fn read_keys(readline: &mut DefaultEditor) -> Result<Keys> {
 #[tokio::main]
 async fn main() -> Result<()> {
     println!("Running Mostr Version {}", env!("CARGO_PKG_VERSION"));
-    
+
     let mut args = args().skip(1).peekable();
     let mut builder = if args.peek().is_some_and(|arg| arg == "--debug") {
         args.next();
@@ -398,7 +398,7 @@ async fn main() -> Result<()> {
                                         println!("{} {} [{}]",
                                                  format_timestamp_local(&e.created_at),
                                                  content,
-                                                 join(e.tags.iter().filter(|t| match_event_tag(t).unwrap().marker.is_none_or(|m| m != MARKER_PROPERTY))));
+                                                 join_tags(e.tags.iter().filter(|t| match_event_tag(t).is_some_and(|e| e.marker.as_ref().is_none_or(|m| m != MARKER_PROPERTY)))));
                                     }
                                     continue 'repl;
                                 } else {

@@ -399,6 +399,14 @@ impl TasksRelay {
             .unwrap_or_default()
     }
 
+    pub(crate) fn get_relative_path(&self, id: EventId) -> String {
+        join_tasks(
+            self.traverse_up_from(Some(id))
+                .take_while(|t| Some(t.event.id) != self.get_position()),
+            false,
+        ).unwrap_or(id.to_string())
+    }
+
     /// Iterate over the task referenced by the given id and all its available parents.
     fn traverse_up_from(&self, id: Option<EventId>) -> ParentIterator {
         ParentIterator {
@@ -407,13 +415,6 @@ impl TasksRelay {
         }
     }
 
-    fn relative_path(&self, id: EventId) -> String {
-        join_tasks(
-            self.traverse_up_from(Some(id))
-                .take_while(|t| Some(t.event.id) != self.get_position()),
-            false,
-        ).unwrap_or(id.to_string())
-    }
 
     // Helpers
 
@@ -597,7 +598,7 @@ impl TasksRelay {
                     }
                 }),
             "path" => self.get_task_path(Some(task.event.id)),
-            "rpath" => self.relative_path(task.event.id),
+            "rpath" => self.get_relative_path(task.event.id),
             // TODO format strings configurable
             "time" => display_time("MMMm", self.time_tracked(*task.get_id())),
             "rtime" => display_time("HH:MM", self.total_time_tracked(*task.get_id())),
@@ -973,7 +974,7 @@ impl TasksRelay {
         let (input, input_tags) = extract_tags(input.trim());
         let prio =
             if input_tags.iter().any(|t| t.kind().to_string() == PRIO) { None } else { self.priority.map(|p| to_prio_tag(p)) };
-        info!("Created task \"{input}\" with tags [{}]", join(&input_tags));
+        info!("Created task \"{input}\" with tags [{}]", join_tags(&input_tags));
         let id = self.submit(
             EventBuilder::new(TASK_KIND, &input)
                 .tags(input_tags)
@@ -1215,7 +1216,7 @@ impl TasksRelay {
     /// Sanitizes Input.
     pub(crate) fn make_note(&mut self, note: &str) -> EventId {
         let (name, tags) = extract_tags(note.trim());
-        let format = format!("\"{name}\" with tags [{}]", join(&tags));
+        let format = format!("\"{name}\" with tags [{}]", join_tags(&tags));
         let mut prop =
             EventBuilder::new(Kind::TextNote, name).tags(tags);
         //.filter(|id| self.get_by_id(id).is_some_and(|t| t.is_task()))
@@ -1447,6 +1448,8 @@ fn display_time(format: &str, secs: u64) -> String {
         )
 }
 
+/// Joins the tasks of this upwards iterator.
+/// * `include_last_id` whether to add the id of an unknown parent at the top
 pub(crate) fn join_tasks<'a>(
     iter: impl Iterator<Item=&'a Task>,
     include_last_id: bool,
@@ -1455,14 +1458,12 @@ pub(crate) fn join_tasks<'a>(
     tasks
         .iter()
         .map(|t| t.get_title())
-        .chain(if include_last_id {
+        .chain(
             tasks.last()
+                .take_if(|_| include_last_id)
                 .and_then(|t| t.parent_id())
                 .map(|id| id.to_string())
-                .into_iter()
-        } else {
-            None.into_iter()
-        })
+                .into_iter())
         .fold(None, |acc, val| {
             Some(acc.map_or_else(
                 || val.clone(),
@@ -1963,7 +1964,7 @@ mod tasks_test {
         let t11 = tasks.make_task("t11 # tag");
         assert_eq!(tasks.visible_tasks().len(), 1);
         assert_eq!(tasks.get_task_path(Some(t11)), "t1>t11");
-        assert_eq!(tasks.relative_path(t11), "t11");
+        assert_eq!(tasks.get_relative_path(t11), "t11");
         let t12 = tasks.make_task("t12");
         assert_eq!(tasks.visible_tasks().len(), 2);
 
@@ -1973,7 +1974,7 @@ mod tasks_test {
         let t111 = tasks.make_task("t111");
         assert_tasks!(tasks, [t111]);
         assert_eq!(tasks.get_task_path(Some(t111)), "t1>t11>t111");
-        assert_eq!(tasks.relative_path(t111), "t111");
+        assert_eq!(tasks.get_relative_path(t111), "t111");
         tasks.view_depth = 2;
         assert_tasks!(tasks, [t111]);
 
@@ -1988,7 +1989,7 @@ mod tasks_test {
         tasks.move_to(Some(t1));
         assert_position!(tasks, t1);
         assert_eq!(tasks.get_own_events_history().count(), 3);
-        assert_eq!(tasks.relative_path(t111), "t11>t111");
+        assert_eq!(tasks.get_relative_path(t111), "t11>t111");
         assert_eq!(tasks.view_depth, 2);
         assert_tasks!(tasks, [t111, t12]);
         tasks.set_view(vec![t11]);
@@ -2041,7 +2042,7 @@ mod tasks_test {
             tasks.get_task_path(Some(dangling)),
             "0000000000000000000000000000000000000000000000000000000000000000>test"
         );
-        assert_eq!(tasks.relative_path(dangling), "test");
+        assert_eq!(tasks.get_relative_path(dangling), "test");
     }
 
     #[allow(dead_code)] // #[test]
