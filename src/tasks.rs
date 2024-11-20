@@ -1285,13 +1285,14 @@ impl Display for TasksRelay {
             }
             writeln!(
                 lock,
-                "Active from {} (total tracked time {}m) - {} since {}",
+                "Active from {} (total tracked time {}m) - State {} since {}",
                 tracking_stamp.map_or("?".to_string(), |t| format_timestamp_relative(&t)),
                 self.time_tracked(*t.get_id()) / 60,
                 state.get_label(),
                 format_timestamp_relative(&state.time)
             )?;
-            writeln!(lock, "{}", t.descriptions().join("\n"))?;
+            for d in t.descriptions() { writeln!(lock, "{}", d)?; }
+            writeln!(lock)?;
         }
 
         let position = self.get_position();
