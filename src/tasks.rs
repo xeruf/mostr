@@ -1291,7 +1291,7 @@ impl Display for TasksRelay {
                 state.get_label(),
                 format_timestamp_relative(&state.time)
             )?;
-            for d in t.descriptions() { writeln!(lock, "{}", d)?; }
+            for d in t.descriptions().rev() { writeln!(lock, "{}", d)?; }
             writeln!(lock)?;
         }
 

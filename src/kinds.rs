@@ -41,7 +41,7 @@ Task:
 - `hashtags` - list of hashtags set for the task
 - `tags` - values of all nostr tags associated with the event, except event tags
 - `desc` - last note on the task
-- `description` - accumulated notes on the task
+- `description` - all notes on the task
 - `time` - time tracked on this task by you
 Utilities:
 - `state` - indicator of current progress

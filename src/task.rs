@@ -92,11 +92,12 @@ impl Task {
         self.event.content.trim().trim_start_matches('#').to_string()
     }
 
-    pub(crate) fn description_events(&self) -> impl Iterator<Item=&Event> + '_ {
+    fn description_events(&self) -> impl DoubleEndedIterator<Item=&Event> + '_ {
         self.props.iter().filter(|event| event.kind == Kind::TextNote)
     }
 
-    pub(crate) fn descriptions(&self) -> impl Iterator<Item=&String> + '_ {
+    /// Description items, ordered newest to oldest
+    pub(crate) fn descriptions(&self) -> impl DoubleEndedIterator<Item=&String> + '_ {
         self.description_events().map(|e| &e.content)
     }
 
@@ -208,8 +209,8 @@ impl Task {
             // Dynamic
             "priority" => self.priority_raw().map(|c| c.to_string()),
             "status" => self.state_label().map(|c| c.to_string()),
-            "desc" => self.descriptions().last().cloned(),
-            "description" => Some(self.descriptions().join(" ")),
+            "desc" => self.descriptions().next().cloned(),
+            "description" => Some(self.descriptions().rev().join(" ")),
             "hashtags" => Some(self.join_tags(|tag| { is_hashtag(tag) })),
             "tags" => Some(self.join_tags(|_| true)), // TODO test these!
             "alltags" => Some(format!("{:?}", self.tags)),
