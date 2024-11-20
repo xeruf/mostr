@@ -658,8 +658,19 @@ impl TasksRelay {
         Ok(added)
     }
 
-    pub(crate) fn set_filter_author(&mut self, key: Option<PublicKey>) {
-        self.pubkey = key
+    pub(crate) fn reset_key_filter(&mut self) {
+        let own = self.sender.pubkey();
+        if self.pubkey.is_some_and(|k| k == own) {
+            info!("Showing everybody's tasks");
+            self.pubkey = None
+        } else {
+            info!("Showing own tasks");
+            self.pubkey = Some(own)
+        }
+    }
+
+    pub(crate) fn set_key_filter(&mut self, key: PublicKey) {
+        self.pubkey = Some(key)
     }
 
     pub(crate) fn set_filter_from(&mut self, time: Timestamp) -> bool {
@@ -703,10 +714,11 @@ impl TasksRelay {
 
     pub(crate) fn clear_filters(&mut self) {
         self.state = StateFilter::Default;
+        self.pubkey = Some(self.sender.pubkey());
         self.view.clear();
         self.tags.clear();
         self.tags_excluded.clear();
-        info!("Removed all filters");
+        info!("Reset all filters");
     }
 
     pub(crate) fn has_tag_filter(&self) -> bool {

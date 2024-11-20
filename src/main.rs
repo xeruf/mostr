@@ -463,14 +463,13 @@ async fn main() -> Result<()> {
                             }
                             Some(arg) => {
                                 if arg == "@" {
-                                    info!("Showing everybody's tasks");
-                                    tasks.set_filter_author(None)
+                                    tasks.reset_key_filter()
                                 } else if let Ok(key) = PublicKey::from_str(arg) {
                                     info!("Showing {}'s tasks", tasks.get_username(&key));
-                                    tasks.set_filter_author(Some(key))
+                                    tasks.set_key_filter(key)
                                 } else if let Some((key, meta)) = tasks.find_user(arg) {
                                     info!("Showing {}'s tasks", meta.display_name.as_ref().unwrap_or(meta.name.as_ref().unwrap_or(&key.to_string())));
-                                    tasks.set_filter_author(Some(key.clone()))
+                                    tasks.set_key_filter(key.clone())
                                 } else {
                                     if parse_hour(arg, 1)
                                         .or_else(|| parse_date(arg).map(|utc| utc.with_timezone(&Local)))
