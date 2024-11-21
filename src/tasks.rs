@@ -279,12 +279,12 @@ impl TasksRelay {
                     }
                     // TODO show history for active tags
                     (
-                        "Your Time-Tracking History:".to_string(),
+                        format!("Time-Tracking History for {}:", self.get_displayname(&key)),
                         Box::from(full.into_iter()),
                     )
                 } else {
                     (
-                        "You have nothing time-tracked yet".to_string(),
+                        "Nothing time-tracked yet".to_string(),
                         Box::from(empty()),
                     )
                 }

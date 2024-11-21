@@ -386,7 +386,7 @@ async fn main() -> Result<()> {
                         match arg {
                             None => {
                                 if let Some(task) = tasks.get_current_task() {
-                                    println!("Change History:");
+                                    println!("Change History for {}:", task.get_id());
                                     for e in once(&task.event).chain(task.props.iter().rev()) {
                                         println!("{} {} [{}]",
                                                  format_timestamp_full(&e.created_at),
