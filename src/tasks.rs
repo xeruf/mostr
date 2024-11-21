@@ -243,12 +243,8 @@ impl TasksRelay {
             .filter(|t| t.pure_state() != State::Closed)
     }
 
-    pub(crate) fn all_hashtags(&self) -> impl Iterator<Item=String> {
-        self.nonclosed_tasks()
-            .flat_map(|t| t.list_hashtags())
-            .sorted_unstable()
-            .dedup()
-            .map(|h| h.0)
+    pub(crate) fn all_hashtags(&self) -> BTreeSet<Hashtag> {
+        self.nonclosed_tasks().flat_map(|t| t.list_hashtags()).collect()
     }
 
     /// Dynamic time tracking overview for current task or current user.
@@ -727,7 +723,7 @@ impl TasksRelay {
     pub(crate) fn print_hashtags(&self) {
         println!(
             "Hashtags of all known tasks:\n{}",
-            self.all_hashtags().join(" ").italic()
+            self.all_hashtags().into_iter().join(" ").italic()
         );
     }
 
@@ -751,10 +747,10 @@ impl TasksRelay {
         self.tags.extend(tags);
     }
 
-    pub(crate) fn add_tag(&mut self, tag: String) {
+    pub(crate) fn add_tag(&mut self, tag: &str) {
         self.view.clear();
         info!("Added tag filter for #{tag}");
-        let tag = Hashtag(tag);
+        let tag = Hashtag::from(tag);
         self.tags_excluded.remove(&tag);
         self.tags.insert(tag);
     }
@@ -762,11 +758,11 @@ impl TasksRelay {
     pub(crate) fn remove_tag(&mut self, tag: &str) {
         self.view.clear();
         let len = self.tags.len();
-        self.tags.retain(|t| !t.starts_with(tag));
+        self.tags.retain(|t| !t.matches(tag));
         if self.tags.len() < len {
-            info!("Removed tag filters starting with {tag}");
+            info!("Removed tag filters containing {tag}");
         } else {
-            self.tags_excluded.insert(Hashtag(tag.to_string()).into());
+            self.tags_excluded.insert(Hashtag::from(tag).into());
             info!("Excluding #{tag} from view");
         }
     }
@@ -1784,21 +1780,30 @@ mod tasks_test {
         let parent = tasks.make_task("parent #tag1");
         tasks.move_to(Some(parent));
         let sub = tasks.make_task("sub #oi # tag2");
-        assert_eq!(tasks.all_hashtags().collect_vec(), vec!["oi", "tag1", "tag2"]);
+        assert_eq!(tasks.all_hashtags(), ["oi", "tag1", "tag2"].into_iter().map(Hashtag::from).collect());
         tasks.make_note("note with #tag3 # yeah");
-        assert_eq!(tasks.all_hashtags().collect_vec(), vec!["oi", "tag1", "tag2", "tag3", "yeah"]);
+        let all_tags = ["oi", "tag1", "tag2", "tag3", "yeah"].into_iter().map(Hashtag::from).collect();
+        assert_eq!(tasks.all_hashtags(), all_tags);
 
         tasks.custom_time = Some(Timestamp::now());
         tasks.update_state("Finished #YeaH # oi", State::Done);
         assert_eq!(tasks.get_by_id(&parent).unwrap().list_hashtags().collect_vec(), ["tag1", "YeaH", "oi", "tag3", "yeah"].map(Hashtag::from));
-        assert_eq!(tasks.all_hashtags().collect_vec(), vec!["oi", "tag1", "tag2", "tag3", "YeaH"]);
+        assert_eq!(tasks.all_hashtags(), all_tags);
 
         tasks.custom_time = Some(now());
         tasks.update_state("Closing Down", State::Closed);
         assert_eq!(tasks.get_by_id(&sub).unwrap().pure_state(), State::Closed);
         assert_eq!(tasks.get_by_id(&parent).unwrap().pure_state(), State::Closed);
         assert_eq!(tasks.nonclosed_tasks().next(), None);
-        assert_eq!(tasks.all_hashtags().next(), None);
+        assert_eq!(tasks.all_hashtags(), Default::default());
+    }
+    
+    #[test]
+    fn test_tags() {
+        let mut tasks = stub_tasks();
+        tasks.update_tags(["dp", "yeah"].into_iter().map(Hashtag::from));
+        tasks.remove_tag("Y");
+        assert_eq!(tasks.tags, ["dp"].into_iter().map(Hashtag::from).collect());
     }
 
     #[test]
@@ -1854,7 +1859,7 @@ mod tasks_test {
         assert_tasks!(tasks, [pin, test, parent]);
         tasks.set_view_depth(1);
         assert_tasks!(tasks, [pin, test]);
-        tasks.add_tag("tag".to_string());
+        tasks.add_tag("tag");
         assert_tasks!(tasks, [test]);
         assert_eq!(
             tasks.filtered_tasks(None, true),
@@ -2042,7 +2047,7 @@ mod tasks_test {
         tasks.view_depth = 9;
         assert_tasks!(tasks, [t111, t12]);
 
-        tasks.add_tag("tag".to_string());
+        tasks.add_tag("tag");
         tasks.view_depth = 0;
         assert_tasks!(tasks, [t11]);
         tasks.search_depth = 0;

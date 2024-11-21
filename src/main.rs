@@ -584,7 +584,7 @@ async fn main() -> Result<()> {
 
                     Some('+') =>
                         match arg {
-                            Some(arg) => tasks.add_tag(arg.to_string()),
+                            Some(arg) => tasks.add_tag(arg),
                             None => {
                                 tasks.print_hashtags();
                                 if tasks.has_tag_filter() {
@@ -710,7 +710,7 @@ async fn main() -> Result<()> {
                                 tasks.get_filtered(pos, |t| {
                                     transform(&t.event.content).contains(&remaining) ||
                                         t.list_hashtags().any(
-                                            |tag| tag.contains(&remaining))
+                                            |tag| tag.matches(&remaining))
                                 });
                             if filtered.len() == 1 {
                                 tasks.move_to(filtered.into_iter().next());
