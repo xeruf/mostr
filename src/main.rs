@@ -465,12 +465,9 @@ async fn main() -> Result<()> {
                             Some(arg) => {
                                 if arg == "@" {
                                     tasks.reset_key_filter()
-                                } else if let Ok(key) = PublicKey::from_str(arg) {
-                                    info!("Showing {}'s tasks", tasks.get_username(&key));
+                                } else if let Some((key, name)) = tasks.find_user_with_displayname(arg) {
+                                    info!("Showing {}'s tasks", name);
                                     tasks.set_key_filter(key)
-                                } else if let Some((key, meta)) = tasks.find_user(arg) {
-                                    info!("Showing {}'s tasks", meta.display_name.as_ref().unwrap_or(meta.name.as_ref().unwrap_or(&key.to_string())));
-                                    tasks.set_key_filter(key.clone())
                                 } else {
                                     if parse_hour(arg, 1)
                                         .or_else(|| parse_date(arg).map(|utc| utc.with_timezone(&Local)))
@@ -622,7 +619,7 @@ async fn main() -> Result<()> {
                                                      label)
                                          },
                                          vec.iter().rev().join("\n"));
-                            } else if let Ok(key) = PublicKey::parse(arg) { // TODO also match name
+                            } else if let Some((key, _)) = tasks.find_user(arg) {
                                 let (label, mut times) = tasks.times_tracked_for(&key);
                                 println!("{}\n{}", label.italic(),
                                          times.join("\n"));

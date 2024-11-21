@@ -618,11 +618,29 @@ impl TasksRelay {
         }
     }
 
+    pub(crate) fn find_user_with_displayname(&self, term: &str) -> Option<(PublicKey, String)> {
+        match PublicKey::from_str(term) {
+            Ok(key) => Some((key, self.get_displayname(&key))),
+            Err(_) => self.find_user(term).map(|(k, _)| (*k, self.get_displayname(k))),
+        }
+    }
+
+    // Find username or key starting with the given term.
     pub(crate) fn find_user(&self, term: &str) -> Option<(&PublicKey, &Metadata)> {
-        self.users.iter().find(|(_, v)|
+        if let Ok(key) = PublicKey::from_str(term) {
+            return self.users.get_key_value(&key);
+        }
+        self.users.iter().find(|(k, v)|
             // TODO regex word boundary
             v.name.as_ref().is_some_and(|n| n.starts_with(term)) ||
-                v.display_name.as_ref().is_some_and(|n| n.starts_with(term)))
+                v.display_name.as_ref().is_some_and(|n| n.starts_with(term)) ||
+                (term.len() > 4 && k.to_string().starts_with(term)))
+    }
+
+    pub(crate) fn get_displayname(&self, pubkey: &PublicKey) -> String {
+        self.users.get(pubkey)
+            .and_then(|m| m.display_name.clone().or(m.name.clone()))
+            .unwrap_or_else(|| pubkey.to_string())
     }
 
     pub(crate) fn get_username(&self, pubkey: &PublicKey) -> String {
@@ -1087,6 +1105,10 @@ impl TasksRelay {
     }
 
     pub(crate) fn add(&mut self, event: Event) {
+        let author = event.pubkey;
+        if !self.users.contains_key(&author) {
+            self.users.insert(author, Metadata::new());
+        }
         match event.kind {
             Kind::GitIssue => self.add_task(event),
             Kind::Metadata => match Metadata::from_json(event.content.as_str()) {
