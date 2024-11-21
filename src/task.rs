@@ -11,9 +11,9 @@ use itertools::Either::{Left, Right};
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Alphabet, Event, EventId, Kind, Tag, Timestamp};
-
+use crate::hashtag::{is_hashtag, Hashtag};
 use crate::helpers::{format_timestamp_local, some_non_empty};
-use crate::kinds::{is_hashtag, match_event_tag, Prio, PRIO, PROCEDURE_KIND, PROCEDURE_KIND_ID, TASK_KIND};
+use crate::kinds::{match_event_tag, Prio, PRIO, PROCEDURE_KIND, PROCEDURE_KIND_ID, TASK_KIND};
 use crate::tasks::now;
 
 pub static MARKER_PARENT: &str = "parent";
@@ -174,8 +174,8 @@ impl Task {
         }
     }
 
-    pub(crate) fn get_hashtags(&self) -> impl Iterator<Item=&Tag> {
-        self.tags().filter(|t| is_hashtag(t))
+    pub(crate) fn list_hashtags(&self) -> impl Iterator<Item=Hashtag> + use<'_> {
+        self.tags().filter_map(|t| Hashtag::try_from(t).ok())
     }
 
     fn tags(&self) -> impl Iterator<Item=&Tag> {
@@ -357,7 +357,7 @@ mod tasks_test {
             EventBuilder::new(TASK_KIND, "task").tags([Tag::hashtag("tag1")])
                 .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Open);
-        assert_eq!(task.get_hashtags().count(), 1);
+        assert_eq!(task.list_hashtags().count(), 1);
         task.props.insert(
             EventBuilder::new(State::Done.into(), "")
                 .sign_with_keys(&keys).unwrap());
@@ -367,7 +367,7 @@ mod tasks_test {
                 .custom_created_at(Timestamp::from(Timestamp::now() - 2))
                 .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Done);
-        assert_eq!(task.get_hashtags().count(), 2);
+        assert_eq!(task.list_hashtags().count(), 2);
         task.props.insert(
             EventBuilder::new(State::Closed.into(), "")
                 .custom_created_at(Timestamp::from(Timestamp::now() + 1))

@@ -21,7 +21,6 @@ use itertools::Itertools;
 use keyring::Entry;
 use log::{debug, error, info, trace, warn, LevelFilter};
 use nostr_sdk::prelude::*;
-use nostr_sdk::TagStandard::Hashtag;
 use regex::Regex;
 use rustyline::config::Configurer;
 use rustyline::error::ReadlineError;
@@ -29,12 +28,14 @@ use rustyline::DefaultEditor;
 use tokio::sync::mpsc;
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
+use crate::hashtag::Hashtag;
 
 mod helpers;
 mod task;
 mod tasks;
 mod kinds;
 mod event_sender;
+mod hashtag;
 
 const INACTVITY_DELAY: u64 = 200;
 const LOCAL_RELAY_NAME: &str = "TEMP";
@@ -576,7 +577,7 @@ async fn main() -> Result<()> {
                         }
 
                     Some('#') => {
-                        if !tasks.update_tags(arg_default.split_whitespace().map(|s| Hashtag(s.to_string()).into())) {
+                        if !tasks.update_tags(arg_default.split_whitespace().map(Hashtag::from)) {
                             continue;
                         }
                     }
@@ -708,8 +709,8 @@ async fn main() -> Result<()> {
                             let filtered =
                                 tasks.get_filtered(pos, |t| {
                                     transform(&t.event.content).contains(&remaining) ||
-                                        t.get_hashtags().any(
-                                            |tag| tag.content().is_some_and(|s| transform(s).contains(&remaining)))
+                                        t.list_hashtags().any(
+                                            |tag| tag.contains(&remaining))
                                 });
                             if filtered.len() == 1 {
                                 tasks.move_to(filtered.into_iter().next());

@@ -92,7 +92,7 @@ pub(crate) fn extract_hashtags(input: &str) -> impl Iterator<Item=Tag> + '_ {
     input.split_ascii_whitespace()
         .filter(|s| s.starts_with('#'))
         .map(|s| s.trim_start_matches('#'))
-        .map(to_hashtag)
+        .map(to_hashtag_tag)
 }
 
 /// Extracts everything after a " # " as a list of tags 
@@ -121,7 +121,7 @@ pub(crate) fn extract_tags(input: &str) -> (String, Vec<Tag>) {
     let mut split = result.split(|e| { e == &"#" });
     let main = split.next().unwrap().join(" ");
     let mut tags = extract_hashtags(&main)
-        .chain(split.flatten().map(|s| to_hashtag(&s)))
+        .chain(split.flatten().map(|s| to_hashtag_tag(&s)))
         .chain(prio.map(|p| to_prio_tag(p)))
         .collect_vec();
     tags.sort();
@@ -129,7 +129,7 @@ pub(crate) fn extract_tags(input: &str) -> (String, Vec<Tag>) {
     (main, tags)
 }
 
-pub fn to_hashtag(tag: &str) -> Tag {
+pub fn to_hashtag_tag(tag: &str) -> Tag {
     TagStandard::Hashtag(tag.to_string()).into()
 }
 
@@ -155,11 +155,6 @@ pub fn format_tag_basic(tag: &Tag) -> String {
     }
 }
 
-pub fn is_hashtag(tag: &Tag) -> bool {
-    tag.single_letter_tag()
-        .is_some_and(|letter| letter.character == Alphabet::T)
-}
-
 pub fn to_prio_tag(value: Prio) -> Tag {
     Tag::custom(TagKind::Custom(Cow::from(PRIO)), [value.to_string()])
 }
@@ -169,7 +164,7 @@ fn test_extract_tags() {
     assert_eq!(extract_tags("Hello from #mars with #greetings #yeah *4 # # yeah done-it"),
                ("Hello from #mars with #greetings #yeah".to_string(),
                 std::iter::once(Tag::custom(TagKind::Custom(Cow::from(PRIO)), [40.to_string()]))
-                    .chain(["done-it", "greetings", "mars", "yeah"].into_iter().map(to_hashtag)).collect()));
+                    .chain(["done-it", "greetings", "mars", "yeah"].into_iter().map(to_hashtag_tag)).collect()));
     assert_eq!(extract_tags("So tagless #"),
                ("So tagless".to_string(), vec![]));
 }

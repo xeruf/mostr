@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt::{Display, Formatter};
-use std::io::Write;
 use std::iter::{empty, once, FusedIterator};
 use std::ops::{Div, Rem};
 use std::str::FromStr;
 use std::time::Duration;
 
+use crate::hashtag::Hashtag;
 use crate::event_sender::{EventSender, MostrMessage};
 use crate::helpers::{format_timestamp_local, format_timestamp_relative, format_timestamp_relative_to, parse_tracking_stamp, some_non_empty, to_string_or_default, CHARACTER_THRESHOLD};
 use crate::kinds::*;
@@ -16,7 +16,6 @@ use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey, SingleLetterTag, Tag, TagKind, TagStandard, Timestamp, Url};
 use regex::bytes::Regex;
 use tokio::sync::mpsc::Sender;
-use TagStandard::Hashtag;
 
 const DEFAULT_PRIO: Prio = 25;
 pub const HIGH_PRIO: Prio = 85;
@@ -72,9 +71,9 @@ pub(crate) struct TasksRelay {
     pub(crate) recurse_activities: bool,
 
     /// Currently active tags
-    tags: BTreeSet<Tag>,
+    tags: BTreeSet<Hashtag>,
     /// Tags filtered out from view
-    tags_excluded: BTreeSet<Tag>,
+    tags_excluded: BTreeSet<Hashtag>,
     /// Current active state
     state: StateFilter,
     /// Current priority for filtering and new tasks
@@ -244,12 +243,12 @@ impl TasksRelay {
             .filter(|t| t.pure_state() != State::Closed)
     }
 
-    pub(crate) fn all_hashtags(&self) -> impl Iterator<Item=&str> {
+    pub(crate) fn all_hashtags(&self) -> impl Iterator<Item=String> {
         self.nonclosed_tasks()
-            .flat_map(|t| t.get_hashtags())
-            .filter_map(|tag| tag.content().map(|s| s.trim()))
+            .flat_map(|t| t.list_hashtags())
             .sorted_unstable()
             .dedup()
+            .map(|h| h.0)
     }
 
     /// Dynamic time tracking overview for current task or current user.
@@ -397,10 +396,10 @@ impl TasksRelay {
                 },
         }
         for tag in self.tags.iter() {
-            prompt.push_str(&format!(" #{}", tag.content().unwrap()));
+            prompt.push_str(&format!(" #{}", tag));
         }
         for tag in self.tags_excluded.iter() {
-            prompt.push_str(&format!(" -#{}", tag.content().unwrap()));
+            prompt.push_str(&format!(" -#{}", tag));
         }
         prompt.push_str(&self.state.indicator());
         self.priority.map(|p| 
@@ -498,10 +497,10 @@ impl TasksRelay {
             self.priority.is_none_or(|prio| {
                 task.priority().unwrap_or(DEFAULT_PRIO) >= prio
             }) &&
-            !task.get_hashtags().any(|tag| self.tags_excluded.contains(tag)) &&
+            !task.list_hashtags().any(|tag| self.tags_excluded.contains(&tag)) &&
             (self.tags.is_empty() || {
-                let mut iter = task.get_hashtags().sorted_unstable();
-                self.tags.iter().all(|tag| iter.any(|t| t == tag))
+                let mut iter = task.list_hashtags().sorted_unstable();
+                self.tags.iter().all(|tag| iter.any(|t| &t == tag))
             })
     }
 
@@ -733,7 +732,7 @@ impl TasksRelay {
     }
 
     /// Returns true if tags have been updated, false if it printed something
-    pub(crate) fn update_tags(&mut self, tags: impl IntoIterator<Item=Tag>) -> bool {
+    pub(crate) fn update_tags(&mut self, tags: impl IntoIterator<Item=Hashtag>) -> bool {
         let mut peekable = tags.into_iter().peekable();
         if self.tags.is_empty() && peekable.peek().is_none() {
             if !self.tags_excluded.is_empty() {
@@ -747,7 +746,7 @@ impl TasksRelay {
         }
     }
 
-    fn set_tags(&mut self, tags: impl IntoIterator<Item=Tag>) {
+    fn set_tags(&mut self, tags: impl IntoIterator<Item=Hashtag>) {
         self.tags.clear();
         self.tags.extend(tags);
     }
@@ -755,7 +754,7 @@ impl TasksRelay {
     pub(crate) fn add_tag(&mut self, tag: String) {
         self.view.clear();
         info!("Added tag filter for #{tag}");
-        let tag: Tag = Hashtag(tag).into();
+        let tag = Hashtag(tag);
         self.tags_excluded.remove(&tag);
         self.tags.insert(tag);
     }
@@ -763,9 +762,7 @@ impl TasksRelay {
     pub(crate) fn remove_tag(&mut self, tag: &str) {
         self.view.clear();
         let len = self.tags.len();
-        self.tags.retain(|t| {
-            !t.content().is_some_and(|value| value.to_string().starts_with(tag))
-        });
+        self.tags.retain(|t| !t.starts_with(tag));
         if self.tags.len() < len {
             info!("Removed tag filters starting with {tag}");
         } else {
@@ -964,6 +961,10 @@ impl TasksRelay {
         })
     }
 
+    fn context_hashtags(&self) -> impl Iterator<Item=Tag> + use<'_> {
+        self.tags.iter().map(Tag::from)
+    }
+    
     /// Creates a task following the current state
     ///
     /// Sanitizes input
@@ -1007,7 +1008,7 @@ impl TasksRelay {
         let id = self.submit(
             EventBuilder::new(TASK_KIND, &input)
                 .tags(input_tags)
-                .tags(self.tags.iter().cloned())
+                .tags(self.context_hashtags())
                 .tags(tags)
                 .tags(prio)
         );
@@ -1255,7 +1256,7 @@ impl TasksRelay {
                 MARKER_PROPERTY
             } else {
                 // Activity if parent is not a task
-                prop = prop.add_tags(self.tags.iter().cloned());
+                prop = prop.add_tags(self.context_hashtags());
                 MARKER_PARENT
             };
         info!("Created {} {format}", if marker == MARKER_PROPERTY { "note" } else { "activity" } );
@@ -1788,9 +1789,9 @@ mod tasks_test {
         assert_eq!(tasks.all_hashtags().collect_vec(), vec!["oi", "tag1", "tag2", "tag3", "yeah"]);
 
         tasks.custom_time = Some(Timestamp::now());
-        tasks.update_state("Finished #yeah # oi", State::Done);
-        assert_eq!(tasks.get_by_id(&parent).unwrap().get_hashtags().cloned().collect_vec(), ["tag1", "oi", "yeah", "tag3", "yeah"].map(to_hashtag));
-        assert_eq!(tasks.all_hashtags().collect_vec(), vec!["oi", "tag1", "tag2", "tag3", "yeah"]);
+        tasks.update_state("Finished #YeaH # oi", State::Done);
+        assert_eq!(tasks.get_by_id(&parent).unwrap().list_hashtags().collect_vec(), ["tag1", "YeaH", "oi", "tag3", "yeah"].map(Hashtag::from));
+        assert_eq!(tasks.all_hashtags().collect_vec(), vec!["oi", "tag1", "tag2", "tag3", "YeaH"]);
 
         tasks.custom_time = Some(now());
         tasks.update_state("Closing Down", State::Closed);
