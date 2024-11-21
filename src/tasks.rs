@@ -542,16 +542,55 @@ impl TasksRelay {
         current
     }
 
-    // TODO this is a relict for tests
-    #[deprecated]
     fn visible_tasks(&self) -> Vec<&Task> {
-        if self.search_depth == 0 {
-            return vec![];
+        let tasks = self.viewed_tasks();
+        if self.view.is_empty() && !tasks.is_empty() {
+            let bookmarks = self.bookmarked_tasks_deduped(&tasks);
+            return bookmarks.chain(tasks.into_iter()).collect_vec();
         }
-        if !self.view.is_empty() {
-            return self.view.iter().flat_map(|id| self.get_by_id(id)).collect();
+        tasks
+    }
+
+    fn viewed_tasks(&self) -> Vec<&Task> {
+        let view = self.view.iter()
+            .flat_map(|id| self.get_by_id(id))
+            .collect_vec();
+        if self.search_depth > 0 && view.is_empty() {
+            self.resolve_tasks_rec(
+                self.tasks.children_for(self.get_position()),
+                true,
+                self.search_depth + self.view_depth,
+            )
+        } else {
+            self.resolve_tasks_rec(view.into_iter(), true, self.view_depth)
         }
-        self.filtered_tasks(self.get_position(), true)
+    }
+
+    fn bookmarked_tasks_deduped(&self, visible: &[&Task]) -> impl Iterator<Item=&Task> {
+        let tree = visible.iter()
+            .flat_map(|task| self.traverse_up_from(Some(task.event.id)))
+            .unique();
+        let pos = self.get_position();
+        let ids: HashSet<&EventId> = tree.map(|t| t.get_id()).chain(pos.as_ref()).collect();
+        // TODO add recent tasks (most time tracked + recently created)
+        self.bookmarks.iter()
+            .chain(
+                // Latest
+                self.tasks.values()
+                    .sorted_unstable().rev()
+                    .take(3).map(|t| t.get_id()))
+            .chain(
+                // Highest Prio
+                self.tasks.values()
+                    .filter_map(|t| t.priority().filter(|p| *p > 35).map(|p| (p, t)))
+                    .sorted_unstable()
+                    .take(3).map(|(_, t)| t.get_id())
+            )
+            .filter(|id| !ids.contains(id))
+            .filter_map(|id| self.get_by_id(id))
+            .filter(|t| self.filter(t))
+            .sorted_by_cached_key(|t| self.sorting_key(t))
+            .dedup()
     }
 
     fn get_property(&self, task: &Task, str: &str) -> String {
@@ -978,7 +1017,7 @@ impl TasksRelay {
     fn context_hashtags(&self) -> impl Iterator<Item=Tag> + use<'_> {
         self.tags.iter().map(Tag::from)
     }
-    
+
     /// Creates a task following the current state
     ///
     /// Sanitizes input
@@ -1274,12 +1313,12 @@ impl TasksRelay {
                 MARKER_PROPERTY
             } else {
                 // Activity if parent is not a task
-                prop = prop.add_tags(self.context_hashtags());
+                prop = prop.tags(self.context_hashtags());
                 MARKER_PARENT
             };
         info!("Created {} {format}", if marker == MARKER_PROPERTY { "note" } else { "activity" } );
         self.submit(
-            prop.add_tags(
+            prop.tags(
                 self.get_position().map(|pos| self.make_event_tag_from_id(pos, marker))))
     }
 
@@ -1343,35 +1382,10 @@ impl Display for TasksRelay {
             writeln!(lock)?;
         }
 
-        let position = self.get_position();
-        let mut current: Vec<&Task>;
-        let view = self.view.iter()
-            .flat_map(|id| self.get_by_id(id))
-            .collect_vec();
-        if self.search_depth > 0 && view.is_empty() {
-            current = self.resolve_tasks_rec(
-                self.tasks.children_for(position),
-                true,
-                self.search_depth + self.view_depth,
-            );
-            if current.is_empty() {
-                if !self.tags.is_empty() {
-                    let mut children = self.tasks.children_for(position).peekable();
-                    if children.peek().is_some() {
-                        current = self.resolve_tasks_rec(children, true, 9);
-                        if current.is_empty() {
-                            writeln!(lock, "No tasks here matching{}", self.get_prompt_suffix())?;
-                        } else {
-                            writeln!(lock, "Found matching tasks beyond specified search depth:")?;
-                        }
-                    }
-                }
-            }
-        } else {
-            current = self.resolve_tasks_rec(view.into_iter(), true, self.view_depth);
-        }
+        let visible = self.viewed_tasks();
 
-        if current.is_empty() {
+        if visible.is_empty() {
+            writeln!(lock, "No tasks here matching{}", self.get_prompt_suffix())?;
             let (label, times) = self.times_tracked();
             let mut times_recent = times.rev().take(6).collect_vec();
             times_recent.reverse();
@@ -1380,32 +1394,8 @@ impl Display for TasksRelay {
             return Ok(());
         }
 
-        let tree = current.iter()
-            .flat_map(|task| self.traverse_up_from(Some(task.event.id)))
-            .unique();
-        let ids: HashSet<&EventId> = tree.map(|t| t.get_id()).chain(position.as_ref()).collect();
         if self.view.is_empty() {
-            let mut bookmarks =
-                // TODO add recent tasks (most time tracked + recently created)
-                self.bookmarks.iter()
-                    .chain(
-                        // Latest
-                        self.tasks.values()
-                            .sorted_unstable().rev()
-                            .take(3).map(|t| t.get_id()))
-                    .chain(
-                        // Highest Prio
-                        self.tasks.values()
-                            .filter_map(|t| t.priority().filter(|p| *p > 35).map(|p| (p, t)))
-                            .sorted_unstable()
-                            .take(3).map(|(_, t)| t.get_id())
-                    )
-                    .filter(|id| !ids.contains(id))
-                    .filter_map(|id| self.get_by_id(id))
-                    .filter(|t| self.filter(t))
-                    .sorted_by_cached_key(|t| self.sorting_key(t))
-                    .dedup()
-                    .peekable();
+            let mut bookmarks = self.bookmarked_tasks_deduped(&visible).peekable();
             if bookmarks.peek().is_some() {
                 writeln!(lock, "{}", Colorize::bold("Quick Access"))?;
                 for task in bookmarks {
@@ -1424,9 +1414,9 @@ impl Display for TasksRelay {
         // TODO hide empty columns
         writeln!(lock, "{}", self.properties.join(" \t").bold())?;
 
-        let count = current.len();
+        let count = visible.len();
         let mut total_time = 0;
-        for task in current {
+        for task in visible {
             writeln!(
                 lock,
                 "{}",
@@ -1781,7 +1771,7 @@ mod tasks_test {
         };
     }
 
-    macro_rules! assert_tasks {
+    macro_rules! assert_tasks_visible {
         ($left:expr, $right:expr $(,)?) => {
             assert_eq!(
                 $left
@@ -1790,6 +1780,22 @@ mod tasks_test {
                     .map(|t| t.event.id)
                     .collect::<HashSet<EventId>>(),
                 HashSet::from($right)
+            )
+        };
+    }
+
+    macro_rules! assert_tasks_view {
+        ($left:expr, $right:expr $(,)?) => {
+            let tasks = $left.viewed_tasks();
+            assert_eq!(
+                tasks
+                    .iter()
+                    .map(|t| t.event.id)
+                    .collect::<HashSet<EventId>>(),
+                HashSet::from($right),
+                "Tasks Visible: {:?}\nExpected: {:?}",
+                tasks,
+                $right.map(|id| $left.get_relative_path(id))
             )
         };
     }
@@ -1819,13 +1825,31 @@ mod tasks_test {
         assert_eq!(tasks.nonclosed_tasks().next(), None);
         assert_eq!(tasks.all_hashtags(), Default::default());
     }
-    
+
     #[test]
-    fn test_tags() {
+    fn test_context() {
         let mut tasks = stub_tasks();
         tasks.update_tags(["dp", "yeah"].into_iter().map(Hashtag::from));
+        assert_eq!(tasks.get_prompt_suffix(), " #dp #yeah");
         tasks.remove_tag("Y");
         assert_eq!(tasks.tags, ["dp"].into_iter().map(Hashtag::from).collect());
+        tasks.set_priority(Some(HIGH_PRIO));
+        assert_eq!(tasks.get_prompt_suffix(), " #dp *85");
+        let id = tasks.make_task("test # tag");
+        let task1 = tasks.get_by_id(&id).unwrap();
+        assert_eq!(task1.priority(), Some(HIGH_PRIO));
+        assert_eq!(
+            task1.list_hashtags().collect_vec(),
+            vec!["DP", "tag"].into_iter().map(Hashtag::from).collect_vec()
+        );
+        tasks.make_task_and_enter("another *4", State::Pending);
+        assert_eq!(tasks.get_current_task().unwrap().priority(), Some(40));
+        tasks.make_note("*3");
+        let task2 = tasks.get_current_task().unwrap();
+        assert_eq!(task2.descriptions().next(), None);
+        assert_eq!(task2.priority(), Some(30));
+
+        tasks.pubkey = Some(Keys::generate().public_key);
     }
 
     #[test]
@@ -1836,13 +1860,13 @@ mod tasks_test {
             EventBuilder::new(TASK_KIND, "sub")
                 .tags([tasks.make_event_tag_from_id(parent, MARKER_PARENT)])
         );
-        assert_eq!(tasks.visible_tasks().len(), 1);
+        assert_eq!(tasks.viewed_tasks().len(), 1);
         tasks.track_at(Timestamp::now(), Some(sub));
         assert_eq!(tasks.get_own_events_history().count(), 1);
 
         tasks.make_dependent_sibling("sibling");
         assert_eq!(tasks.len(), 3);
-        assert_eq!(tasks.visible_tasks().len(), 2);
+        assert_eq!(tasks.viewed_tasks().len(), 2);
     }
 
     #[test]
@@ -1851,7 +1875,7 @@ mod tasks_test {
         let zero = EventId::all_zeros();
         let test = tasks.make_task("test # tag");
         let parent = tasks.make_task("parent");
-        assert_eq!(tasks.visible_tasks().len(), 2);
+        assert_eq!(tasks.viewed_tasks().len(), 2);
         tasks.move_to(Some(parent));
         let pin = tasks.make_task("pin");
 
@@ -1867,7 +1891,7 @@ mod tasks_test {
             EventBuilder::new(Kind::Bookmarks, "")
                 .tags([Tag::event(pin), Tag::event(zero)])
         );
-        assert_eq!(tasks.visible_tasks().len(), 1);
+        assert_eq!(tasks.viewed_tasks().len(), 1);
         assert_eq!(tasks.filtered_tasks(Some(pin), true).len(), 0);
         assert_eq!(tasks.filtered_tasks(Some(pin), false).len(), 0);
         assert_eq!(tasks.filtered_tasks(Some(zero), true).len(), 0);
@@ -1878,11 +1902,11 @@ mod tasks_test {
 
         tasks.move_to(None);
         assert_eq!(tasks.view_depth, 0);
-        assert_tasks!(tasks, [pin, test, parent]);
+        assert_tasks_visible!(tasks, [pin, test, parent]);
         tasks.set_view_depth(1);
-        assert_tasks!(tasks, [pin, test]);
+        assert_tasks_visible!(tasks, [pin, test]);
         tasks.add_tag("tag");
-        assert_tasks!(tasks, [test]);
+        assert_tasks_visible!(tasks, [test]);
         assert_eq!(
             tasks.filtered_tasks(None, true),
             vec![tasks.get_by_id(&test).unwrap()]
@@ -1890,9 +1914,9 @@ mod tasks_test {
 
         tasks.submit(EventBuilder::new(Kind::Bookmarks, ""));
         tasks.clear_filters();
-        assert_tasks!(tasks, [pin, test]);
+        assert_tasks_visible!(tasks, [pin, test]);
         tasks.set_view_depth(0);
-        assert_tasks!(tasks, [test, parent]);
+        assert_tasks_visible!(tasks, [test, parent]);
     }
 
     #[test]
@@ -1904,9 +1928,9 @@ mod tasks_test {
             EventBuilder::new(TASK_KIND, "side")
                 .tags([tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)])
         );
-        assert_eq!(tasks.visible_tasks(), Vec::<&Task>::new());
+        assert_eq!(tasks.viewed_tasks(), Vec::<&Task>::new());
         let sub_id = tasks.make_task("sub");
-        assert_tasks!(tasks, [sub_id]);
+        assert_tasks_view!(tasks, [sub_id]);
         assert_eq!(tasks.len(), 3);
         let sub = tasks.get_by_id(&sub_id).unwrap();
         assert_eq!(sub.get_dependendees(), Vec::<&EventId>::new());
@@ -1920,20 +1944,20 @@ mod tasks_test {
 
         let id1 = tasks.filter_or_create(zero, "newer");
         assert_eq!(tasks.len(), 1);
-        assert_eq!(tasks.visible_tasks().len(), 0);
+        assert_eq!(tasks.viewed_tasks().len(), 0);
         assert_eq!(tasks.get_by_id(&id1.unwrap()).unwrap().parent_id(), zero.as_ref());
 
         tasks.move_to(zero);
-        assert_eq!(tasks.visible_tasks().len(), 1);
+        assert_eq!(tasks.viewed_tasks().len(), 1);
         let sub = tasks.make_task("test");
         assert_eq!(tasks.len(), 2);
-        assert_eq!(tasks.visible_tasks().len(), 2);
+        assert_eq!(tasks.viewed_tasks().len(), 2);
         assert_eq!(tasks.get_by_id(&sub).unwrap().parent_id(), zero.as_ref());
 
         // Do not substring match invisible subtask
         let id2 = tasks.filter_or_create(None, "#new-is gold wrapped").unwrap();
         assert_eq!(tasks.len(), 3);
-        assert_eq!(tasks.visible_tasks().len(), 2);
+        assert_eq!(tasks.viewed_tasks().len(), 2);
         let new2 = tasks.get_by_id(&id2).unwrap();
         assert_eq!(new2.props, Default::default());
 
@@ -2009,32 +2033,32 @@ mod tasks_test {
         assert_eq!(tasks.view_depth, 0);
         assert_eq!(activity_t1.pure_state(), State::Open);
         debug!("{:?}", tasks);
-        assert_eq!(tasks.visible_tasks().len(), 1);
+        assert_eq!(tasks.viewed_tasks().len(), 1);
         tasks.search_depth = 0;
-        assert_eq!(tasks.visible_tasks().len(), 0);
+        assert_eq!(tasks.viewed_tasks().len(), 0);
         tasks.recurse_activities = false;
         assert_eq!(tasks.filtered_tasks(None, false).len(), 1);
 
         tasks.move_to(Some(t1));
         assert_position!(tasks, t1);
         tasks.search_depth = 2;
-        assert_eq!(tasks.visible_tasks().len(), 0);
+        assert_eq!(tasks.viewed_tasks().len(), 0);
         let t11 = tasks.make_task("t11 # tag");
-        assert_eq!(tasks.visible_tasks().len(), 1);
+        assert_eq!(tasks.viewed_tasks().len(), 1);
         assert_eq!(tasks.get_task_path(Some(t11)), "t1>t11");
         assert_eq!(tasks.get_relative_path(t11), "t11");
         let t12 = tasks.make_task("t12");
-        assert_eq!(tasks.visible_tasks().len(), 2);
+        assert_eq!(tasks.viewed_tasks().len(), 2);
 
         tasks.move_to(Some(t11));
         assert_position!(tasks, t11);
-        assert_eq!(tasks.visible_tasks().len(), 0);
+        assert_eq!(tasks.viewed_tasks().len(), 0);
         let t111 = tasks.make_task("t111");
-        assert_tasks!(tasks, [t111]);
+        assert_tasks_view!(tasks, [t111]);
         assert_eq!(tasks.get_task_path(Some(t111)), "t1>t11>t111");
         assert_eq!(tasks.get_relative_path(t111), "t111");
         tasks.view_depth = 2;
-        assert_tasks!(tasks, [t111]);
+        assert_tasks_view!(tasks, [t111]);
 
         assert_eq!(ChildIterator::from(&tasks, EventId::all_zeros()).get_all().len(), 1);
         assert_eq!(ChildIterator::from(&tasks, EventId::all_zeros()).get_depth(0).len(), 1);
@@ -2049,32 +2073,37 @@ mod tasks_test {
         assert_eq!(tasks.get_own_events_history().count(), 3);
         assert_eq!(tasks.get_relative_path(t111), "t11>t111");
         assert_eq!(tasks.view_depth, 2);
-        assert_tasks!(tasks, [t111, t12]);
-        tasks.set_view(vec![t11]);
-        assert_tasks!(tasks, [t11]); // No more depth applied to view
-        tasks.set_search_depth(1); // resets view
-        assert_tasks!(tasks, [t111, t12]);
+        tasks.set_search_depth(1);
+        assert_tasks_view!(tasks, [t111, t12]);
         tasks.set_view_depth(0);
-        assert_tasks!(tasks, [t11, t12]);
+        assert_tasks_view!(tasks, [t11, t12]);
+        tasks.set_view(vec![t11]);
+        assert_tasks_view!(tasks, [t11]);
+        tasks.set_view_depth(1);
+        assert_tasks_view!(tasks, [t111]);
+        tasks.set_search_depth(1); // resets view
+        assert_tasks_view!(tasks, [t111, t12]);
+        tasks.set_view_depth(0);
+        assert_tasks_view!(tasks, [t11, t12]);
 
         tasks.move_to(None);
         tasks.recurse_activities = true;
-        assert_tasks!(tasks, [t11, t12]);
+        assert_tasks_view!(tasks, [t11, t12]);
         tasks.recurse_activities = false;
-        assert_tasks!(tasks, [t1]);
+        assert_tasks_view!(tasks, [t1]);
         tasks.view_depth = 1;
-        assert_tasks!(tasks, [t11, t12]);
+        assert_tasks_view!(tasks, [t11, t12]);
         tasks.view_depth = 2;
-        assert_tasks!(tasks, [t111, t12]);
+        assert_tasks_view!(tasks, [t111, t12]);
         tasks.view_depth = 9;
-        assert_tasks!(tasks, [t111, t12]);
+        assert_tasks_view!(tasks, [t111, t12]);
 
         tasks.add_tag("tag");
         tasks.view_depth = 0;
-        assert_tasks!(tasks, [t11]);
+        assert_tasks_view!(tasks, [t11]);
         tasks.search_depth = 0;
         assert_eq!(tasks.view, []);
-        assert_tasks!(tasks, []);
+        assert_tasks_view!(tasks, []);
     }
 
     #[test]
