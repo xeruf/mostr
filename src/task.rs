@@ -98,7 +98,8 @@ impl Task {
 
     /// Description items, ordered newest to oldest
     pub(crate) fn descriptions(&self) -> impl DoubleEndedIterator<Item=&String> + '_ {
-        self.description_events().map(|e| &e.content)
+        self.description_events()
+            .filter_map(|e| Some(&e.content).take_if(|s| !s.trim().is_empty()))
     }
 
     pub(crate) fn is_task_kind(&self) -> bool {
@@ -222,10 +223,7 @@ impl Task {
                     .map(|e| format!("{} kind {} \"{}\"", e.created_at, e.kind, e.content))
                     .collect_vec()
             )),
-            "descriptions" => Some(format!(
-                "{:?}",
-                self.descriptions().collect_vec()
-            )),
+            "descriptions" => Some(format!("{:?}", self.descriptions().collect_vec())),
             _ => {
                 warn!("Unknown task property {}", property);
                 None
