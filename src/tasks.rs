@@ -18,6 +18,7 @@ use regex::bytes::Regex;
 use tokio::sync::mpsc::Sender;
 
 const DEFAULT_PRIO: Prio = 25;
+const QUICK_PRIO: Prio = 35;
 pub const HIGH_PRIO: Prio = 85;
 
 /// Amount of seconds to treat as "now"
@@ -93,6 +94,10 @@ pub(crate) enum StateFilter {
     State(String),
 }
 impl StateFilter {
+    fn from(str: &str) -> Self {
+        StateFilter::State(str.to_string())
+    }
+
     fn indicator(&self) -> String {
         match self {
             StateFilter::Default => "".to_string(),
@@ -566,12 +571,7 @@ impl TasksRelay {
         }
     }
 
-    fn bookmarked_tasks_deduped(&self, visible: &[&Task]) -> impl Iterator<Item=&Task> {
-        let tree = visible.iter()
-            .flat_map(|task| self.traverse_up_from(Some(task.event.id)))
-            .unique();
-        let pos = self.get_position();
-        let ids: HashSet<&EventId> = tree.map(|t| t.get_id()).chain(pos.as_ref()).collect();
+    fn quick_access_raw(&self) -> impl Iterator<Item=&EventId> {
         // TODO add recent tasks (most time tracked + recently created)
         self.bookmarks.iter()
             .chain(
@@ -582,10 +582,20 @@ impl TasksRelay {
             .chain(
                 // Highest Prio
                 self.tasks.values()
-                    .filter_map(|t| t.priority().filter(|p| *p > 35).map(|p| (p, t)))
-                    .sorted_unstable()
+                    .filter_map(|t| t.priority().filter(|p| *p >= QUICK_PRIO)
+                        .map(|p| (p, t)))
+                    .sorted_unstable().rev()
                     .take(3).map(|(_, t)| t.get_id())
             )
+    }
+
+    fn bookmarked_tasks_deduped(&self, visible: &[&Task]) -> impl Iterator<Item=&Task> {
+        let tree = visible.iter()
+            .flat_map(|task| self.traverse_up_from(Some(task.event.id)))
+            .unique();
+        let pos = self.get_position();
+        let ids: HashSet<&EventId> = tree.map(|t| t.get_id()).chain(pos.as_ref()).collect();
+        self.quick_access_raw()
             .filter(|id| !ids.contains(id))
             .filter_map(|id| self.get_by_id(id))
             .filter(|t| self.filter(t))
@@ -767,6 +777,7 @@ impl TasksRelay {
     pub(crate) fn clear_filters(&mut self) {
         self.state = StateFilter::Default;
         self.pubkey = Some(self.sender.pubkey());
+        self.priority = None;
         self.view.clear();
         self.tags.clear();
         self.tags_excluded.clear();
@@ -1391,7 +1402,7 @@ impl Display for TasksRelay {
             let (label, times) = self.times_tracked();
             let mut times_recent = times.rev().take(6).collect_vec();
             times_recent.reverse();
-            writeln!(lock, "Recent {}\n{}", label.italic(), times_recent.join("\n"))?;
+            writeln!(lock, "{}\n{}", format!("Recent {}", label).italic(), times_recent.join("\n"))?;
             return Ok(());
         }
 
@@ -1775,28 +1786,30 @@ mod tasks_test {
     macro_rules! assert_tasks_visible {
         ($left:expr, $right:expr $(,)?) => {
             let tasks = $left.visible_tasks();
-            assert_tasks!($left, tasks, $right);
+            assert_tasks!($left, tasks, $right,
+                "\nQuick Access: {:?}", $left.quick_access_raw().map(|id| $left.get_relative_path(*id)).collect_vec());
         };
     }
 
     macro_rules! assert_tasks_view {
         ($left:expr, $right:expr $(,)?) => {
             let tasks = $left.viewed_tasks();
-            assert_tasks!($left, tasks, $right);
+            assert_tasks!($left, tasks, $right, "");
         };
     }
-    
+
     macro_rules! assert_tasks {
-        ($left:expr, $tasks:expr, $right:expr $(,)?) => {
+        ($left:expr, $tasks:expr, $right:expr $(, $($arg:tt)*)?) => {
             assert_eq!(
                 $tasks
                     .iter()
                     .map(|t| t.event.id)
                     .collect::<HashSet<EventId>>(),
                 HashSet::from_iter($right.clone()),
-                "Tasks Visible: {:?}\nExpected: {:?}",
+                "Tasks Visible: {:?}\nExpected: {:?}{}",
                 $tasks.iter().map(|t| t.event.id).map(|id| $left.get_relative_path(id)).collect_vec(),
                 $right.into_iter().map(|id| $left.get_relative_path(id)).collect_vec(),
+                format!($($($arg)*)?)
             );
         };
     }
@@ -1834,21 +1847,54 @@ mod tasks_test {
         assert_eq!(tasks.get_prompt_suffix(), " #dp #yeah");
         tasks.remove_tag("Y");
         assert_eq!(tasks.tags, ["dp"].into_iter().map(Hashtag::from).collect());
+
         tasks.set_priority(Some(HIGH_PRIO));
         assert_eq!(tasks.get_prompt_suffix(), " #dp *85");
-        let id = tasks.make_task("test # tag");
-        let task1 = tasks.get_by_id(&id).unwrap();
-        assert_eq!(task1.priority(), Some(HIGH_PRIO));
+        let id_hp = tasks.make_task("high prio tagged # tag");
+        let hp = tasks.get_by_id(&id_hp).unwrap();
+        assert_eq!(hp.priority(), Some(HIGH_PRIO));
         assert_eq!(
-            task1.list_hashtags().collect_vec(),
+            hp.list_hashtags().collect_vec(),
             vec!["DP", "tag"].into_iter().map(Hashtag::from).collect_vec()
         );
+
+        tasks.state = StateFilter::from("WIP");
+        tasks.set_priority(Some(QUICK_PRIO));
+
         tasks.make_task_and_enter("another *4", State::Pending);
-        assert_eq!(tasks.get_current_task().unwrap().priority(), Some(40));
+        let task2 = tasks.get_current_task().unwrap();
+        assert_eq!(task2.priority(), Some(40));
+        assert_eq!(task2.pure_state(), State::Pending);
+        assert_eq!(task2.state().unwrap().get_label(), "Pending");
         tasks.make_note("*3");
         let task2 = tasks.get_current_task().unwrap();
         assert_eq!(task2.descriptions().next(), None);
         assert_eq!(task2.priority(), Some(30));
+        let anid = task2.event.id;
+
+        tasks.custom_time = Some(Timestamp::now() + 1);
+        let s1 = tasks.make_task("sub1");
+        tasks.custom_time = Some(Timestamp::now() + 2);
+        tasks.set_priority(Some(QUICK_PRIO + 1));
+        let s2 = tasks.make_task("sub2");
+        let s3 = tasks.make_task("sub3");
+        tasks.set_priority(Some(QUICK_PRIO));
+
+        assert_tasks_visible!(tasks, [s1, s2, s3]);
+        tasks.state = StateFilter::Default;
+        assert_tasks_view!(tasks, [s1, s2, s3]);
+        assert_tasks_visible!(tasks, [id_hp, s1, s2, s3]);
+        tasks.move_up();
+        tasks.set_search_depth(1);
+        assert_tasks_view!(tasks, [id_hp]);
+        assert_tasks_visible!(tasks, [s1, s2, s3, id_hp]);
+
+        tasks.set_priority(None);
+        let s4 = tasks.make_task_with("sub4", [tasks.make_event_tag_from_id(anid, MARKER_PARENT)], true);
+        assert_eq!(tasks.get_parent(Some(&s4)), Some(&anid));
+        assert_tasks_view!(tasks, [anid, id_hp]);
+        // s2-4 are newest while s2,s3,hp are highest prio
+        assert_tasks_visible!(tasks, [s4, s2, s3, anid, id_hp]);
 
         tasks.pubkey = Some(Keys::generate().public_key);
     }
