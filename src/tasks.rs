@@ -855,7 +855,7 @@ impl TasksRelay {
     }
 
     pub(crate) fn flush(&self) {
-        self.sender.flush();
+        self.sender.force_flush();
     }
 
     /// Returns ids of tasks matching the given string.
@@ -955,7 +955,7 @@ impl TasksRelay {
         let pos = self.get_position();
         if target == pos {
             debug!("Flushing Tasks because of move in place");
-            self.flush();
+            self.sender.flush();
             return;
         }
 
@@ -964,7 +964,7 @@ impl TasksRelay {
             .is_some_and(|t| t.parent_id() == pos.as_ref())
         {
             debug!("Flushing Tasks because of move beyond child");
-            self.flush();
+            self.sender.flush();
         }
 
         let now = Timestamp::now();

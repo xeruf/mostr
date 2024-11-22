@@ -65,7 +65,7 @@ impl EventSender {
         })?)
     }
     /// Sends all pending events
-    fn force_flush(&self) {
+    pub(crate) fn force_flush(&self) {
         debug!("Flushing {} events from queue", self.queue.borrow().len());
         let values = self.clear();
         self.url.as_ref().map(|url| {
