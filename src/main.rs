@@ -200,21 +200,20 @@ async fn main() -> Result<()> {
         }
     }
 
-    let metadata = var("USER").ok().map(
-        |user| Metadata::new().name(user));
-    let moved_metadata = metadata.clone();
+    let metadata = Metadata::new()
+        .name(whoami::username())
+        .display_name(whoami::realname());
+    let metadata_clone = metadata.clone();
 
     let (tx, mut rx) = mpsc::channel::<MostrMessage>(64);
-    let tasks_for_url = |url: Option<Url>| TasksRelay::from(url, &tx, &keys, metadata.clone());
+    let tasks_for_url = |url: Option<Url>| TasksRelay::from(url, &tx, &keys, Some(metadata.clone()));
     let mut relays: HashMap<Option<Url>, TasksRelay> =
         client.relays().await.into_keys().map(|url| (Some(url.clone()), tasks_for_url(Some(url)))).collect();
 
     let sender = tokio::spawn(async move {
         let mut queue: Option<(Url, Vec<Event>)> = None;
 
-        if let Some(meta) = moved_metadata.as_ref() {
-            or_warn!(client.set_metadata(meta).await, "Unable to set metadata");
-        }
+        or_warn!(client.set_metadata(&metadata_clone).await, "Unable to set metadata");
 
         'repl: loop {
             let result_received = timeout(Duration::from_secs(INACTVITY_DELAY), rx.recv()).await;
