@@ -1,7 +1,7 @@
 use crate::task::MARKER_PARENT;
 use crate::tasks::HIGH_PRIO;
 use itertools::Itertools;
-use nostr_sdk::{Alphabet, EventBuilder, EventId, Kind, Tag, TagKind, TagStandard};
+use nostr_sdk::{EventBuilder, EventId, Kind, Tag, TagKind, TagStandard};
 use std::borrow::Cow;
 
 pub const TASK_KIND: Kind = Kind::GitIssue;

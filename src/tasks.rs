@@ -13,7 +13,7 @@ use crate::task::{State, Task, TaskState, MARKER_DEPENDS, MARKER_PARENT, MARKER_
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey, SingleLetterTag, Tag, TagKind, TagStandard, Timestamp, Url};
+use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey, SingleLetterTag, Tag, TagKind, Timestamp, Url};
 use regex::bytes::Regex;
 use tokio::sync::mpsc::Sender;
 
@@ -403,7 +403,7 @@ impl TasksRelay {
             prompt.push_str(&format!(" -#{}", tag));
         }
         prompt.push_str(&self.state.indicator());
-        self.priority.map(|p| 
+        self.priority.map(|p|
             prompt.push_str(&format!(" *{:02}", p)));
         prompt
     }
@@ -505,7 +505,7 @@ impl TasksRelay {
             })
     }
 
-    // TODO sparse is deprecated
+    // TODO sparse is deprecated and only left for tests
     pub(crate) fn filtered_tasks(
         &self,
         position: Option<EventId>,
@@ -977,7 +977,7 @@ impl TasksRelay {
         }
         self.submit(
             build_tracking(target)
-                .custom_created_at(Timestamp::from(now.as_u64() + offset)),
+                .custom_created_at(now + offset),
         );
     }
 
@@ -1025,7 +1025,7 @@ impl TasksRelay {
         })
     }
 
-    fn context_hashtags(&self) -> impl Iterator<Item=Tag> + use<'_> {
+    fn context_hashtags(&self) -> impl Iterator<Item=Tag> + '_ {
         self.tags.iter().map(Tag::from)
     }
 
@@ -1431,8 +1431,7 @@ impl Display for TasksRelay {
         for task in visible {
             writeln!(
                 lock,
-                "{}",
-                self.properties.iter()
+                "{}", self.properties.iter()
                     .map(|p| self.get_property(task, p.as_str()))
                     .join(" \t")
             )?;
@@ -1523,9 +1522,8 @@ pub(crate) fn join_tasks<'a>(
         })
 }
 
-fn referenced_events(event: &Event) -> impl Iterator<Item=EventId> + use < '_ > {
-event.tags.iter()
-.filter_map(| tag | match_event_tag(tag).map(| t | t.id))
+fn referenced_events(event: &Event) -> impl Iterator<Item=EventId> + '_ {
+    event.tags.iter().filter_map(|tag| match_event_tag(tag).map(|t| t.id))
 }
 
 fn referenced_event(event: &Event) -> Option<EventId> {
@@ -1907,9 +1905,10 @@ mod tasks_test {
             EventBuilder::new(TASK_KIND, "sub")
                 .tags([tasks.make_event_tag_from_id(parent, MARKER_PARENT)])
         );
-        assert_eq!(tasks.viewed_tasks().len(), 1);
+        assert_tasks_view!(tasks, [parent]);
         tasks.track_at(Timestamp::now(), Some(sub));
         assert_eq!(tasks.get_own_events_history().count(), 1);
+        assert_tasks_view!(tasks, []);
 
         tasks.make_dependent_sibling("sibling");
         assert_eq!(tasks.len(), 3);
@@ -2065,7 +2064,7 @@ mod tasks_test {
         let mut tasks = stub_tasks();
         let zero = EventId::all_zeros();
 
-        tasks.track_at(Timestamp::from(Timestamp::now().as_u64() + 100), Some(zero));
+        tasks.track_at(Timestamp::now() + 100, Some(zero));
         assert_eq!(
             timestamps(tasks.get_own_events_history(), &[zero])
                 .collect_vec()

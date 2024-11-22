@@ -175,7 +175,7 @@ impl Task {
         }
     }
 
-    pub(crate) fn list_hashtags(&self) -> impl Iterator<Item=Hashtag> + use<'_> {
+    pub(crate) fn list_hashtags(&self) -> impl Iterator<Item=Hashtag> + '_ {
         self.tags().filter_map(|t| Hashtag::try_from(t).ok())
     }
 
@@ -362,13 +362,13 @@ mod tasks_test {
         assert_eq!(task.pure_state(), State::Done);
         task.props.insert(
             EventBuilder::new(State::Open.into(), "").tags([Tag::hashtag("tag2")])
-                .custom_created_at(Timestamp::from(Timestamp::now() - 2))
+                .custom_created_at(Timestamp::now() - 2)
                 .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Done);
         assert_eq!(task.list_hashtags().count(), 2);
         task.props.insert(
             EventBuilder::new(State::Closed.into(), "")
-                .custom_created_at(Timestamp::from(Timestamp::now() + 1))
+                .custom_created_at(Timestamp::now() + 1)
                 .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Closed);
     }
