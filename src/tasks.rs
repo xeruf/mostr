@@ -1385,12 +1385,13 @@ impl Display for TasksRelay {
         let visible = self.viewed_tasks();
 
         if visible.is_empty() {
-            writeln!(lock, "No tasks here matching{}", self.get_prompt_suffix())?;
+            if self.tasks.children_for(self.get_position()).next().is_some() {
+                writeln!(lock, "No tasks here matching{}", self.get_prompt_suffix())?;
+            }
             let (label, times) = self.times_tracked();
             let mut times_recent = times.rev().take(6).collect_vec();
             times_recent.reverse();
-            // TODO Add recent prefix
-            writeln!(lock, "{}\n{}", label.italic(), times_recent.join("\n"))?;
+            writeln!(lock, "Recent {}\n{}", label.italic(), times_recent.join("\n"))?;
             return Ok(());
         }
 
