@@ -562,7 +562,7 @@ impl TasksRelay {
                 self.search_depth + self.view_depth,
             )
         } else {
-            self.resolve_tasks_rec(view.into_iter(), true, self.view_depth)
+            self.resolve_tasks_rec(view.into_iter(), true, self.view_depth + 1)
         }
     }
 
@@ -577,7 +577,7 @@ impl TasksRelay {
             .chain(
                 // Latest
                 self.tasks.values()
-                    .sorted_unstable().rev()
+                    .sorted_unstable()
                     .take(3).map(|t| t.get_id()))
             .chain(
                 // Highest Prio
@@ -1774,30 +1774,30 @@ mod tasks_test {
 
     macro_rules! assert_tasks_visible {
         ($left:expr, $right:expr $(,)?) => {
-            assert_eq!(
-                $left
-                    .visible_tasks()
-                    .iter()
-                    .map(|t| t.event.id)
-                    .collect::<HashSet<EventId>>(),
-                HashSet::from($right)
-            )
+            let tasks = $left.visible_tasks();
+            assert_tasks!($left, tasks, $right);
         };
     }
 
     macro_rules! assert_tasks_view {
         ($left:expr, $right:expr $(,)?) => {
             let tasks = $left.viewed_tasks();
+            assert_tasks!($left, tasks, $right);
+        };
+    }
+    
+    macro_rules! assert_tasks {
+        ($left:expr, $tasks:expr, $right:expr $(,)?) => {
             assert_eq!(
-                tasks
+                $tasks
                     .iter()
                     .map(|t| t.event.id)
                     .collect::<HashSet<EventId>>(),
-                HashSet::from($right),
+                HashSet::from_iter($right.clone()),
                 "Tasks Visible: {:?}\nExpected: {:?}",
-                tasks,
-                $right.map(|id| $left.get_relative_path(id))
-            )
+                $tasks.iter().map(|t| t.event.id).map(|id| $left.get_relative_path(id)).collect_vec(),
+                $right.into_iter().map(|id| $left.get_relative_path(id)).collect_vec(),
+            );
         };
     }
 
@@ -1914,10 +1914,15 @@ mod tasks_test {
         );
 
         tasks.submit(EventBuilder::new(Kind::Bookmarks, ""));
+        assert!(tasks.bookmarks.is_empty());
         tasks.clear_filters();
         assert_tasks_visible!(tasks, [pin, test]);
         tasks.set_view_depth(0);
-        assert_tasks_visible!(tasks, [test, parent]);
+        tasks.custom_time = Some(now());
+        let mut new = (0..3).map(|t| tasks.make_task(t.to_string().as_str())).collect_vec();
+        // Show the newest tasks in quick access and remove old pin
+        new.extend([test, parent]);
+        assert_tasks_visible!(tasks, new);
     }
 
     #[test]
@@ -2082,7 +2087,7 @@ mod tasks_test {
         assert_tasks_view!(tasks, [t11]);
         tasks.set_view_depth(1);
         assert_tasks_view!(tasks, [t111]);
-        tasks.set_search_depth(1); // resets view
+        tasks.set_search_depth(2); // resets view
         assert_tasks_view!(tasks, [t111, t12]);
         tasks.set_view_depth(0);
         assert_tasks_view!(tasks, [t11, t12]);
