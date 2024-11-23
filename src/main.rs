@@ -417,8 +417,8 @@ async fn main() -> Result<()> {
                                 }
                             }
                             Some(arg) => {
-                                if arg.len() < CHARACTER_THRESHOLD {
-                                    warn!("Note needs at least {CHARACTER_THRESHOLD} characters!");
+                                if arg.trim().len() < 2 {
+                                    warn!("Needs at least 2 characters!");
                                     continue 'repl;
                                 }
                                 tasks.make_note(arg);

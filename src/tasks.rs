@@ -1316,9 +1316,8 @@ impl TasksRelay {
         let (name, tags) = extract_tags(note.trim());
         let format = format!("\"{name}\" with tags [{}]", join_tags(&tags));
         let mut prop =
-            EventBuilder::new(Kind::TextNote, name).tags(tags);
-        //.filter(|id| self.get_by_id(id).is_some_and(|t| t.is_task()))
-        //.map(|id| 
+            EventBuilder::new(Kind::TextNote, name)
+                .tags(tags);
         let marker =
             if self.get_current_task().is_some_and(|t| t.is_task()) {
                 MARKER_PROPERTY
