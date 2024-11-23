@@ -135,21 +135,26 @@ impl Task {
         })
     }
 
-    pub(crate) fn last_state_update(&self) -> Timestamp {
+    pub fn last_state_update(&self) -> Timestamp {
         self.state().map(|s| s.time).unwrap_or(self.event.created_at)
     }
-
-    pub(crate) fn state(&self) -> Option<TaskState> {
-        let now = now();
+    
+    pub fn state_at(&self, time: Timestamp) -> Option<TaskState> {
         // TODO do not iterate constructed state objects
-        let state = self.states().take_while_inclusive(|ts| ts.time > now);
+        let state = self.states().take_while_inclusive(|ts| ts.time > time);
         state.last().map(|ts| {
-            if ts.time <= now {
+            if ts.time <= time {
                 ts
             } else {
                 self.default_state()
             }
         })
+    }
+
+    /// Returns the current state if this is a task rather than an activity
+    pub fn state(&self) -> Option<TaskState> {
+        let now = now();
+        self.state_at(now)
     }
 
     pub(crate) fn pure_state(&self) -> State {
@@ -232,6 +237,7 @@ impl Task {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub(crate) struct TaskState {
     pub(crate) state: State,
     name: Option<String>,
@@ -267,7 +273,7 @@ impl Display for TaskState {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub(crate) enum State {
     /// Actionable
     Open = 1630,
@@ -356,20 +362,33 @@ mod tasks_test {
                 .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Open);
         assert_eq!(task.list_hashtags().count(), 1);
+        
+        let now = Timestamp::now();
         task.props.insert(
             EventBuilder::new(State::Done.into(), "")
+                .custom_created_at(now)
                 .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Done);
         task.props.insert(
-            EventBuilder::new(State::Open.into(), "").tags([Tag::hashtag("tag2")])
-                .custom_created_at(Timestamp::now() - 2)
+            EventBuilder::new(State::Open.into(), "Ready").tags([Tag::hashtag("tag2")])
+                .custom_created_at(now - 2)
                 .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Done);
         assert_eq!(task.list_hashtags().count(), 2);
         task.props.insert(
             EventBuilder::new(State::Closed.into(), "")
-                .custom_created_at(Timestamp::now() + 1)
+                .custom_created_at(now + 9)
                 .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Closed);
+        assert_eq!(task.state_at(now), Some(TaskState {
+            state: State::Done,
+            name: None,
+            time: now,
+        }));
+        assert_eq!(task.state_at(now - 1), Some(TaskState {
+            state: State::Open,
+            name: Some("Ready".to_string()),
+            time: now - 2,
+        }));
     }
 }
