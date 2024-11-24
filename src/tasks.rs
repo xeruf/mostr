@@ -494,7 +494,7 @@ impl TasksRelay {
 
     fn filter(&self, task: &Task) -> bool {
         self.state.matches(task) &&
-            (!!task.is_task() || self.pubkey.is_none_or(|p| p == task.event.pubkey)) &&
+            (!task.is_task() || self.pubkey.is_none_or(|p| p == task.event.pubkey)) &&
             self.priority.is_none_or(|prio| {
                 task.priority().unwrap_or(DEFAULT_PRIO) >= prio
             }) &&
