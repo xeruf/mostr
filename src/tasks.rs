@@ -1293,15 +1293,17 @@ impl TasksRelay {
                 .tags(ids.into_iter()
                     .map(|e| self.make_event_tag_from_id(e, MARKER_PROPERTY)))
                 .tags(tags);
-        // if self.custom_time.is_none() && self.get_by_id(id).map(|task| {}) {}
         info!(
-            "Task status {} set for \"{}\"{}",
+            "Task status {} set for \"{}\"{}{}",
             TaskState::get_label_for(&state, comment),
             self.get_task_title(&id),
             self.custom_time
                 .map(|ts| format!(" at {}", format_timestamp_relative(&ts)))
-                .unwrap_or_default()
-        );
+                .unwrap_or_default(),
+            self.get_by_id(&id)
+                .and_then(|task| task.state_at(self.custom_time.unwrap_or_default()))
+                .map(|ts| format!(" from {}", ts))
+                .unwrap_or_default());
         self.submit(prop)
     }
 
@@ -1382,10 +1384,10 @@ impl Display for TasksRelay {
             }
             writeln!(
                 lock,
-                "Active from {} (total tracked time {}m) - State {} since {}",
+                "Active from {} (total tracked time {}m) - {} since {}",
                 tracking_stamp.map_or("?".to_string(), |t| format_timestamp_relative(&t)),
                 self.time_tracked(*t.get_id()) / 60,
-                state.get_label(),
+                state,
                 format_timestamp_relative(&state.time)
             )?;
             for d in t.descriptions().rev() { writeln!(lock, "{}", d)?; }
