@@ -951,6 +951,11 @@ impl TasksRelay {
     }
 
     pub(crate) fn move_to(&mut self, target: Option<EventId>) {
+        if let Some(time) = self.custom_time {
+            self.track_at(time, target);
+            return;
+        }
+        
         self.view.clear();
         let pos = self.get_position();
         if target == pos {
