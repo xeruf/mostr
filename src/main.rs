@@ -464,7 +464,7 @@ async fn main() -> Result<()> {
                             Some(arg) => {
                                 if arg == "@" {
                                     tasks.reset_key_filter()
-                                } else if let Some((key, name)) = tasks.find_user_with_displayname(arg) {
+                                } else if let Some((key, name)) = tasks.find_user(arg) {
                                     info!("Showing {}'s tasks", name);
                                     tasks.set_key_filter(key)
                                 } else {

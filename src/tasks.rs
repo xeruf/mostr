@@ -1,3 +1,5 @@
+mod nostr_users;
+
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::iter::{empty, once, FusedIterator};
@@ -16,6 +18,7 @@ use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey, SingleLetterTag, Tag, TagKind, Timestamp, Url};
 use regex::bytes::Regex;
 use tokio::sync::mpsc::Sender;
+use crate::tasks::nostr_users::NostrUsers;
 
 const DEFAULT_PRIO: Prio = 25;
 const QUICK_PRIO: Prio = 35;
@@ -54,7 +57,7 @@ pub(crate) struct TasksRelay {
     /// History of active tasks by PubKey
     history: HashMap<PublicKey, BTreeMap<Timestamp, Event>>,
     /// Index of known users with metadata
-    users: HashMap<PublicKey, Metadata>,
+    users: NostrUsers,
     /// Own pinned tasks
     bookmarks: Vec<EventId>,
 
@@ -284,7 +287,7 @@ impl TasksRelay {
                     }
                     // TODO show history for active tags
                     (
-                        format!("Time-Tracking History for {}:", self.get_displayname(&key)),
+                        format!("Time-Tracking History for {}:", self.users.get_displayname(&key)),
                         Box::from(full.into_iter()),
                     )
                 } else {
@@ -308,7 +311,7 @@ impl TasksRelay {
                                     "{} - {} by {}",
                                     format_timestamp_local(start),
                                     format_timestamp_relative_to(end, start),
-                                    self.get_displayname(key)
+                                    self.users.get_displayname(key)
                                 ))
                             }
                         }
@@ -316,7 +319,7 @@ impl TasksRelay {
                             vec.push(format!(
                                 "{} started by {}",
                                 format_timestamp_local(stamp),
-                                self.get_displayname(key)
+                                self.users.get_displayname(key)
                             ))
                         });
                         vec
@@ -393,7 +396,7 @@ impl TasksRelay {
             Some(key) =>
                 if key != self.sender.pubkey() {
                     prompt.push_str(" @");
-                    prompt.push_str(&self.get_username(&key))
+                    prompt.push_str(&self.users.get_username(&key))
                 },
         }
         for tag in self.tags.iter() {
@@ -646,7 +649,7 @@ impl TasksRelay {
             }
             "progress" => prog_string.clone(),
 
-            "author" | "creator" => format!("{:.6}", self.get_username(&task.event.pubkey)), // FIXME temporary until proper column alignment
+            "author" | "creator" => format!("{:.6}", self.users.get_username(&task.event.pubkey)), // FIXME temporary until proper column alignment
             "prio" => self
                 .traverse_up_from(Some(task.event.id))
                 .find_map(Task::priority_raw)
@@ -667,35 +670,8 @@ impl TasksRelay {
         }
     }
 
-    pub(crate) fn find_user_with_displayname(&self, term: &str) -> Option<(PublicKey, String)> {
-        match PublicKey::from_str(term) {
-            Ok(key) => Some((key, self.get_displayname(&key))),
-            Err(_) => self.find_user(term).map(|(k, _)| (*k, self.get_displayname(k))),
-        }
-    }
-
-    // Find username or key starting with the given term.
-    pub(crate) fn find_user(&self, term: &str) -> Option<(&PublicKey, &Metadata)> {
-        if let Ok(key) = PublicKey::from_str(term) {
-            return self.users.get_key_value(&key);
-        }
-        self.users.iter().find(|(k, v)|
-            // TODO regex word boundary
-            v.name.as_ref().is_some_and(|n| n.starts_with(term)) ||
-                v.display_name.as_ref().is_some_and(|n| n.starts_with(term)) ||
-                (term.len() > 4 && k.to_string().starts_with(term)))
-    }
-
-    pub(crate) fn get_displayname(&self, pubkey: &PublicKey) -> String {
-        self.users.get(pubkey)
-            .and_then(|m| m.display_name.clone().or(m.name.clone()))
-            .unwrap_or_else(|| pubkey.to_string())
-    }
-
-    pub(crate) fn get_username(&self, pubkey: &PublicKey) -> String {
-        self.users.get(pubkey)
-            .and_then(|m| m.name.clone())
-            .unwrap_or_else(|| format!("{:.6}", pubkey.to_string()))
+    pub(super) fn find_user(&self, name: &str) -> Option<(PublicKey, String)> {
+        self.users.find_user_with_displayname(name)
     }
 
     // Movement and Selection
@@ -1161,9 +1137,7 @@ impl TasksRelay {
 
     pub(crate) fn add(&mut self, event: Event) {
         let author = event.pubkey;
-        if !self.users.contains_key(&author) {
-            self.users.insert(author, Metadata::new());
-        }
+        self.users.create(author);
         match event.kind {
             Kind::GitIssue => self.add_task(event),
             Kind::Metadata => match Metadata::from_json(event.content.as_str()) {
