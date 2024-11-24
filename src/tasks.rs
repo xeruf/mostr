@@ -308,7 +308,7 @@ impl TasksRelay {
                                     "{} - {} by {}",
                                     format_timestamp_local(start),
                                     format_timestamp_relative_to(end, start),
-                                    self.get_username(key)
+                                    self.get_displayname(key)
                                 ))
                             }
                         }
@@ -316,7 +316,7 @@ impl TasksRelay {
                             vec.push(format!(
                                 "{} started by {}",
                                 format_timestamp_local(stamp),
-                                self.get_username(key)
+                                self.get_displayname(key)
                             ))
                         });
                         vec
@@ -392,7 +392,7 @@ impl TasksRelay {
             None => { prompt.push_str(" @ALL"); }
             Some(key) =>
                 if key != self.sender.pubkey() {
-                    prompt.push_str(" ");
+                    prompt.push_str(" @");
                     prompt.push_str(&self.get_username(&key))
                 },
         }
