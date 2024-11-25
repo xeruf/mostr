@@ -1,4 +1,4 @@
-mod nostr_users;
+pub(crate) mod nostr_users;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt::{Display, Formatter};
@@ -7,18 +7,18 @@ use std::ops::{Div, Rem};
 use std::str::FromStr;
 use std::time::Duration;
 
-use crate::hashtag::Hashtag;
 use crate::event_sender::{EventSender, MostrMessage};
+use crate::hashtag::Hashtag;
 use crate::helpers::{format_timestamp_local, format_timestamp_relative, format_timestamp_relative_to, parse_tracking_stamp, some_non_empty, to_string_or_default, CHARACTER_THRESHOLD};
 use crate::kinds::*;
 use crate::task::{State, Task, TaskState, MARKER_DEPENDS, MARKER_PARENT, MARKER_PROPERTY};
+use crate::tasks::nostr_users::NostrUsers;
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey, SingleLetterTag, Tag, TagKind, Timestamp, Url};
 use regex::bytes::Regex;
 use tokio::sync::mpsc::Sender;
-use crate::tasks::nostr_users::NostrUsers;
 
 const DEFAULT_PRIO: Prio = 25;
 const QUICK_PRIO: Prio = 35;
@@ -1058,7 +1058,7 @@ impl TasksRelay {
     ///
     /// Sanitizes input
     pub(crate) fn make_task_with(&mut self, input: &str, tags: impl IntoIterator<Item=Tag>, set_state: bool) -> EventId {
-        let (input, input_tags) = extract_tags(input.trim());
+        let (input, input_tags) = extract_tags(input.trim(), &self.users);
         let prio =
             if input_tags.iter().any(|t| t.kind().to_string() == PRIO) { None } else { self.priority.map(|p| to_prio_tag(p)) };
         info!("Created task \"{input}\" with tags [{}]", join_tags(&input_tags));
@@ -1282,7 +1282,7 @@ impl TasksRelay {
             } else {
                 vec![id]
             };
-        let (desc, tags) = extract_tags(comment);
+        let (desc, tags) = extract_tags(comment, &self.users);
         let prop =
             EventBuilder::new(state.into(), desc)
                 .tags(ids.into_iter()
@@ -1310,7 +1310,7 @@ impl TasksRelay {
     /// Creates a note or activity, depending on whether the parent is a task.
     /// Sanitizes Input.
     pub(crate) fn make_note(&mut self, note: &str) -> EventId {
-        let (name, tags) = extract_tags(note.trim());
+        let (name, tags) = extract_tags(note.trim(), &self.users);
         let format = format!("\"{name}\" with tags [{}]", join_tags(&tags));
         let mut prop =
             EventBuilder::new(Kind::TextNote, name)

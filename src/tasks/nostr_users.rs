@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::str::FromStr;
-use nostr_sdk::{Metadata, PublicKey};
+use nostr_sdk::{Keys, Metadata, PublicKey, Tag};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct NostrUsers {
@@ -15,13 +15,18 @@ impl NostrUsers {
 
     // Find username or key starting with the given term.
     pub(crate) fn find_user(&self, term: &str) -> Option<(&PublicKey, &Metadata)> {
+        let lowered = term.trim().to_ascii_lowercase();
+        let term = lowered.as_str();
+        if term.is_empty() {
+            return None
+        }
         if let Ok(key) = PublicKey::from_str(term) {
             return self.users.get_key_value(&key);
         }
         self.users.iter().find(|(k, v)|
             // TODO regex word boundary
-            v.name.as_ref().is_some_and(|n| n.starts_with(term)) ||
-                v.display_name.as_ref().is_some_and(|n| n.starts_with(term)) ||
+            v.name.as_ref().is_some_and(|n| n.to_ascii_lowercase().starts_with(term)) ||
+                v.display_name.as_ref().is_some_and(|n| n.to_ascii_lowercase().starts_with(term)) ||
                 (term.len() > 4 && k.to_string().starts_with(term)))
     }
 
@@ -46,4 +51,13 @@ impl NostrUsers {
             self.users.insert(pubkey, Default::default());
         }
     }
+}
+
+#[test]
+fn test_user_extract() {
+    let keys = Keys::generate();
+    let mut users = NostrUsers::default();
+    users.insert(keys.public_key, Metadata::new().display_name("Tester Jo"));
+    assert_eq!(crate::kinds::extract_tags("Hello @test", &users),
+               ("Hello".to_string(), vec![Tag::public_key(keys.public_key)]));
 }
