@@ -509,7 +509,7 @@ impl TasksRelay {
 
     fn filter(&self, task: &Task) -> bool {
         self.state.matches(task) &&
-            (!task.is_task() || self.pubkey.is_none_or(|p| p == task.event.pubkey)) &&
+            (!task.is_task() || self.pubkey.is_none_or(|p| p == task.get_owner())) &&
             self.priority.is_none_or(|prio| {
                 task.priority().unwrap_or(DEFAULT_PRIO) >= prio
             }) &&
@@ -712,6 +712,7 @@ impl TasksRelay {
     pub(crate) fn reset_key_filter(&mut self) {
         let own = self.sender.pubkey();
         if self.pubkey.is_some_and(|k| k == own) {
+            self.view.clear();
             info!("Showing everybody's tasks");
             self.pubkey = None
         } else {
