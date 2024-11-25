@@ -399,18 +399,22 @@ impl TasksRelay {
             .and_then(|t| t.parent_id())
     }
 
+    pub(crate) fn pubkey_str(&self) -> Option<String> {
+        match self.pubkey {
+            None => { Some("ALL".to_string()) }
+            Some(key) =>
+                if key != self.sender.pubkey() {
+                    Some(self.users.get_username(&key))
+                } else {
+                    None
+                },
+        }
+    }
+
     // TODO test with context elements
     /// Visual representation of current context
     pub(crate) fn get_prompt_suffix(&self) -> String {
         let mut prompt = String::with_capacity(128);
-        match self.pubkey {
-            None => { prompt.push_str(" @ALL"); }
-            Some(key) =>
-                if key != self.sender.pubkey() {
-                    prompt.push_str(" @");
-                    prompt.push_str(&self.users.get_username(&key))
-                },
-        }
         for tag in self.tags.iter() {
             prompt.push_str(&format!(" #{}", tag));
         }
@@ -509,7 +513,8 @@ impl TasksRelay {
 
     fn filter(&self, task: &Task) -> bool {
         self.state.matches(task) &&
-            (!task.is_task() || self.pubkey.is_none_or(|p| p == task.get_owner())) &&
+            (!task.is_task() || self.pubkey.is_none_or(|p| p == task.get_owner() ||
+                task.list_hashtags().any(|t| t.matches(&self.users.get_username(&p))))) &&
             self.priority.is_none_or(|prio| {
                 task.priority().unwrap_or(DEFAULT_PRIO) >= prio
             }) &&
@@ -816,7 +821,7 @@ impl TasksRelay {
     pub(crate) fn remove_tag(&mut self, tag: &str) {
         self.view.clear();
         let len = self.tags.len();
-        self.tags.retain(|t| !t.matches(tag));
+        self.tags.retain(|t| !t.contains(tag));
         if self.tags.len() < len {
             info!("Removed tag filters containing {tag}");
         } else {

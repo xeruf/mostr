@@ -282,8 +282,9 @@ async fn main() -> Result<()> {
         println!();
         let tasks = relays.get(&selected_relay).unwrap();
         let prompt = format!(
-            "{} {}{}{}",
+            "{}{} {}{}{}",
             selected_relay.as_ref().map_or(LOCAL_RELAY_NAME.to_string(), |url| url.to_string()).dimmed(),
+            tasks.pubkey_str().map_or(String::new(), |s| format!(" @{s}")),
             tasks.get_task_path(tasks.get_position()).bold(),
             tasks.get_prompt_suffix().italic(),
             "❯ ".dimmed()
@@ -728,7 +729,7 @@ async fn main() -> Result<()> {
                                 tasks.get_filtered(pos, |t| {
                                     transform(&t.event.content).contains(&remaining) ||
                                         t.list_hashtags().any(
-                                            |tag| tag.matches(&remaining))
+                                            |tag| tag.contains(&remaining))
                                 });
                             if filtered.len() == 1 {
                                 tasks.move_to(filtered.into_iter().next());

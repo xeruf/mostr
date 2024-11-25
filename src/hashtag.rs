@@ -17,8 +17,11 @@ pub struct Hashtag {
 }
 
 impl Hashtag {
-    pub fn matches(&self, token: &str) -> bool {
+    pub fn contains(&self, token: &str) -> bool {
         self.lowercased.contains(&token.to_ascii_lowercase())
+    }
+    pub fn matches(&self, token: &str) -> bool {
+        token.contains(&self.lowercased)
     }
 }
 
