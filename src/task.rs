@@ -71,14 +71,17 @@ impl Task {
         &self.event.id
     }
 
-    pub(crate) fn get_owner(&self) -> PublicKey {
+    pub(crate) fn get_participants(&self) -> impl Iterator<Item=PublicKey> + '_ {
         self.tags()
-            .find(|t| t.kind() == TagKind::SingleLetter(SingleLetterTag::lowercase(Alphabet::P)))
-            .and_then(|t| t.content()
+            .filter(|t| t.kind() == TagKind::SingleLetter(SingleLetterTag::lowercase(Alphabet::P)))
+            .filter_map(|t| t.content()
                 .and_then(|c| PublicKey::from_str(c).inspect_err(|e| warn!("Unparseable pubkey in {:?}", t)).ok()))
-            .unwrap_or_else(|| self.event.pubkey)
     }
 
+    pub(crate) fn get_owner(&self) -> PublicKey {
+        self.get_participants().next()
+            .unwrap_or_else(|| self.event.pubkey)
+    }
 
     pub(crate) fn find_refs<'a>(&'a self, marker: &'a str) -> impl Iterator<Item=&'a EventId> {
         self.refs.iter().filter_map(move |(str, id)| Some(id).filter(|_| str == marker))
