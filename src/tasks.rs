@@ -859,8 +859,8 @@ impl TasksRelay {
             return vec![id];
         }
         let lowercase_arg = arg.to_ascii_lowercase();
-        // TODO apply regex to all matching
-        let regex = Regex::new(&format!(r"\b{}", lowercase_arg)).unwrap();
+        // TODO apply regex to all matching, parse as plain match
+        let regex = Regex::new(&format!(r"\b{}", lowercase_arg));
 
         let mut filtered: Vec<EventId> = Vec::with_capacity(32);
         let mut filtered_fuzzy: Vec<EventId> = Vec::with_capacity(32);
@@ -871,7 +871,9 @@ impl TasksRelay {
                 return vec![task.event.id];
             } else if content.starts_with(arg) {
                 filtered.push(task.event.id)
-            } else if regex.is_match(lowercase.as_bytes()) {
+            } else if regex.as_ref()
+                .map(|r| r.is_match(lowercase.as_bytes()))
+                .unwrap_or_else(|_| lowercase.starts_with(&lowercase_arg)) {
                 filtered_fuzzy.push(task.event.id)
             }
         }
