@@ -12,7 +12,7 @@ use crate::event_sender::MostrMessage;
 use crate::helpers::*;
 use crate::kinds::{format_tag_basic, match_event_tag, Prio, BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS};
 use crate::task::{State, Task, TaskState, MARKER_PROPERTY};
-use crate::tasks::{PropertyCollection, StateFilter, TasksRelay};
+use crate::tasks::{referenced_event, PropertyCollection, StateFilter, TasksRelay};
 use chrono::Local;
 use colored::Colorize;
 use directories::ProjectDirs;
@@ -438,14 +438,36 @@ async fn main() -> Result<()> {
                     Some('&') => {
                         match arg {
                             None => tasks.undo(),
-                            Some(text) => match text.parse::<u8>() {
-                                Ok(int) => {
-                                    tasks.move_back_by(int as usize);
+                            Some(text) => {
+                                if text == "&" {
+                                    println!(
+                                        "My History:\n{}",
+                                        tasks.history_before_now()
+                                            .take(9)
+                                            .enumerate()
+                                            .dropping(1)
+                                            .map(|(c, e)| {
+                                                format!("({}) {}",
+                                                        c,
+                                                        match referenced_event(e) {
+                                                            Some(target) => tasks.get_task_path(Some(target)),
+                                                            None => "---".to_string(),
+                                                        },
+                                                )
+                                            })
+                                            .join("\n")
+                                    );
+                                    continue 'repl;
                                 }
-                                _ => {
-                                    if !tasks.move_back_to(text) {
-                                        warn!("Did not find a match in history for \"{text}\"");
-                                        continue 'repl;
+                                match text.parse::<u8>() {
+                                    Ok(int) => {
+                                        tasks.move_back_by(int as usize);
+                                    }
+                                    _ => {
+                                        if !tasks.move_back_to(text) {
+                                            warn!("Did not find a match in history for \"{text}\"");
+                                            continue 'repl;
+                                        }
                                     }
                                 }
                             }

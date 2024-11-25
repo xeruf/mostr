@@ -256,51 +256,60 @@ impl TasksRelay {
     }
 
     /// Dynamic time tracking overview for current task or current user.
-    pub(crate) fn times_tracked(&self) -> (String, Box<dyn DoubleEndedIterator<Item=String>>) {
+    pub(crate) fn times_tracked(&self) -> (String, Box<dyn DoubleEndedIterator<Item=String> + '_>) {
         self.times_tracked_for(&self.sender.pubkey())
+    }
+
+    pub(crate) fn history_for(
+        &self,
+        key: &PublicKey,
+    ) -> Option<impl DoubleEndedIterator<Item=String> + '_> {
+        self.history.get(key).map(|hist| {
+            let mut last = None;
+            // TODO limit history to active tags
+            hist.values().filter_map(move |event| {
+                let new = some_non_empty(&event.tags.iter()
+                    .filter_map(|t| t.content())
+                    .map(|str| EventId::from_str(str).ok().map_or(str.to_string(), |id| self.get_task_path(Some(id))))
+                    .join(" "));
+                if new != last {
+                    // TODO omit intervals <2min - but I think I need threeway variable tracking for that
+                    // TODO alternate color with grey between days
+                    last = new;
+                    return Some(format!(
+                        "{} {}",
+                        format_timestamp_local(&event.created_at),
+                        last.as_ref().unwrap_or(&"---".to_string())
+                    ));
+                }
+                None
+            })
+        })
     }
 
     pub(crate) fn times_tracked_for(
         &self,
         key: &PublicKey,
-    ) -> (String, Box<dyn DoubleEndedIterator<Item=String>>) {
+    ) -> (String, Box<dyn DoubleEndedIterator<Item=String> + '_>) {
         match self.get_position() {
             None => {
-                if let Some(hist) = self.history.get(key) {
-                    let mut last = None;
-                    let mut full = Vec::with_capacity(hist.len());
-                    for event in hist.values() {
-                        let new = some_non_empty(&event.tags.iter()
-                            .filter_map(|t| t.content())
-                            .map(|str| EventId::from_str(str).ok().map_or(str.to_string(), |id| self.get_task_path(Some(id))))
-                            .join(" "));
-                        if new != last {
-                            // TODO omit intervals <2min - but I think I need threeway for that
-                            // TODO alternate color with grey between days
-                            full.push(format!(
-                                "{} {}",
-                                format_timestamp_local(&event.created_at),
-                                new.as_ref().unwrap_or(&"---".to_string())
-                            ));
-                            last = new;
-                        }
-                    }
-                    // TODO show history for active tags
-                    (
-                        format!("Time-Tracking History for {}:", self.users.get_displayname(&key)),
-                        Box::from(full.into_iter()),
-                    )
-                } else {
-                    (
-                        "Nothing time-tracked yet".to_string(),
-                        Box::from(empty()),
-                    )
+                match self.history_for(key) {
+                    Some(hist) =>
+                        (
+                            format!("Time-Tracking History for {}:", self.users.get_displayname(&key)),
+                            Box::from(hist),
+                        ),
+                    None =>
+                        (
+                            "Nothing time-tracked yet".to_string(),
+                            Box::from(empty()),
+                        )
                 }
             }
             Some(id) => {
                 // TODO show current recursive with pubkey
                 let ids = [id];
-                let history =
+                let mut history =
                     self.history.iter().flat_map(|(key, set)| {
                         let mut vec = Vec::with_capacity(set.len() / 2);
                         let mut iter = timestamps(set.values(), &ids).tuples();
@@ -323,10 +332,13 @@ impl TasksRelay {
                             ))
                         });
                         vec
-                    }).sorted_unstable(); // TODO sorting depends on timestamp format - needed to interleave different people
+                    })
+                    .collect_vec();
+                // TODO sorting depends on timestamp format - needed to interleave different people
+                history.sort_unstable();
                 (
                     format!("Times Tracked on {:?}", self.get_task_title(&id)),
-                    Box::from(history),
+                    Box::from(history.into_iter()),
                 )
             }
         }
@@ -1200,25 +1212,29 @@ impl TasksRelay {
     }
 
     fn get_own_events_history(&self) -> impl DoubleEndedIterator<Item=&Event> + '_ {
-        self.history.get(&self.sender.pubkey())
+        self.get_own_history()
             .into_iter()
             .flat_map(|t| t.values())
     }
 
-    fn history_before_now(&self) -> impl Iterator<Item=&Event> {
+    pub(super) fn history_before_now(&self) -> impl Iterator<Item=&Event> {
         self.get_own_history().into_iter().flat_map(|hist| {
             let now = now();
-            hist.values().rev().skip_while(move |e| e.created_at > now)
+            hist.values().rev()
+                .skip_while(move |e| e.created_at > now)
+                .dedup_by(|e1, e2| e1.id == e2.id)
         })
     }
 
     pub(crate) fn move_back_to(&mut self, str: &str) -> bool {
         let lower = str.to_ascii_lowercase();
-        let found = self.history_before_now().find(|e| {
-            referenced_event(e)
-                .and_then(|id| self.get_by_id(&id))
-                .is_some_and(|t| t.event.content.to_ascii_lowercase().contains(&lower))
-        });
+        let found =
+            self.history_before_now()
+                .find(|e| {
+                    referenced_event(e)
+                        .and_then(|id| self.get_by_id(&id))
+                        .is_some_and(|t| t.event.content.to_ascii_lowercase().contains(&lower))
+                });
         if let Some(event) = found {
             self.move_to(referenced_event(event));
             return true;
@@ -1506,7 +1522,7 @@ fn referenced_events(event: &Event) -> impl Iterator<Item=EventId> + '_ {
     event.tags.iter().filter_map(|tag| match_event_tag(tag).map(|t| t.id))
 }
 
-fn referenced_event(event: &Event) -> Option<EventId> {
+pub fn referenced_event(event: &Event) -> Option<EventId> {
     referenced_events(event).next()
 }
 
