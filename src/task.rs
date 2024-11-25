@@ -4,13 +4,14 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::iter::once;
+use std::str::FromStr;
 use std::string::ToString;
 
 use colored::{ColoredString, Colorize};
 use itertools::Either::{Left, Right};
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use nostr_sdk::{Alphabet, Event, EventId, Kind, Tag, Timestamp};
+use nostr_sdk::{Alphabet, Event, EventId, Kind, PublicKey, SingleLetterTag, Tag, TagKind, Timestamp};
 use crate::hashtag::{is_hashtag, Hashtag};
 use crate::helpers::{format_timestamp_local, some_non_empty};
 use crate::kinds::{match_event_tag, Prio, PRIO, PROCEDURE_KIND, PROCEDURE_KIND_ID, TASK_KIND};
@@ -69,6 +70,15 @@ impl Task {
     pub(crate) fn get_id(&self) -> &EventId {
         &self.event.id
     }
+
+    pub(crate) fn get_owner(&self) -> PublicKey {
+        self.tags()
+            .find(|t| t.kind() == TagKind::SingleLetter(SingleLetterTag::lowercase(Alphabet::P)))
+            .and_then(|t| t.content()
+                .and_then(|c| PublicKey::from_str(c).inspect_err(|e| warn!("Unparseable pubkey in {:?}", t)).ok()))
+            .unwrap_or_else(|| self.event.pubkey)
+    }
+
 
     pub(crate) fn find_refs<'a>(&'a self, marker: &'a str) -> impl Iterator<Item=&'a EventId> {
         self.refs.iter().filter_map(move |(str, id)| Some(id).filter(|_| str == marker))
@@ -184,11 +194,12 @@ impl Task {
         self.tags().filter_map(|t| Hashtag::try_from(t).ok())
     }
 
+    /// Tags of this task that are not event references, newest to oldest
     fn tags(&self) -> impl Iterator<Item=&Tag> {
-        self.tags.iter().flatten().chain(
-            self.props.iter().flat_map(|e| e.tags.iter()
-                .filter(|t| t.single_letter_tag().is_none_or(|s| s.character != Alphabet::E)))
-        )
+        self.props.iter()
+            .flat_map(|e| e.tags.iter()
+            .filter(|t| t.single_letter_tag().is_none_or(|s| s.character != Alphabet::E)))
+            .chain(self.tags.iter().flatten())
     }
 
     fn join_tags<P>(&self, predicate: P) -> String

@@ -159,7 +159,7 @@ impl TasksRelay {
             bookmarks: Default::default(),
 
             properties: [
-                "author",
+                "owner",
                 "prio",
                 "state",
                 "rtime",
@@ -170,7 +170,7 @@ impl TasksRelay {
             sorting: [
                 "priority",
                 "status",
-                "author",
+                "owner",
                 "hashtags",
                 "rtime",
                 "name",
@@ -661,6 +661,7 @@ impl TasksRelay {
             }
             "progress" => prog_string.clone(),
 
+            "owner" => format!("{:.6}", self.users.get_username(&task.get_owner())),
             "author" | "creator" => format!("{:.6}", self.users.get_username(&task.event.pubkey)), // FIXME temporary until proper column alignment
             "prio" => self
                 .traverse_up_from(Some(task.event.id))
@@ -1823,7 +1824,7 @@ mod tasks_test {
 
         tasks.custom_time = Some(Timestamp::now());
         tasks.update_state("Finished #YeaH # oi", State::Done);
-        assert_eq!(tasks.get_by_id(&parent).unwrap().list_hashtags().collect_vec(), ["tag1", "YeaH", "oi", "tag3", "yeah"].map(Hashtag::from));
+        assert_eq!(tasks.get_by_id(&parent).unwrap().list_hashtags().collect_vec(), ["YeaH", "oi", "tag3", "yeah", "tag1"].map(Hashtag::from));
         assert_eq!(tasks.all_hashtags(), all_tags);
 
         tasks.custom_time = Some(now());
