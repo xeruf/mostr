@@ -928,7 +928,7 @@ impl TasksRelay {
                     warn!("New task name needs at least {CHARACTER_THRESHOLD} characters");
                     return None;
                 }
-                Some(self.make_task_with(arg, self.position_tags_for(position), true))
+                self.make_task_with(arg, self.position_tags_for(position), true)
             }
             1 => {
                 // One match, activate
@@ -1042,19 +1042,6 @@ impl TasksRelay {
         self.tags.iter().map(Tag::from)
     }
 
-    /// Creates a task following the current state
-    ///
-    /// Sanitizes input
-    pub(crate) fn make_task(&mut self, input: &str) -> EventId {
-        self.make_task_with(input, self.position_tags(), true)
-    }
-
-    pub(crate) fn make_task_and_enter(&mut self, input: &str, state: State) {
-        let id = self.make_task_with(input, self.position_tags(), false);
-        self.set_state_for(id, "", state);
-        self.move_to(Some(id));
-    }
-
     /// Moves up and creates a sibling task dependent on the current one
     ///
     /// Returns true if successful, false if there is no current task
@@ -1074,7 +1061,9 @@ impl TasksRelay {
         false
     }
 
-    /// Creates a task including current tag filters
+    /// Creates a task including current tag filters if content is not empty.
+    ///
+    /// @param set_state: whether to set context state - use false if setting state manually
     ///
     /// Sanitizes input
     pub(crate) fn make_task_with(
@@ -1082,32 +1071,64 @@ impl TasksRelay {
         input: &str,
         tags: impl IntoIterator<Item=Tag>,
         set_state: bool,
-    ) -> EventId {
-        let (input, input_tags) = extract_tags(input.trim(), &self.users);
-        let prio =
-            if input_tags.iter().any(|t| t.kind().to_string() == PRIO) {
-                None
-            } else {
-                self.priority.map(|p| to_prio_tag(p))
-            };
+    ) -> Option<EventId> {
+        let (input, mut input_tags) = extract_tags(input.trim(), &self.users);
+        if input.is_empty() {
+            warn!("Task content must not be empty!");
+            return None;
+        }
         info!(
             "Created task \"{input}\" with tags [{}]",
             join_tags(&input_tags)
         );
-        let id = self.submit(
-            EventBuilder::new(TASK_KIND, &input)
-                .tags(input_tags)
-                .tags(self.context_hashtags())
-                .tags(tags)
-                .tags(prio),
-        );
+        input_tags.extend(tags);
+        let id = self.make_task_unchecked(&input, input_tags);
         if set_state {
             self.state
                 .as_option()
                 .inspect(|s| self.set_state_for_with(id, s));
         }
-        id
+        Some(id)
     }
+
+    fn make_task_unchecked(
+        &mut self,
+        input: &str,
+        tags: Vec<Tag>,
+    ) -> EventId {
+        let prio =
+            if tags.iter().any(|t| t.kind().to_string() == PRIO) {
+                None
+            } else {
+                self.priority.map(|p| to_prio_tag(p))
+            };
+        self.submit(
+            EventBuilder::new(TASK_KIND, input)
+                .tags(self.context_hashtags())
+                .tags(tags)
+                .tags(prio),
+        )
+    }
+
+    /// Primarily for tests
+    fn make_task_unwrapped(&mut self, input: &str) -> EventId {
+        self.make_task(input).unwrap()
+    }
+
+    /// Creates a task following the current state if input is sufficient.
+    ///
+    /// Sanitizes input
+    pub(crate) fn make_task(&mut self, input: &str) -> Option<EventId> {
+        self.make_task_with(input, self.position_tags(), true)
+    }
+
+    pub(crate) fn make_task_and_enter(&mut self, input: &str, state: State) {
+        if let Some(id) = self.make_task_with(input, self.position_tags(), false) {
+            self.set_state_for(id, "", state);
+            self.move_to(Some(id));
+        }
+    }
+
 
     pub(crate) fn get_task_title(&self, id: &EventId) -> String {
         self.get_by_id(id).map_or(id.to_string(), |t| t.get_title())
@@ -1845,9 +1866,9 @@ mod tasks_test {
         let mut tasks = stub_tasks();
 
         tasks.custom_time = Some(Timestamp::zero());
-        let parent = tasks.make_task("parent #tag1");
+        let parent = tasks.make_task_unwrapped("parent #tag1");
         tasks.move_to(Some(parent));
-        let sub = tasks.make_task("sub #oi # tag2");
+        let sub = tasks.make_task_unwrapped("sub #oi # tag2");
         assert_eq!(
             tasks.all_hashtags(),
             ["oi", "tag1", "tag2"].into_iter().map(Hashtag::from).collect()
@@ -1882,7 +1903,7 @@ mod tasks_test {
 
         tasks.set_priority(Some(HIGH_PRIO));
         assert_eq!(tasks.get_prompt_suffix(), " #dp *85");
-        let id_hp = tasks.make_task("high prio tagged # tag");
+        let id_hp = tasks.make_task_unwrapped("high prio tagged # tag");
         let hp = tasks.get_by_id(&id_hp).unwrap();
         assert_eq!(hp.priority(), Some(HIGH_PRIO));
         assert_eq!(
@@ -1905,11 +1926,11 @@ mod tasks_test {
         let anid = task2.event.id;
 
         tasks.custom_time = Some(Timestamp::now() + 1);
-        let s1 = tasks.make_task("sub1");
+        let s1 = tasks.make_task_unwrapped("sub1");
         tasks.custom_time = Some(Timestamp::now() + 2);
         tasks.set_priority(Some(QUICK_PRIO + 1));
-        let s2 = tasks.make_task("sub2");
-        let s3 = tasks.make_task("sub3");
+        let s2 = tasks.make_task_unwrapped("sub2");
+        let s3 = tasks.make_task_unwrapped("sub3");
         tasks.set_priority(Some(QUICK_PRIO));
 
         assert_tasks_visible!(tasks, [s1, s2, s3]);
@@ -1922,7 +1943,7 @@ mod tasks_test {
         assert_tasks_visible!(tasks, [s1, s2, s3, id_hp]);
 
         tasks.set_priority(None);
-        let s4 = tasks.make_task_with("sub4", [tasks.make_event_tag_from_id(anid, MARKER_PARENT)], true);
+        let s4 = tasks.make_task_with("sub4", [tasks.make_event_tag_from_id(anid, MARKER_PARENT)], true).unwrap();
         assert_eq!(tasks.get_parent(Some(&s4)), Some(&anid));
         assert_tasks_view!(tasks, [anid, id_hp]);
         // s2-4 are newest while s2,s3,hp are highest prio
@@ -1934,7 +1955,7 @@ mod tasks_test {
     #[test]
     fn test_sibling_dependency() {
         let mut tasks = stub_tasks();
-        let parent = tasks.make_task("parent");
+        let parent = tasks.make_task_unwrapped("parent");
         let sub = tasks.submit(
             EventBuilder::new(TASK_KIND, "sub")
                 .tags([tasks.make_event_tag_from_id(parent, MARKER_PARENT)]),
@@ -1953,11 +1974,11 @@ mod tasks_test {
     fn test_bookmarks() {
         let mut tasks = stub_tasks();
         let zero = EventId::all_zeros();
-        let test = tasks.make_task("test # tag");
-        let parent = tasks.make_task("parent");
+        let test = tasks.make_task_unwrapped("test # tag");
+        let parent = tasks.make_task_unwrapped("parent");
         assert_eq!(tasks.viewed_tasks().len(), 2);
         tasks.move_to(Some(parent));
-        let pin = tasks.make_task("pin");
+        let pin = tasks.make_task_unwrapped("pin");
 
         tasks.search_depth = 1;
         assert_eq!(tasks.filtered_tasks(None, true).len(), 2);
@@ -1998,7 +2019,7 @@ mod tasks_test {
         assert_tasks_visible!(tasks, [pin, test]);
         tasks.set_view_depth(0);
         tasks.custom_time = Some(now());
-        let mut new = (0..3).map(|t| tasks.make_task(t.to_string().as_str())).collect_vec();
+        let mut new = (0..3).map(|t| tasks.make_task_unwrapped(t.to_string().as_str())).collect_vec();
         // Show the newest tasks in quick access and remove old pin
         new.extend([test, parent]);
         assert_tasks_visible!(tasks, new);
@@ -2014,7 +2035,7 @@ mod tasks_test {
                 .tags([tasks.make_event_tag(&tasks.get_current_task().unwrap().event, MARKER_DEPENDS)])
         );
         assert_eq!(tasks.viewed_tasks(), Vec::<&Task>::new());
-        let sub_id = tasks.make_task("sub");
+        let sub_id = tasks.make_task_unwrapped("sub");
         assert_tasks_view!(tasks, [sub_id]);
         assert_eq!(tasks.len(), 3);
         let sub = tasks.get_by_id(&sub_id).unwrap();
@@ -2034,7 +2055,7 @@ mod tasks_test {
 
         tasks.move_to(zero);
         assert_eq!(tasks.viewed_tasks().len(), 1);
-        let sub = tasks.make_task("test");
+        let sub = tasks.make_task_unwrapped("test");
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks.viewed_tasks().len(), 2);
         assert_eq!(tasks.get_by_id(&sub).unwrap().parent_id(), zero.as_ref());
@@ -2083,7 +2104,7 @@ mod tasks_test {
         assert_eq!(tasks.get_own_events_history().count(), 3);
         assert!(tasks.time_tracked(zero) > 999);
 
-        let some = tasks.make_task("some");
+        let some = tasks.make_task_unwrapped("some");
         tasks.track_at(Timestamp::from(22 + 1), Some(some));
         assert_eq!(tasks.get_own_events_history().count(), 4);
         assert_eq!(tasks.time_tracked(zero), 12);
@@ -2128,17 +2149,17 @@ mod tasks_test {
         assert_position!(tasks, t1);
         tasks.search_depth = 2;
         assert_eq!(tasks.viewed_tasks().len(), 0);
-        let t11 = tasks.make_task("t11 # tag");
+        let t11 = tasks.make_task_unwrapped("t11 # tag");
         assert_eq!(tasks.viewed_tasks().len(), 1);
         assert_eq!(tasks.get_task_path(Some(t11)), "t1>t11");
         assert_eq!(tasks.get_relative_path(t11), "t11");
-        let t12 = tasks.make_task("t12");
+        let t12 = tasks.make_task_unwrapped("t12");
         assert_eq!(tasks.viewed_tasks().len(), 2);
 
         tasks.move_to(Some(t11));
         assert_position!(tasks, t11);
         assert_eq!(tasks.viewed_tasks().len(), 0);
-        let t111 = tasks.make_task("t111");
+        let t111 = tasks.make_task_unwrapped("t111");
         assert_tasks_view!(tasks, [t111]);
         assert_eq!(tasks.get_task_path(Some(t111)), "t1>t11>t111");
         assert_eq!(tasks.get_relative_path(t111), "t111");
@@ -2195,11 +2216,19 @@ mod tasks_test {
     fn test_empty_task_title_fallback_to_id() {
         let mut tasks = stub_tasks();
 
-        let empty = tasks.make_task("");
+        let empty = tasks.make_task_unchecked("", vec![]);
         let empty_task = tasks.get_by_id(&empty).unwrap();
         let empty_id = empty_task.event.id.to_string();
         assert_eq!(empty_task.get_title(), empty_id);
         assert_eq!(tasks.get_task_path(Some(empty)), empty_id);
+    }
+
+    #[test]
+    fn test_short_task() {
+        let mut tasks = stub_tasks();
+        let str = " # one";
+        assert_eq!(extract_tags(str, &tasks.users), ("".to_string(), vec![to_hashtag_tag("one")]));
+        assert_eq!(tasks.make_task(str), None);
     }
 
     #[test]
@@ -2209,7 +2238,7 @@ mod tasks_test {
         let zero = EventId::all_zeros();
         assert_eq!(tasks.get_task_path(Some(zero)), zero.to_string());
         tasks.move_to(Some(zero));
-        let dangling = tasks.make_task("test");
+        let dangling = tasks.make_task_unwrapped("test");
         assert_eq!(
             tasks.get_task_path(Some(dangling)),
             "0000000000000000000000000000000000000000000000000000000000000000>test"
