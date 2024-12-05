@@ -640,7 +640,7 @@ async fn main() -> Result<()> {
                                              format!("{} {}",
                                                      if max == usize::MAX { "All".to_string() } else { format!("Latest {max} entries of") },
                                                      label)
-                                         },
+                                         }.italic(),
                                          vec.iter().rev().join("\n"));
                             } else if let Some((key, _)) = tasks.find_user(arg) {
                                 let (label, mut times) = tasks.times_tracked_for(&key);
