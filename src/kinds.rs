@@ -154,7 +154,7 @@ pub fn format_tag_basic(tag: &Tag) -> String {
                  public_key,
                  alias,
                  ..
-             }) => format!("Key{}: {:.8}", public_key, alias.as_ref().map(|s| format!(" {s}")).unwrap_or_default()),
+             }) => format!("Key{}: {:.8}", alias.as_ref().map(|s| format!(" {s}")).unwrap_or_default(), public_key),
         Some(TagStandard::Hashtag(content)) =>
             format!("#{content}"),
         _ => tag.as_slice().join(" ")
