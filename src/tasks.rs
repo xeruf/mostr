@@ -257,7 +257,7 @@ impl TasksRelay {
 
     /// Dynamic time tracking overview for current task or current user.
     pub(crate) fn times_tracked(&self) -> (String, Box<dyn DoubleEndedIterator<Item=String> + '_>) {
-        self.times_tracked_for(&self.sender.pubkey())
+        self.times_tracked_with(&self.sender.pubkey())
     }
 
     pub(crate) fn history_for(
@@ -291,21 +291,24 @@ impl TasksRelay {
         &self,
         key: &PublicKey,
     ) -> (String, Box<dyn DoubleEndedIterator<Item=String> + '_>) {
+        match self.history_for(key) {
+            Some(hist) => (
+                format!(
+                    "Time-Tracking History for {}:",
+                    self.users.get_displayname(&key)
+                ),
+                Box::from(hist),
+            ),
+            None => ("Nothing time-tracked yet".to_string(), Box::from(empty())),
+        }
+    }
+
+    pub(crate) fn times_tracked_with(
+        &self,
+        key: &PublicKey,
+    ) -> (String, Box<dyn DoubleEndedIterator<Item=String> + '_>) {
         match self.get_position() {
-            None => {
-                match self.history_for(key) {
-                    Some(hist) =>
-                        (
-                            format!("Time-Tracking History for {}:", self.users.get_displayname(&key)),
-                            Box::from(hist),
-                        ),
-                    None =>
-                        (
-                            "Nothing time-tracked yet".to_string(),
-                            Box::from(empty()),
-                        )
-                }
-            }
+            None => self.times_tracked_for(key),
             Some(id) => {
                 // TODO show current recursive with pubkey
                 let ids = [id];
