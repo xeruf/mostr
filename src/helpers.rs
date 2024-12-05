@@ -36,7 +36,7 @@ impl<T: TimeZone> ToTimestamp for DateTime<T> {
 
 /// Parses the hour from a plain number in the String,
 /// with max of max_future hours into the future.
-/// TODO parse HHMM as well
+// TODO parse HHMM as well
 pub fn parse_hour(str: &str, max_future: i64) -> Option<DateTime<Local>> {
     str.parse::<u32>().ok().and_then(|hour| {
         let now = Local::now();

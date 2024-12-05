@@ -9,14 +9,20 @@ use std::time::Duration;
 
 use crate::event_sender::{EventSender, MostrMessage};
 use crate::hashtag::Hashtag;
-use crate::helpers::{format_timestamp_local, format_timestamp_relative, format_timestamp_relative_to, parse_tracking_stamp, some_non_empty, to_string_or_default, CHARACTER_THRESHOLD};
+use crate::helpers::{
+    format_timestamp_local, format_timestamp_relative, format_timestamp_relative_to,
+    parse_tracking_stamp, some_non_empty, to_string_or_default, CHARACTER_THRESHOLD,
+};
 use crate::kinds::*;
 use crate::task::{State, Task, TaskState, MARKER_DEPENDS, MARKER_PARENT, MARKER_PROPERTY};
 use crate::tasks::nostr_users::NostrUsers;
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey, SingleLetterTag, Tag, TagKind, Timestamp, Url};
+use nostr_sdk::{
+    Alphabet, Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey,
+    SingleLetterTag, Tag, TagKind, Timestamp, Url,
+};
 use regex::bytes::Regex;
 use tokio::sync::mpsc::Sender;
 
@@ -64,7 +70,7 @@ pub(crate) struct TasksRelay {
     /// The task properties currently visible
     properties: Vec<String>,
     /// The task properties sorted by
-    sorting: VecDeque<String>, // TODO track boolean for reversal?
+    sorting: VecDeque<String>, // TODO prefix +/- for asc/desc, no prefix for default
 
     /// A filtered view of the current tasks.
     /// Would like this to be Task references
@@ -270,7 +276,9 @@ impl TasksRelay {
             hist.values().filter_map(move |event| {
                 let new = some_non_empty(&event.tags.iter()
                     .filter_map(|t| t.content())
-                    .map(|str| EventId::from_str(str).ok().map_or(str.to_string(), |id| self.get_task_path(Some(id))))
+                    .map(|str|
+                        EventId::from_str(str).ok()
+                            .map_or(str.to_string(), |id| self.get_task_path(Some(id))))
                     .join(" "));
                 if new != last {
                     // TODO omit intervals <2min - but I think I need threeway variable tracking for that
@@ -310,7 +318,7 @@ impl TasksRelay {
         match self.get_position() {
             None => self.times_tracked_for(key),
             Some(id) => {
-                // TODO show current recursive with pubkey
+                // TODO show current recursive if there is a pubkey
                 let ids = [id];
                 let mut history =
                     self.history.iter().flat_map(|(key, set)| {
@@ -335,8 +343,7 @@ impl TasksRelay {
                             ))
                         });
                         vec
-                    })
-                    .collect_vec();
+                    }).collect_vec();
                 // TODO sorting depends on timestamp format - needed to interleave different people
                 history.sort_unstable();
                 (
@@ -404,13 +411,14 @@ impl TasksRelay {
 
     pub(crate) fn pubkey_str(&self) -> Option<String> {
         match self.pubkey {
-            None => { Some("ALL".to_string()) }
-            Some(key) =>
+            None => Some("ALL".to_string()),
+            Some(key) => {
                 if key != self.sender.pubkey() {
                     Some(self.users.get_username(&key))
                 } else {
                     None
-                },
+                }
+            }
         }
     }
 
@@ -425,8 +433,8 @@ impl TasksRelay {
             prompt.push_str(&format!(" -#{}", tag));
         }
         prompt.push_str(&self.state.indicator());
-        self.priority.map(|p|
-            prompt.push_str(&format!(" *{:02}", p)));
+        self.priority
+            .map(|p| prompt.push_str(&format!(" *{:02}", p)));
         prompt
     }
 
@@ -452,7 +460,6 @@ impl TasksRelay {
             current: id,
         }
     }
-
 
     // Helpers
 
@@ -495,8 +502,7 @@ impl TasksRelay {
         let mut found = false;
         for tag in event.tags.iter() {
             if let Some(event_tag) = match_event_tag(tag) {
-                if event_tag.marker
-                    .as_ref()
+                if event_tag.marker.as_ref()
                     .is_none_or(|m| m.to_string() == MARKER_PROPERTY)
                 {
                     self.tasks.get_mut(&event_tag.id).map(|t| {
@@ -529,11 +535,7 @@ impl TasksRelay {
     }
 
     // TODO sparse is deprecated and only left for tests
-    pub(crate) fn filtered_tasks(
-        &self,
-        position: Option<EventId>,
-        sparse: bool,
-    ) -> Vec<&Task> {
+    pub(crate) fn filtered_tasks(&self, position: Option<EventId>, sparse: bool) -> Vec<&Task> {
         let roots = self.tasks.children_for(position);
         let mut current =
             self.resolve_tasks_rec(roots, sparse, self.search_depth + self.view_depth);
@@ -712,7 +714,7 @@ impl TasksRelay {
         };
         self.sender.submit(
             EventBuilder::new(Kind::Bookmarks, "mostr pins")
-                .tags(self.bookmarks.iter().map(|id| Tag::event(*id)))
+                .tags(self.bookmarks.iter().map(|id| Tag::event(*id))),
         )?;
         Ok(added)
     }
@@ -955,7 +957,7 @@ impl TasksRelay {
             self.track_at(time, target);
             return;
         }
-        
+
         self.view.clear();
         let pos = self.get_position();
         if target == pos {
@@ -989,20 +991,26 @@ impl TasksRelay {
     // Updates
 
     pub(crate) fn make_event_tag_from_id(&self, id: EventId, marker: &str) -> Tag {
-        Tag::custom(TagKind::SingleLetter(SingleLetterTag::lowercase(Alphabet::E)), [
-            id.to_string(),
-            to_string_or_default(self.sender.url.as_ref()),
-            marker.to_string(),
-        ])
+        Tag::custom(
+            TagKind::SingleLetter(SingleLetterTag::lowercase(Alphabet::E)),
+            [
+                id.to_string(),
+                to_string_or_default(self.sender.url.as_ref()),
+                marker.to_string(),
+            ],
+        )
     }
 
     pub(crate) fn make_event_tag(&self, event: &Event, marker: &str) -> Tag {
-        Tag::custom(TagKind::SingleLetter(SingleLetterTag::lowercase(Alphabet::E)), [
-            event.id.to_string(),
-            to_string_or_default(self.sender.url.as_ref()),
-            marker.to_string(),
-            event.pubkey.to_string(),
-        ])
+        Tag::custom(
+            TagKind::SingleLetter(SingleLetterTag::lowercase(Alphabet::E)),
+            [
+                event.id.to_string(),
+                to_string_or_default(self.sender.url.as_ref()),
+                marker.to_string(),
+                event.pubkey.to_string(),
+            ],
+        )
     }
 
     pub(crate) fn parent_tag(&self) -> Option<Tag> {
@@ -1069,17 +1077,29 @@ impl TasksRelay {
     /// Creates a task including current tag filters
     ///
     /// Sanitizes input
-    pub(crate) fn make_task_with(&mut self, input: &str, tags: impl IntoIterator<Item=Tag>, set_state: bool) -> EventId {
+    pub(crate) fn make_task_with(
+        &mut self,
+        input: &str,
+        tags: impl IntoIterator<Item=Tag>,
+        set_state: bool,
+    ) -> EventId {
         let (input, input_tags) = extract_tags(input.trim(), &self.users);
         let prio =
-            if input_tags.iter().any(|t| t.kind().to_string() == PRIO) { None } else { self.priority.map(|p| to_prio_tag(p)) };
-        info!("Created task \"{input}\" with tags [{}]", join_tags(&input_tags));
+            if input_tags.iter().any(|t| t.kind().to_string() == PRIO) {
+                None
+            } else {
+                self.priority.map(|p| to_prio_tag(p))
+            };
+        info!(
+            "Created task \"{input}\" with tags [{}]",
+            join_tags(&input_tags)
+        );
         let id = self.submit(
             EventBuilder::new(TASK_KIND, &input)
                 .tags(input_tags)
                 .tags(self.context_hashtags())
                 .tags(tags)
-                .tags(prio)
+                .tags(prio),
         );
         if set_state {
             self.state
@@ -1224,9 +1244,7 @@ impl TasksRelay {
     }
 
     fn get_own_events_history(&self) -> impl DoubleEndedIterator<Item=&Event> + '_ {
-        self.get_own_history()
-            .into_iter()
-            .flat_map(|t| t.values())
+        self.get_own_history().into_iter().flat_map(|t| t.values())
     }
 
     pub(super) fn history_before_now(&self) -> impl Iterator<Item=&Event> {
@@ -1310,7 +1328,8 @@ impl TasksRelay {
             self.get_by_id(&id)
                 .and_then(|task| task.state_at(self.custom_time.unwrap_or_default()))
                 .map(|ts| format!(" from {}", ts))
-                .unwrap_or_default());
+                .unwrap_or_default()
+        );
         self.submit(prop)
     }
 
@@ -1338,7 +1357,8 @@ impl TasksRelay {
         info!("Created {} {format}", if marker == MARKER_PROPERTY { "note" } else { "activity" } );
         self.submit(
             prop.tags(
-                self.get_position().map(|pos| self.make_event_tag_from_id(pos, marker))))
+                self.get_position()
+                    .map(|pos| self.make_event_tag_from_id(pos, marker))))
     }
 
     // Properties
@@ -1381,9 +1401,7 @@ impl Display for TasksRelay {
             let state = t.state_or_default();
             let now = &now();
             let mut tracking_stamp: Option<Timestamp> = None;
-            for elem in
-                timestamps(self.get_own_events_history(), &[t.event.id])
-                    .map(|(e, _)| e) {
+            for elem in timestamps(self.get_own_events_history(), &[t.event.id]).map(|(e, _)| e) {
                 if tracking_stamp.is_some() && elem > now {
                     break;
                 }
@@ -1437,11 +1455,10 @@ impl Display for TasksRelay {
         let count = visible.len();
         let mut total_time = 0;
         for task in visible {
-            writeln!(
-                lock,
-                "{}", self.properties.iter()
-                    .map(|p| self.get_property(task, p.as_str()))
-                    .join(" \t")
+            writeln!(lock, "{}",
+                     self.properties.iter()
+                         .map(|p| self.get_property(task, p.as_str()))
+                         .join(" \t")
             )?;
             total_time += self.total_time_tracked(task.event.id) // TODO include parent if it matches
         }
@@ -1499,11 +1516,12 @@ where
 fn display_time(format: &str, secs: u64) -> String {
     Some(secs / 60)
         .filter(|t| t > &0)
-        .map_or(String::new(), |mins| format
-            .replace("MMM", &format!("{:3}", mins))
-            .replace("HH", &format!("{:02}", mins.div(60)))
-            .replace("MM", &format!("{:02}", mins.rem(60))),
-        )
+        .map_or(String::new(), |mins| {
+            format
+                .replace("MMM", &format!("{:3}", mins))
+                .replace("HH", &format!("{:02}", mins.div(60)))
+                .replace("MM", &format!("{:02}", mins.rem(60)))
+        })
 }
 
 /// Joins the tasks of this upwards iterator.
@@ -1521,7 +1539,8 @@ pub(crate) fn join_tasks<'a>(
                 .take_if(|_| include_last_id)
                 .and_then(|t| t.parent_id())
                 .map(|id| id.to_string())
-                .into_iter())
+                .into_iter(),
+        )
         .fold(None, |acc, val| {
             Some(acc.map_or_else(
                 || val.clone(),
@@ -1793,7 +1812,8 @@ mod tasks_test {
         ($left:expr, $right:expr $(,)?) => {
             let tasks = $left.visible_tasks();
             assert_tasks!($left, tasks, $right,
-                "\nQuick Access: {:?}", $left.quick_access_raw().map(|id| $left.get_relative_path(*id)).collect_vec());
+                "\nQuick Access: {:?}",
+                $left.quick_access_raw().map(|id| $left.get_relative_path(*id)).collect_vec());
         };
     }
 
@@ -1828,14 +1848,20 @@ mod tasks_test {
         let parent = tasks.make_task("parent #tag1");
         tasks.move_to(Some(parent));
         let sub = tasks.make_task("sub #oi # tag2");
-        assert_eq!(tasks.all_hashtags(), ["oi", "tag1", "tag2"].into_iter().map(Hashtag::from).collect());
+        assert_eq!(
+            tasks.all_hashtags(),
+            ["oi", "tag1", "tag2"].into_iter().map(Hashtag::from).collect()
+        );
         tasks.make_note("note with #tag3 # yeah");
         let all_tags = ["oi", "tag1", "tag2", "tag3", "yeah"].into_iter().map(Hashtag::from).collect();
         assert_eq!(tasks.all_hashtags(), all_tags);
 
         tasks.custom_time = Some(Timestamp::now());
         tasks.update_state("Finished #YeaH # oi", State::Done);
-        assert_eq!(tasks.get_by_id(&parent).unwrap().list_hashtags().collect_vec(), ["YeaH", "oi", "tag3", "yeah", "tag1"].map(Hashtag::from));
+        assert_eq!(
+            tasks.get_by_id(&parent).unwrap().list_hashtags().collect_vec(),
+            ["YeaH", "oi", "tag3", "yeah", "tag1"].map(Hashtag::from)
+        );
         assert_eq!(tasks.all_hashtags(), all_tags);
 
         tasks.custom_time = Some(now());
@@ -1911,7 +1937,7 @@ mod tasks_test {
         let parent = tasks.make_task("parent");
         let sub = tasks.submit(
             EventBuilder::new(TASK_KIND, "sub")
-                .tags([tasks.make_event_tag_from_id(parent, MARKER_PARENT)])
+                .tags([tasks.make_event_tag_from_id(parent, MARKER_PARENT)]),
         );
         assert_tasks_view!(tasks, [parent]);
         tasks.track_at(Timestamp::now(), Some(sub));

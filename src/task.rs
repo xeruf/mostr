@@ -7,15 +7,16 @@ use std::iter::once;
 use std::str::FromStr;
 use std::string::ToString;
 
+use crate::hashtag::{is_hashtag, Hashtag};
+use crate::helpers::{format_timestamp_local, some_non_empty};
+use crate::kinds::{match_event_tag, Prio, PRIO, PROCEDURE_KIND, PROCEDURE_KIND_ID, TASK_KIND};
+use crate::tasks::now;
+
 use colored::{ColoredString, Colorize};
 use itertools::Either::{Left, Right};
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
 use nostr_sdk::{Alphabet, Event, EventId, Kind, PublicKey, SingleLetterTag, Tag, TagKind, Timestamp};
-use crate::hashtag::{is_hashtag, Hashtag};
-use crate::helpers::{format_timestamp_local, some_non_empty};
-use crate::kinds::{match_event_tag, Prio, PRIO, PROCEDURE_KIND, PROCEDURE_KIND_ID, TASK_KIND};
-use crate::tasks::now;
 
 pub static MARKER_PARENT: &str = "parent";
 pub static MARKER_DEPENDS: &str = "depends";
@@ -151,7 +152,7 @@ impl Task {
     pub fn last_state_update(&self) -> Timestamp {
         self.state().map(|s| s.time).unwrap_or(self.event.created_at)
     }
-    
+
     pub fn state_at(&self, time: Timestamp) -> Option<TaskState> {
         // TODO do not iterate constructed state objects
         let state = self.states().take_while_inclusive(|ts| ts.time > time);
@@ -201,7 +202,7 @@ impl Task {
     fn tags(&self) -> impl Iterator<Item=&Tag> {
         self.props.iter()
             .flat_map(|e| e.tags.iter()
-            .filter(|t| t.single_letter_tag().is_none_or(|s| s.character != Alphabet::E)))
+                .filter(|t| t.single_letter_tag().is_none_or(|s| s.character != Alphabet::E)))
             .chain(self.tags.iter().flatten())
     }
 
@@ -376,7 +377,7 @@ mod tasks_test {
                 .sign_with_keys(&keys).unwrap());
         assert_eq!(task.pure_state(), State::Open);
         assert_eq!(task.list_hashtags().count(), 1);
-        
+
         let now = Timestamp::now();
         task.props.insert(
             EventBuilder::new(State::Done.into(), "")

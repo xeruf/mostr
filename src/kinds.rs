@@ -118,8 +118,8 @@ pub(crate) fn extract_tags(input: &str, users: &NostrUsers) -> (String, Vec<Tag>
                 return false;
             }
             if let Ok(num) = s[1..].parse::<Prio>() {
-               tags.push(to_prio_tag(num * (if s.len() > 2 { 1 } else { 10 })));
-               return false
+                tags.push(to_prio_tag(num * (if s.len() > 2 { 1 } else { 10 })));
+                return false;
             }
         }
         true

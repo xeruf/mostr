@@ -9,6 +9,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use crate::event_sender::MostrMessage;
+use crate::hashtag::Hashtag;
 use crate::helpers::*;
 use crate::kinds::{format_tag_basic, match_event_tag, Prio, BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS};
 use crate::task::{State, Task, TaskState, MARKER_PROPERTY};
@@ -28,7 +29,6 @@ use rustyline::DefaultEditor;
 use tokio::sync::mpsc;
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
-use crate::hashtag::Hashtag;
 
 mod helpers;
 mod task;
@@ -404,7 +404,7 @@ async fn main() -> Result<()> {
                                                          Some(et) =>
                                                              Some(et).take_if(|et| et.marker.as_ref().is_some_and(|m| m != MARKER_PROPERTY))
                                                                  .map(|et| format!("{}: {}", et.marker.as_ref().unwrap(), tasks.get_relative_path(et.id))),
-                                                         None => 
+                                                         None =>
                                                              Some(format_tag_basic(t)),
                                                      }
                                                  }).join(", ")
@@ -492,7 +492,8 @@ async fn main() -> Result<()> {
                                     tasks.set_key_filter(key)
                                 } else {
                                     if parse_hour(arg, 1)
-                                        .or_else(|| parse_date(arg).map(|utc| utc.with_timezone(&Local)))
+                                        .or_else(|| parse_date(arg)
+                                            .map(|utc| utc.with_timezone(&Local)))
                                         .map(|time| {
                                             info!("Filtering for tasks from {}", format_datetime_relative(time));
                                             tasks.set_filter_since(time.to_timestamp())

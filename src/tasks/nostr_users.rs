@@ -1,10 +1,10 @@
+use nostr_sdk::{Keys, Metadata, PublicKey, Tag};
 use std::collections::HashMap;
 use std::str::FromStr;
-use nostr_sdk::{Keys, Metadata, PublicKey, Tag};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct NostrUsers {
-    users: HashMap<PublicKey, Metadata>
+    users: HashMap<PublicKey, Metadata>,
 }
 
 impl NostrUsers {
@@ -18,7 +18,7 @@ impl NostrUsers {
         let lowered = term.trim().to_ascii_lowercase();
         let term = lowered.as_str();
         if term.is_empty() {
-            return None
+            return None;
         }
         if let Ok(key) = PublicKey::from_str(term) {
             return self.users.get_key_value(&key);
