@@ -195,7 +195,14 @@ If you want to TBC...
 - TBI = To Be Implemented
 - `. TASK` - create and enter a new task even if the name matches an existing one
 
-## Local Development
+# Development and Contributions
+
+This Project follows the [Kull Collaboration Convention](https://kull.jfischer.org/),
+especially the commit message format.
+Currently a separate dev branch is maintained because users regularly receive updates via the main branch.
+Once proper packaging is in place, this can be simplified.
+
+## Local Development Tools
 
 Start a nostr relay, such as
 - https://github.com/coracle-social/bucket for local development
