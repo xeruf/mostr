@@ -135,7 +135,7 @@ async fn main() -> Result<()> {
     }
 
     let keys = read_keys(&mut rl)?;
-    let relayfile = config_dir.join("relays");
+    let relays_file = config_dir.join("relays");
 
     let client = ClientBuilder::new()
         .opts(Options::new()
@@ -151,7 +151,7 @@ async fn main() -> Result<()> {
         Ok(relay) => {
             or_warn!(client.add_relay(relay).await);
         }
-        _ => match File::open(&relayfile).map(|f| BufReader::new(f).lines().flatten()) {
+        _ => match File::open(&relays_file).map(|f| BufReader::new(f).lines().flatten()) {
             Ok(lines) => {
                 for line in lines {
                     or_warn!(client.add_relay(line).await);
@@ -167,7 +167,7 @@ async fn main() -> Result<()> {
                     };
                     or_warn!(client.add_relay(url.clone()).await).map(|bool| {
                         if bool {
-                            or_warn!(fs::write(&relayfile, url));
+                            or_warn!(fs::write(&relays_file, url));
                         }
                     });
                 };
