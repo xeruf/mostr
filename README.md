@@ -10,10 +10,6 @@ An immutable nested collaborative task manager, powered by nostr!
 
 ## Quickstart
 
-First, start a nostr relay, such as
-- https://github.com/coracle-social/bucket for local development
-- https://github.com/rnostr/rnostr for production use
-
 Install rust(up) and run a development build with:
 
     cargo run
@@ -31,14 +27,70 @@ Install latest build:
     cargo install --path .
 
 This one-liner can help you stay on the latest version
-(optionally add a `cd` to your mostr-directory in front):
+(optionally add a `cd` to your mostr-directory in front to use it anywhere):
 
     git pull && cargo install --path . && mostr
 
-Creating a test task externally:
-`nostril --envelope --content "test task" --kind 1621 | websocat ws://localhost:4736`
-
 To exit the application, press `Ctrl-D`.
+
+## Reference
+
+### Command Syntax
+
+Uppercased words are placeholders, brackets enclose optional arguments.
+
+`TASK` creation syntax: `NAME #TAG *PRIO @ASSIGNEE # TAG1 TAG2 ...`
+
+- `TASK` - create task
+  + prefix with space if you want a task to start with a command character
+  + paste text with newlines to create one task per line
+- `.` - clear all filters
+- `.TASK`
+  + activate task by id
+  + match by task name prefix: if one or more tasks match, filter / activate (tries case-sensitive then case-insensitive)
+  + no match: create & activate task
+- `.2` - set view depth to the given number (how many subtask levels to show, default is 1)
+- `/[TEXT]` - activate task or filter by smart-case substring match (empty: move to root)
+- `||TASK` - create and activate a new task procedure (where subtasks automatically depend on the previously created task)
+- `|[TASK]` - mark current task as procedure or create a sibling task depending on the current one and move up
+- sibling task shortcut?
+
+Dot or slash can be repeated to move to parent tasks before acting.
+Append `@TIME` to any task creation or change command to record the action with the given time.
+To add tags or edit the priority or assignee, make the change part of a comment or state update:
+
+- `:[IND][PROP]` - add property column PROP at IND or end,
+  if it already exists remove property column PROP or IND; empty: list properties
+- `::[PROP]` - sort by property PROP (multiple space-separated values allowed)
+- `([TIME]` - list tracked times or insert time-tracking with the specified offset (double to view all history)
+  such as `(20` (for 20:00), `(-1d`, `(-15 minutes`, `(yesterday 17:20`, `(in 2 fortnights`
+  - TBI: track whole interval in one with dash
+- `)[TIME]` - stop time-tracking with optional offset (also convenience helper to move to root)
+- `>[TEXT]` - complete active task and move up, with optional status description
+- `<[TEXT]` - close active task and move up, with optional status description
+- `!TEXT` - set status for current task from text and move up; empty: Open
+- `!TIME: REASON` - defer (hide) current task until given time
+- `,[TEXT]` - list notes or add text (activity / task description)
+- TBI: `;[TEXT]` - list comments or comment on task
+- TBI: show status history and creation with attribution
+- `&` - revert
+  - with string argument, find first matching task in history
+  - with int argument, jump back X tasks in history
+  - undo last action (moving in place or upwards confirms pending actions)
+- `*` - (un)bookmark current task or list all bookmarks
+- `wss://...` - switch or subscribe to relay (prefix with space to forcibly add a new one)
+
+Property Filters:
+
+- `#TAG1 TAG2` - set tag filter
+- `+TAG` - add tag filter (empty: list all used tags)
+- `-TAG` - remove tag filters (by prefix)
+- `?STATUS` - set status filter (type or description) - plain `?` to reset, `??` to show all
+- `*INT` - set priority filter - `**` to reset
+- `@[AUTHOR|TIME]` - filter by time or author (pubkey, or `@` for self, TBI: id prefix, name prefix)
+
+Status descriptions can be used for example for Kanban columns or review flows.
+An active tag or status filter will also set that attribute for newly created tasks.
 
 ## Basic Usage
 
@@ -72,6 +124,10 @@ On the other hand, related tasks like chores
 should be grouped with a tag instead.
 Similarly for projects which are only sporadically worked on
 when a specific task comes up, so they do not clutter the list.
+
+### Task States
+
+> TODO: Mark as Done vs Closed
 
 ### Collaboration
 
@@ -134,65 +190,19 @@ If you want to TBC...
 - Pin to bookmarks
 - high priority
 
-## Reference
-
-### Command Syntax
-
-`TASK` creation syntax: `NAME #TAG *PRIO # TAG1 TAG2 ...`
-
-- `TASK` - create task
-  + prefix with space if you want a task to start with a command character
-  + paste text with newlines to create one task per line
-- `.` - clear all filters
-- `.TASK`
-  + activate task by id
-  + match by task name prefix: if one or more tasks match, filter / activate (tries case-sensitive then case-insensitive)
-  + no match: create & activate task
-- `.2` - set view depth to the given number (how many subtask levels to show, default is 1)
-- `/[TEXT]` - activate task or filter by smart-case substring match (empty: move to root)
-- `||TASK` - create and activate a new task procedure (where subtasks automatically depend on the previously created task)
-- `|[TASK]` - mark current task as procedure or create a sibling task depending on the current one and move up
-- sibling task shortcut?
-
-Dot or slash can be repeated to move to parent tasks before acting.
-Append `@TIME` to any task creation or change command to record the action with the given time.
-
-- `:[IND][PROP]` - add property column PROP at IND or end,
-  if it already exists remove property column PROP or IND; empty: list properties
-- `::[PROP]` - sort by property PROP (multiple space-separated values allowed)
-- `([TIME]` - list tracked times or insert timetracking with the specified offset (double to view all history)
-  such as `-1d`, `-15 minutes`, `yesterday 17:20`, `in 2 fortnights`
-- `)[TIME]` - stop timetracking with optional offset - also convenience helper to move to root
-- `>[TEXT]` - complete active task and move up, with optional status description
-- `<[TEXT]` - close active task and move up, with optional status description
-- `!TEXT` - set status for current task from text and move up; empty: Open
-- `!TIME: REASON` - defer current task to date
-- `,[TEXT]` - list notes or add text (activity / task description)
-- TBI: `;[TEXT]` - list comments or comment on task
-- TBI: show status history and creation with attribution
-- `&` - revert
-  - with string argument, find first matching task in history
-  - with int argument, jump back X tasks in history
-  - undo last action (moving in place or upwards confirms pending actions)
-- `*` - (un)bookmark current task or list all bookmarks
-- `wss://...` - switch or subscribe to relay (prefix with space to forcibly add a new one)
-
-Property Filters:
-
-- `#TAG1 TAG2` - set tag filter
-- `+TAG` - add tag filter (empty: list all used tags)
-- `-TAG` - remove tag filters (by prefix)
-- `?STATUS` - set status filter (type or description) - plain `?` to reset, `??` to show all
-- `*INT` - set priority filter - `**` to reset
-- `@[AUTHOR|TIME]` - filter by time or author (pubkey, or `@` for self, TBI: id prefix, name prefix)
-
-Status descriptions can be used for example for Kanban columns or review flows.
-An active tag or status filter will also set that attribute for newly created tasks.
-
 ### Notes
 
 - TBI = To Be Implemented
 - `. TASK` - create and enter a new task even if the name matches an existing one
+
+## Local Development
+
+Start a nostr relay, such as
+- https://github.com/coracle-social/bucket for local development
+- https://github.com/rnostr/rnostr for production use
+
+To create a test task externally:
+`nostril --envelope --content "test task" --kind 1621 | websocat ws://localhost:4736`
 
 ## Plans
 
@@ -209,8 +219,7 @@ An active tag or status filter will also set that attribute for newly created ta
 
 ### Commands
 
-- Open Command characters: `_^\=$%~'"`, `{}[]`
-- Remove colon from task creation syntax
+Open Command characters: `_^\=$%~'"`, `{}[]`
   
 ### Conceptual
 
@@ -221,7 +230,7 @@ Suggestions welcome!
 - Queueing tasks
 - Allow adding new parent via description?
 - Special commands: help, exit, tutorial, change log level
-- Duplicate task (subtasks? timetracking?)
+- Duplicate task (subtasks? time-tracking?)
 - What if I want to postpone a procedure, i.e. make it pending, or move it across kanban, does this make sense?
 - Dependencies (change from tags to properties so they can be added later? or maybe as a status?)
 - Templates
@@ -236,12 +245,18 @@ Suggestions welcome!
 - TUI: Clear Terminal? Refresh on empty prompt after timeout?
 - Kanban, GANTT, Calendar
 - n8n node
-- Webcal Feed: Scheduled (planning) / Tracked (events, timetracking) with args for how far back/forward
+- Webcal Feed: Scheduled (planning) / Tracked (events, time-tracking) with args for how far back/forward
 
 Interfaces:
 
 - text-based REPL for terminal and messengers
 - interactive UI for web, mobile, desktop e.g. https://docs.slint.dev/latest/docs/slint/src/introduction/
+
+### Config Files
+
+- format strings
+- thresholds: auto-send message, time-tracking overview interval and count
+- global and per-relay: username, key location, tag mappings (i.e. server implies pc, home implies phys) -> also get from relay
 
 ## Exemplary Workflows - User Stories
 
