@@ -402,8 +402,11 @@ impl TasksRelay {
     /// Move up `count` parent tasks from current position
     pub(crate) fn up_by(&self, count: usize) -> Option<EventId> {
         let pos = self.get_position();
-        if count < 1 { return pos; }
-        self.traverse_up_from(pos).nth(count - 1)?.parent_id().cloned()
+        let mut result = pos.as_ref();
+        for _ in 0..count {
+            result = self.get_parent(result);
+        }
+        result.cloned()
     }
 
     pub(crate) fn get_parent(&self, id: Option<&EventId>) -> Option<&EventId> {
