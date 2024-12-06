@@ -14,7 +14,7 @@ default-run = "mostr"
 
 [dependencies]
 # Basics
-tokio = { version = "1.41", features = ["rt", "rt-multi-thread", "macros"] }
+tokio = { version = "1.42", features = ["rt", "rt-multi-thread", "macros"] }
 regex = "1.10.6"
 # System
 log = "0.4"
@@ -35,9 +35,7 @@ interim = { version = "0.1", features = ["chrono"] }
 nostr-sdk = { git = "https://github.com/rust-nostr/nostr", rev = "e82bc787bdd8490ceadb034fe4483e4df1e91b2a" }
 
 [dev-dependencies]
-tokio = { version = "1.41", features = ["rt", "rt-multi-thread", "macros", "io-std"] }
-chrono-english = "0.1"
-linefeed = "0.6"
+mostr = { path = ".", default-features = false }
 
 [features]
 default = ["persistence"]
