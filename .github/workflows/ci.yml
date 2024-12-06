@@ -11,25 +11,23 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - uses: actions-rust-lang/setup-rust-toolchain@v1
-    - run: cargo test --all-features
-    #- name: Assemble fat jar
-    #  run: ./gradlew shadowJar
-    #- name: Upload jar as artifact
-    #  uses: actions/upload-artifact@v4
-    #  with:
-    #    name: software-challenge-gui-${{ github.sha }}-${{ matrix.os }}
-    #    path: build/*.jar
-  build-arm:
-    runs-on: ${{ matrix.os }}
-    if: startsWith(github.ref, 'refs/tags/')
-    strategy:
-      matrix:
-        os: [macos-latest-large]
-        jdk: [11]
-    steps:
-    - uses: actions/checkout@v4
-    - uses: actions-rust-lang/setup-rust-toolchain@v1
-    - run: cargo test --all-features
+    - run: cargo test
+    - run: cargo build --release
+    - uses: actions/upload-artifact@v4
+      with:
+        name: mostr_${{ github.sha }}_${{ matrix.os }}
+        path: target/release/mostr
+  #build-arm:
+  #  runs-on: ${{ matrix.os }}
+  #  if: startsWith(github.ref, 'refs/tags/')
+  #  strategy:
+  #    matrix:
+  #      os: [macos-latest-large]
+  #      jdk: [11]
+  #  steps:
+  #  - uses: actions/checkout@v4
+  #  - uses: actions-rust-lang/setup-rust-toolchain@v1
+  #  - run: cargo test --all-features
   #release:
   #  needs: [build, build-arm]
   #  runs-on: ubuntu-latest
