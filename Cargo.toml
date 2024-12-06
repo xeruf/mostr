@@ -23,7 +23,7 @@ colog = "1.3"
 colored = "2.1"
 rustyline = { git = "https://github.com/xeruf/rustyline", rev = "465b14d" }
 # OS-Specific Abstractions
-keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native-sync-persistent", "crypto-rust"] }
+keyring = "3"
 directories = "5.0"
 whoami = "1.5"
 # slint = "1.8"
@@ -38,3 +38,7 @@ nostr-sdk = { git = "https://github.com/rust-nostr/nostr", rev = "e82bc787bdd849
 tokio = { version = "1.41", features = ["rt", "rt-multi-thread", "macros", "io-std"] }
 chrono-english = "0.1"
 linefeed = "0.6"
+
+[features]
+default = ["persistence"]
+persistence = ["keyring/apple-native", "keyring/windows-native", "keyring/linux-native-sync-persistent", "keyring/crypto-rust"]
