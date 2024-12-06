@@ -79,6 +79,8 @@ pub(crate) struct TasksRelay {
     search_depth: usize,
     view_depth: usize,
     pub(crate) recurse_activities: bool,
+    // Last position used in interface - needs auto-update
+    //position: Option<EventId>,
 
     /// Currently active tags
     tags: BTreeSet<Hashtag>,
@@ -1824,38 +1826,36 @@ mod tasks_test {
     }
 
     macro_rules! assert_position {
-        ($left:expr, $right:expr $(,)?) => {
-            assert_eq!($left.get_position(), Some($right))
+        ($tasks:expr, $id:expr $(,)?) => {
+            assert_eq!($tasks.get_position(), Some($id))
         };
     }
 
     macro_rules! assert_tasks_visible {
-        ($left:expr, $right:expr $(,)?) => {
-            let tasks = $left.visible_tasks();
-            assert_tasks!($left, tasks, $right,
+        ($tasks:expr, $expected:expr $(,)?) => {
+            assert_tasks!($tasks, $tasks.visible_tasks(), $expected,
                 "\nQuick Access: {:?}",
-                $left.quick_access_raw().map(|id| $left.get_relative_path(*id)).collect_vec());
+                $tasks.quick_access_raw().map(|id| $tasks.get_relative_path(*id)).collect_vec());
         };
     }
 
     macro_rules! assert_tasks_view {
-        ($left:expr, $right:expr $(,)?) => {
-            let tasks = $left.viewed_tasks();
-            assert_tasks!($left, tasks, $right, "");
+        ($tasks:expr, $expected:expr $(,)?) => {
+            assert_tasks!($tasks, $tasks.viewed_tasks(), $expected, "");
         };
     }
 
     macro_rules! assert_tasks {
-        ($left:expr, $tasks:expr, $right:expr $(, $($arg:tt)*)?) => {
+        ($tasks:expr, $tasklist:expr, $expected:expr $(, $($arg:tt)*)?) => {
             assert_eq!(
-                $tasks
+                $tasklist
                     .iter()
                     .map(|t| t.event.id)
                     .collect::<HashSet<EventId>>(),
-                HashSet::from_iter($right.clone()),
+                HashSet::from_iter($expected.clone()),
                 "Tasks Visible: {:?}\nExpected: {:?}{}",
-                $tasks.iter().map(|t| t.event.id).map(|id| $left.get_relative_path(id)).collect_vec(),
-                $right.into_iter().map(|id| $left.get_relative_path(id)).collect_vec(),
+                $tasklist.iter().map(|t| t.event.id).map(|id| $tasks.get_relative_path(id)).collect_vec(),
+                $expected.into_iter().map(|id| $tasks.get_relative_path(id)).collect_vec(),
                 format!($($($arg)*)?)
             );
         };
