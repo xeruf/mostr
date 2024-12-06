@@ -7,7 +7,7 @@ use itertools::Itertools;
 use nostr_sdk::{EventBuilder, EventId, Keys, Kind, Tag, Timestamp};
 use std::collections::HashSet;
 
-fn stub_tasks() -> TasksRelay {
+pub(super) fn stub_tasks() -> TasksRelay {
     use nostr_sdk::Keys;
     use tokio::sync::mpsc;
 
@@ -313,22 +313,6 @@ fn test_tracking() {
 }
 
 #[test]
-#[ignore]
-fn test_timestamps() {
-    let mut tasks = stub_tasks();
-    let zero = EventId::all_zeros();
-
-    tasks.track_at(Timestamp::now() + 100, Some(zero));
-    assert_eq!(
-        timestamps(tasks.get_own_events_history(), &[zero])
-            .collect_vec()
-            .len(),
-        2
-    )
-    // TODO Does not show both future and current tracking properly, need to split by current time
-}
-
-#[test]
 fn test_depth() {
     let mut tasks = stub_tasks();
 
@@ -364,13 +348,13 @@ fn test_depth() {
     tasks.view_depth = 2;
     assert_tasks_view!(tasks, [t111]);
 
-    assert_eq!(ChildIterator::from(&tasks, EventId::all_zeros()).get_all().len(), 1);
-    assert_eq!(ChildIterator::from(&tasks, EventId::all_zeros()).get_depth(0).len(), 1);
-    assert_eq!(ChildIterator::from(&tasks, t1).get_depth(0).len(), 1);
-    assert_eq!(ChildIterator::from(&tasks, t1).get_depth(1).len(), 3);
-    assert_eq!(ChildIterator::from(&tasks, t1).get_depth(2).len(), 4);
-    assert_eq!(ChildIterator::from(&tasks, t1).get_depth(9).len(), 4);
-    assert_eq!(ChildIterator::from(&tasks, t1).get_all().len(), 4);
+    assert_eq!(ChildrenTraversal::from(&tasks, EventId::all_zeros()).get_all().len(), 1);
+    assert_eq!(ChildrenTraversal::from(&tasks, EventId::all_zeros()).get_depth(0).len(), 1);
+    assert_eq!(ChildrenTraversal::from(&tasks, t1).get_depth(0).len(), 1);
+    assert_eq!(ChildrenTraversal::from(&tasks, t1).get_depth(1).len(), 3);
+    assert_eq!(ChildrenTraversal::from(&tasks, t1).get_depth(2).len(), 4);
+    assert_eq!(ChildrenTraversal::from(&tasks, t1).get_depth(9).len(), 4);
+    assert_eq!(ChildrenTraversal::from(&tasks, t1).get_all().len(), 4);
 
     tasks.move_up();
     assert_position!(tasks, t1);

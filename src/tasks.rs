@@ -1,6 +1,8 @@
-pub(crate) mod nostr_users;
+mod nostr_users;
 #[cfg(test)]
 mod tests;
+mod children_traversal;
+mod durations;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt::{Display, Formatter};
@@ -17,7 +19,9 @@ use crate::helpers::{
 };
 use crate::kinds::*;
 use crate::task::{State, StateChange, Task, MARKER_DEPENDS, MARKER_PARENT, MARKER_PROPERTY};
-use crate::tasks::nostr_users::NostrUsers;
+use crate::tasks::children_traversal::ChildrenTraversal;
+use crate::tasks::durations::{referenced_events, timestamps, Durations};
+pub use crate::tasks::nostr_users::NostrUsers;
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
@@ -39,7 +43,7 @@ pub(crate) fn now() -> Timestamp {
 }
 
 type TaskMap = HashMap<EventId, Task>;
-trait TaskMapMethods {
+pub(super) trait TaskMapMethods {
     fn children_of<'a>(&'a self, task: &'a Task) -> impl Iterator<Item=&Task> + 'a;
     fn children_for<'a>(&'a self, id: Option<EventId>) -> impl Iterator<Item=&Task> + 'a;
     fn children_ids_for<'a>(&'a self, id: EventId) -> impl Iterator<Item=EventId> + 'a;
@@ -52,7 +56,6 @@ impl TaskMapMethods for TaskMap {
     fn children_for<'a>(&'a self, id: Option<EventId>) -> impl Iterator<Item=&Task> + 'a {
         self.values().filter(move |t| t.parent_id() == id.as_ref())
     }
-
     fn children_ids_for<'a>(&'a self, id: EventId) -> impl Iterator<Item=EventId> + 'a {
         self.children_for(Some(id)).map(|t| t.get_id())
     }
@@ -369,7 +372,7 @@ impl TasksRelay {
     fn total_time_tracked(&self, id: EventId) -> u64 {
         let mut total = 0;
 
-        let children = ChildIterator::from(&self, id).get_all();
+        let children = ChildrenTraversal::from(&self, id).get_all();
         for user in self.history.values() {
             total += Durations::from(user.values(), &children)
                 .sum::<Duration>()
@@ -1334,7 +1337,7 @@ impl TasksRelay {
         let ids =
             if state == State::Closed {
                 // Close whole subtree
-                ChildIterator::from(self, id).get_all()
+                ChildrenTraversal::from(self, id).get_all()
             } else {
                 vec![id]
             };
@@ -1575,224 +1578,8 @@ pub(crate) fn join_tasks<'a>(
         })
 }
 
-fn referenced_events(event: &Event) -> impl Iterator<Item=EventId> + '_ {
-    event.tags.iter().filter_map(|tag| match_event_tag(tag).map(|t| t.id))
-}
-
 pub fn referenced_event(event: &Event) -> Option<EventId> {
     referenced_events(event).next()
-}
-
-/// Returns the id of a referenced event if it is contained in the provided ids list.
-fn matching_tag_id<'a>(event: &'a Event, ids: &'a [EventId]) -> Option<EventId> {
-    referenced_events(event).find(|id| ids.contains(id))
-}
-
-/// Filters out event timestamps to those that start or stop one of the given events
-fn timestamps<'a>(
-    events: impl Iterator<Item=&'a Event>,
-    ids: &'a [EventId],
-) -> impl Iterator<Item=(&Timestamp, Option<EventId>)> {
-    events
-        .map(|event| (&event.created_at, matching_tag_id(event, ids)))
-        .dedup_by(|(_, e1), (_, e2)| e1 == e2)
-        .skip_while(|element| element.1.is_none())
-}
-
-/// Iterates Events to accumulate times tracked
-/// Expects a sorted iterator
-struct Durations<'a> {
-    events: Box<dyn Iterator<Item=&'a Event> + 'a>,
-    ids: &'a [EventId],
-    threshold: Option<Timestamp>,
-}
-impl Durations<'_> {
-    fn from<'b>(
-        events: impl IntoIterator<Item=&'b Event> + 'b,
-        ids: &'b [EventId],
-    ) -> Durations<'b> {
-        Durations {
-            events: Box::new(events.into_iter()),
-            ids,
-            threshold: Some(Timestamp::now()), // TODO consider offset?
-        }
-    }
-}
-impl Iterator for Durations<'_> {
-    type Item = Duration;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut start: Option<u64> = None;
-        while let Some(event) = self.events.next() {
-            if matching_tag_id(event, self.ids).is_some() {
-                if self.threshold.is_some_and(|th| event.created_at > th) {
-                    continue;
-                }
-                start = start.or(Some(event.created_at.as_u64()))
-            } else {
-                if let Some(stamp) = start {
-                    return Some(Duration::from_secs(event.created_at.as_u64() - stamp));
-                }
-            }
-        }
-        let now = self.threshold.unwrap_or(Timestamp::now()).as_u64();
-        start.filter(|t| t < &now)
-            .map(|stamp| Duration::from_secs(now.saturating_sub(stamp)))
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum ChildIteratorFilter {
-    Reject = 0b00,
-    TakeSelf = 0b01,
-    TakeChildren = 0b10,
-    Take = 0b11,
-}
-impl ChildIteratorFilter {
-    fn takes_children(&self) -> bool {
-        self == &ChildIteratorFilter::Take ||
-            self == &ChildIteratorFilter::TakeChildren
-    }
-    fn takes_self(&self) -> bool {
-        self == &ChildIteratorFilter::Take ||
-            self == &ChildIteratorFilter::TakeSelf
-    }
-}
-
-/// Breadth-First Iterator over Tasks and recursive children
-struct ChildIterator<'a> {
-    tasks: &'a TaskMap,
-    /// Found Events
-    queue: Vec<EventId>,
-    /// Index of the next element in the queue
-    index: usize,
-    /// Depth of the next element
-    depth: usize,
-    /// Element with the next depth boundary
-    next_depth_at: usize,
-}
-impl<'a> ChildIterator<'a> {
-    fn rooted(tasks: &'a TaskMap, id: Option<&EventId>) -> Self {
-        let mut queue = Vec::with_capacity(tasks.len());
-        queue.append(
-            &mut tasks
-                .values()
-                .filter(move |t| t.parent_id() == id)
-                .map(|t| t.get_id())
-                .collect_vec()
-        );
-        Self::with_queue(tasks, queue)
-    }
-
-    fn with_queue(tasks: &'a TaskMap, queue: Vec<EventId>) -> Self {
-        ChildIterator {
-            tasks: &tasks,
-            next_depth_at: queue.len(),
-            index: 0,
-            depth: 1,
-            queue,
-        }
-    }
-
-    fn from(tasks: &'a TasksRelay, id: EventId) -> Self {
-        let mut queue = Vec::with_capacity(64);
-        queue.push(id);
-        ChildIterator {
-            tasks: &tasks.tasks,
-            queue,
-            index: 0,
-            depth: 0,
-            next_depth_at: 1,
-        }
-    }
-
-    /// Process until the given depth
-    /// Returns true if that depth was reached
-    fn process_depth(&mut self, depth: usize) -> bool {
-        while self.depth < depth {
-            if self.next().is_none() {
-                return false;
-            }
-        }
-        true
-    }
-
-    /// Get all children
-    fn get_all(mut self) -> Vec<EventId> {
-        while self.next().is_some() {}
-        self.queue
-    }
-
-    /// Get all tasks until the specified depth
-    fn get_depth(mut self, depth: usize) -> Vec<EventId> {
-        self.process_depth(depth);
-        self.queue
-    }
-
-    fn check_depth(&mut self) {
-        if self.next_depth_at == self.index {
-            self.depth += 1;
-            self.next_depth_at = self.queue.len();
-        }
-    }
-
-    /// Get next id and advance, without adding children
-    fn next_task(&mut self) -> Option<EventId> {
-        if self.index >= self.queue.len() {
-            return None;
-        }
-        let id = self.queue[self.index];
-        self.index += 1;
-        Some(id)
-    }
-
-    /// Get the next known task and run it through the filter
-    fn next_filtered<F>(&mut self, filter: &F) -> Option<&'a Task>
-    where
-        F: Fn(&Task) -> ChildIteratorFilter,
-    {
-        self.next_task().and_then(|id| {
-            if let Some(task) = self.tasks.get(&id) {
-                let take = filter(task);
-                if take.takes_children() {
-                    self.queue_children_of(&task);
-                }
-                if take.takes_self() {
-                    self.check_depth();
-                    return Some(task);
-                }
-            }
-            self.check_depth();
-            self.next_filtered(filter)
-        })
-    }
-
-    fn queue_children_of(&mut self, task: &'a Task) {
-        self.queue.extend(self.tasks.children_ids_for(task.get_id()));
-    }
-}
-impl FusedIterator for ChildIterator<'_> {}
-impl<'a> Iterator for ChildIterator<'a> {
-    type Item = EventId;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.next_task().inspect(|id| {
-            match self.tasks.get(id) {
-                None => {
-                    // Unknown task, might still find children, just slower
-                    for task in self.tasks.values() {
-                        if task.parent_id().is_some_and(|i| i == id) {
-                            self.queue.push(task.get_id());
-                        }
-                    }
-                }
-                Some(task) => {
-                    self.queue_children_of(&task);
-                }
-            }
-            self.check_depth();
-        })
-    }
 }
 
 struct ParentIterator<'a> {
@@ -1809,3 +1596,4 @@ impl<'a> Iterator for ParentIterator<'a> {
         })
     }
 }
+impl FusedIterator for ParentIterator<'_> {}

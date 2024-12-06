@@ -1,5 +1,5 @@
 use crate::task::MARKER_PARENT;
-use crate::tasks::nostr_users::NostrUsers;
+use crate::tasks::NostrUsers;
 use crate::tasks::HIGH_PRIO;
 use itertools::Itertools;
 use nostr_sdk::{EventBuilder, EventId, Kind, PublicKey, Tag, TagKind, TagStandard};
