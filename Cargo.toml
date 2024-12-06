@@ -26,7 +26,7 @@ rustyline = { git = "https://github.com/xeruf/rustyline", rev = "465b14d" }
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native-sync-persistent", "crypto-rust"] }
 directories = "5.0"
 whoami = "1.5"
-slint = "1.8"
+# slint = "1.8"
 # Application Utils
 itertools = "0.12"
 chrono = "0.4"

@@ -1,0 +1,48 @@
+on: [push, pull_request, create]
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # https://docs.github.com/en/actions/using-jobs/using-a-matrix-for-your-jobs
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        jdk: [11]
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions-rust-lang/setup-rust-toolchain@v1
+    - run: cargo test --all-features
+    #- name: Assemble fat jar
+    #  run: ./gradlew shadowJar
+    #- name: Upload jar as artifact
+    #  uses: actions/upload-artifact@v4
+    #  with:
+    #    name: software-challenge-gui-${{ github.sha }}-${{ matrix.os }}
+    #    path: build/*.jar
+  build-arm:
+    runs-on: ${{ matrix.os }}
+    if: startsWith(github.ref, 'refs/tags/')
+    strategy:
+      matrix:
+        os: [macos-latest-large]
+        jdk: [11]
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions-rust-lang/setup-rust-toolchain@v1
+    - run: cargo test --all-features
+  #release:
+  #  needs: [build, build-arm]
+  #  runs-on: ubuntu-latest
+  #  if: startsWith(github.ref, 'refs/tags/')
+  #  steps:
+  #  - uses: actions/download-artifact@v4 # https://github.com/actions/download-artifact
+  #    with:
+  #      pattern: software-challenge-gui-${{ github.sha }}-*
+  #      path: build
+  #      merge-multiple: true
+  #  - name: Release ${{ github.ref }}
+  #    uses: softprops/action-gh-release@v1 # https://github.com/softprops/action-gh-release
+  #    with:
+  #      files: build/*.jar
+  #    env:
+  #      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
