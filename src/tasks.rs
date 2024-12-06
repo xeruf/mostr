@@ -14,7 +14,7 @@ use crate::helpers::{
     parse_tracking_stamp, some_non_empty, to_string_or_default, CHARACTER_THRESHOLD,
 };
 use crate::kinds::*;
-use crate::task::{State, Task, TaskState, MARKER_DEPENDS, MARKER_PARENT, MARKER_PROPERTY};
+use crate::task::{State, StateChange, Task, MARKER_DEPENDS, MARKER_PARENT, MARKER_PROPERTY};
 use crate::tasks::nostr_users::NostrUsers;
 use colored::Colorize;
 use itertools::Itertools;
@@ -40,18 +40,18 @@ type TaskMap = HashMap<EventId, Task>;
 trait TaskMapMethods {
     fn children_of<'a>(&'a self, task: &'a Task) -> impl Iterator<Item=&Task> + 'a;
     fn children_for<'a>(&'a self, id: Option<EventId>) -> impl Iterator<Item=&Task> + 'a;
-    fn children_ids_for<'a>(&'a self, id: EventId) -> impl Iterator<Item=&EventId> + 'a;
+    fn children_ids_for<'a>(&'a self, id: EventId) -> impl Iterator<Item=EventId> + 'a;
 }
 impl TaskMapMethods for TaskMap {
     fn children_of<'a>(&'a self, task: &'a Task) -> impl Iterator<Item=&Task> + 'a {
-        self.children_for(Some(task.event.id))
+        self.children_for(Some(task.get_id().clone()))
     }
 
     fn children_for<'a>(&'a self, id: Option<EventId>) -> impl Iterator<Item=&Task> + 'a {
         self.values().filter(move |t| t.parent_id() == id.as_ref())
     }
 
-    fn children_ids_for<'a>(&'a self, id: EventId) -> impl Iterator<Item=&EventId> + 'a {
+    fn children_ids_for<'a>(&'a self, id: EventId) -> impl Iterator<Item=EventId> + 'a {
         self.children_for(Some(id)).map(|t| t.get_id())
     }
 }
@@ -376,15 +376,15 @@ impl TasksRelay {
         total
     }
 
-    fn total_progress(&self, id: &EventId) -> Option<f32> {
-        self.get_by_id(id).and_then(|task| match task.pure_state() {
+    fn total_progress(&self, id: EventId) -> Option<f32> {
+        self.get_by_id(&id).and_then(|task| match task.pure_state() {
             State::Closed => None,
             State::Done => Some(1.0),
             _ => {
                 let mut sum = 0f32;
                 let mut count = 0;
                 for prog in self.tasks
-                    .children_ids_for(task.event.id)
+                    .children_ids_for(task.get_id())
                     .filter_map(|e| self.total_progress(e))
                 {
                     sum += prog;
@@ -450,7 +450,7 @@ impl TasksRelay {
     pub(crate) fn get_relative_path(&self, id: EventId) -> String {
         join_tasks(
             self.traverse_up_from(Some(id))
-                .take_while(|t| Some(t.event.id) != self.get_position()),
+                .take_while(|t| Some(t.get_id()) != self.get_position()),
             false,
         ).unwrap_or(id.to_string())
     }
@@ -598,9 +598,9 @@ impl TasksRelay {
         }
     }
 
-    fn quick_access_raw(&self) -> impl Iterator<Item=&EventId> {
+    fn quick_access_raw(&self) -> impl Iterator<Item=EventId> + '_ {
         // TODO add recent tasks (most time tracked + recently created)
-        self.bookmarks.iter()
+        self.bookmarks.iter().cloned()
             .chain(
                 // Latest
                 self.tasks.values()
@@ -618,13 +618,13 @@ impl TasksRelay {
 
     fn bookmarked_tasks_deduped(&self, visible: &[&Task]) -> impl Iterator<Item=&Task> {
         let tree = visible.iter()
-            .flat_map(|task| self.traverse_up_from(Some(task.event.id)))
+            .flat_map(|task| self.traverse_up_from(Some(task.get_id())))
             .unique();
         let pos = self.get_position();
-        let ids: HashSet<&EventId> = tree.map(|t| t.get_id()).chain(pos.as_ref()).collect();
+        let ids: HashSet<EventId> = tree.map(|t| t.get_id()).chain(pos).collect();
         self.quick_access_raw()
             .filter(|id| !ids.contains(id))
-            .filter_map(|id| self.get_by_id(id))
+            .filter_map(|id| self.get_by_id(&id))
             .filter(|t| self.filter(t))
             .sorted_by_cached_key(|t| self.sorting_key(t))
             .dedup()
@@ -655,7 +655,7 @@ impl TasksRelay {
             }
             "state" => {
                 if let Some(task) = task
-                    .get_dependendees()
+                    .find_dependents()
                     .iter()
                     .filter_map(|id| self.get_by_id(id))
                     .find(|t| t.pure_state().is_open())
@@ -676,7 +676,7 @@ impl TasksRelay {
             "owner" => format!("{:.6}", self.users.get_username(&task.get_owner())),
             "author" | "creator" => format!("{:.6}", self.users.get_username(&task.event.pubkey)), // FIXME temporary until proper column alignment
             "prio" => self
-                .traverse_up_from(Some(task.event.id))
+                .traverse_up_from(Some(task.get_id()))
                 .find_map(Task::priority_raw)
                 .map(|p| p.to_string())
                 .unwrap_or_else(|| {
@@ -686,11 +686,11 @@ impl TasksRelay {
                         "".to_string()
                     }
                 }),
-            "path" => self.get_task_path(Some(task.event.id)),
-            "rpath" => self.get_relative_path(task.event.id),
+            "path" => self.get_task_path(Some(task.get_id())),
+            "rpath" => self.get_relative_path(task.get_id()),
             // TODO format strings configurable
-            "time" => display_time("MMMm", self.time_tracked(*task.get_id())),
-            "rtime" => display_time("HH:MM", self.total_time_tracked(*task.get_id())),
+            "time" => display_time("MMMm", self.time_tracked(task.get_id())),
+            "rtime" => display_time("HH:MM", self.total_time_tracked(task.get_id())),
             prop => task.get(prop).unwrap_or_default(),
         }
     }
@@ -749,7 +749,7 @@ impl TasksRelay {
         self.filtered_tasks(position, false)
             .into_iter()
             .filter(predicate)
-            .map(|t| t.event.id)
+            .map(|t| t.get_id())
             .collect()
     }
 
@@ -881,22 +881,22 @@ impl TasksRelay {
             let content = task.get_filter_title();
             let lowercase = content.to_ascii_lowercase();
             if lowercase == lowercase_arg {
-                return vec![task.event.id];
+                return vec![task.get_id()];
             } else if content.starts_with(arg) {
-                filtered.push(task.event.id)
+                filtered.push(task.get_id())
             } else if regex.as_ref()
                 .map(|r| r.is_match(lowercase.as_bytes()))
                 .unwrap_or_else(|_| lowercase.starts_with(&lowercase_arg)) {
-                filtered_fuzzy.push(task.event.id)
+                filtered_fuzzy.push(task.get_id())
             }
         }
         // Find global exact match
         for task in self.tasks.values() {
             if task.get_filter_title().to_ascii_lowercase() == lowercase_arg &&
                 // exclude closed tasks and their subtasks
-                !self.traverse_up_from(Some(*task.get_id())).any(|t| !t.pure_state().is_open())
+                !self.traverse_up_from(Some(task.get_id())).any(|t| !t.pure_state().is_open())
             {
-                return vec![task.event.id];
+                return vec![task.get_id()];
             }
         }
 
@@ -1286,7 +1286,7 @@ impl TasksRelay {
                 .find(|e| {
                     referenced_event(e)
                         .and_then(|id| self.get_by_id(&id))
-                        .is_some_and(|t| t.event.content.to_ascii_lowercase().contains(&lower))
+                        .is_some_and(|t| t.get_title().to_ascii_lowercase().contains(&lower))
                 });
         if let Some(event) = found {
             self.move_to(referenced_event(event));
@@ -1343,7 +1343,7 @@ impl TasksRelay {
                 .tags(tags);
         info!(
             "Task status {} set for \"{}\"{}{}",
-            TaskState::get_label_for(&state, comment),
+            StateChange::get_label_for(&state, comment),
             self.get_task_title(&id),
             self.custom_time
                 .map(|ts| format!(" at {}", format_timestamp_relative(&ts)))
@@ -1424,7 +1424,7 @@ impl Display for TasksRelay {
             let state = t.state_or_default();
             let now = &now();
             let mut tracking_stamp: Option<Timestamp> = None;
-            for elem in timestamps(self.get_own_events_history(), &[t.event.id]).map(|(e, _)| e) {
+            for elem in timestamps(self.get_own_events_history(), &[t.get_id()]).map(|(e, _)| e) {
                 if tracking_stamp.is_some() && elem > now {
                     break;
                 }
@@ -1434,9 +1434,9 @@ impl Display for TasksRelay {
                 lock,
                 "Active from {} (total tracked time {}m) - {} since {}",
                 tracking_stamp.map_or("?".to_string(), |t| format_timestamp_relative(&t)),
-                self.time_tracked(*t.get_id()) / 60,
+                self.time_tracked(t.get_id()) / 60,
                 state,
-                format_timestamp_relative(&state.time)
+                format_timestamp_relative(&state.get_timestamp())
             )?;
             for d in t.descriptions().rev() { writeln!(lock, "{}", d)?; }
             writeln!(lock)?;
@@ -1483,7 +1483,7 @@ impl Display for TasksRelay {
                          .map(|p| self.get_property(task, p.as_str()))
                          .join(" \t")
             )?;
-            total_time += self.total_time_tracked(task.event.id) // TODO include parent if it matches
+            total_time += self.total_time_tracked(task.get_id()) // TODO include parent if it matches
         }
 
         writeln!(lock,
@@ -1494,7 +1494,7 @@ impl Display for TasksRelay {
     }
 }
 
-pub trait PropertyCollection<T> {
+pub(super) trait PropertyCollection<T> {
     fn remove_at(&mut self, index: usize);
     fn add_or_remove(&mut self, value: T);
     fn add_or_remove_at(&mut self, value: T, index: usize);
@@ -1675,7 +1675,7 @@ impl<'a> ChildIterator<'a> {
             &mut tasks
                 .values()
                 .filter(move |t| t.parent_id() == id)
-                .map(|t| t.event.id)
+                .map(|t| t.get_id())
                 .collect_vec()
         );
         Self::with_queue(tasks, queue)
@@ -1765,7 +1765,7 @@ impl<'a> ChildIterator<'a> {
     }
 
     fn queue_children_of(&mut self, task: &'a Task) {
-        self.queue.extend(self.tasks.children_ids_for(task.event.id));
+        self.queue.extend(self.tasks.children_ids_for(task.get_id()));
     }
 }
 impl FusedIterator for ChildIterator<'_> {}
@@ -1779,7 +1779,7 @@ impl<'a> Iterator for ChildIterator<'a> {
                     // Unknown task, might still find children, just slower
                     for task in self.tasks.values() {
                         if task.parent_id().is_some_and(|i| i == id) {
-                            self.queue.push(task.event.id);
+                            self.queue.push(task.get_id());
                         }
                     }
                 }
@@ -1835,7 +1835,7 @@ mod tasks_test {
         ($tasks:expr, $expected:expr $(,)?) => {
             assert_tasks!($tasks, $tasks.visible_tasks(), $expected,
                 "\nQuick Access: {:?}",
-                $tasks.quick_access_raw().map(|id| $tasks.get_relative_path(*id)).collect_vec());
+                $tasks.quick_access_raw().map(|id| $tasks.get_relative_path(id)).collect_vec());
         };
     }
 
@@ -1850,11 +1850,11 @@ mod tasks_test {
             assert_eq!(
                 $tasklist
                     .iter()
-                    .map(|t| t.event.id)
+                    .map(|t| t.get_id())
                     .collect::<HashSet<EventId>>(),
                 HashSet::from_iter($expected.clone()),
                 "Tasks Visible: {:?}\nExpected: {:?}{}",
-                $tasklist.iter().map(|t| t.event.id).map(|id| $tasks.get_relative_path(id)).collect_vec(),
+                $tasklist.iter().map(|t| t.get_id()).map(|id| $tasks.get_relative_path(id)).collect_vec(),
                 $expected.into_iter().map(|id| $tasks.get_relative_path(id)).collect_vec(),
                 format!($($($arg)*)?)
             );
@@ -1923,7 +1923,7 @@ mod tasks_test {
         let task2 = tasks.get_current_task().unwrap();
         assert_eq!(task2.descriptions().next(), None);
         assert_eq!(task2.priority(), Some(30));
-        let anid = task2.event.id;
+        let anid = task2.get_id();
 
         tasks.custom_time = Some(Timestamp::now() + 1);
         let s1 = tasks.make_task_unwrapped("sub1");
@@ -2039,7 +2039,7 @@ mod tasks_test {
         assert_tasks_view!(tasks, [sub_id]);
         assert_eq!(tasks.len(), 3);
         let sub = tasks.get_by_id(&sub_id).unwrap();
-        assert_eq!(sub.get_dependendees(), Vec::<&EventId>::new());
+        assert_eq!(sub.find_dependents(), Vec::<&EventId>::new());
     }
 
     #[test]
@@ -2218,7 +2218,7 @@ mod tasks_test {
 
         let empty = tasks.make_task_unchecked("", vec![]);
         let empty_task = tasks.get_by_id(&empty).unwrap();
-        let empty_id = empty_task.event.id.to_string();
+        let empty_id = empty_task.get_id().to_string();
         assert_eq!(empty_task.get_title(), empty_id);
         assert_eq!(tasks.get_task_path(Some(empty)), empty_id);
     }

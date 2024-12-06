@@ -12,7 +12,7 @@ use crate::event_sender::MostrMessage;
 use crate::hashtag::Hashtag;
 use crate::helpers::*;
 use crate::kinds::{format_tag_basic, match_event_tag, Prio, BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS};
-use crate::task::{State, Task, TaskState, MARKER_PROPERTY};
+use crate::task::{State, StateChange, Task, MARKER_PROPERTY};
 use crate::tasks::{referenced_event, PropertyCollection, StateFilter, TasksRelay};
 use chrono::Local;
 use colored::Colorize;
@@ -387,7 +387,7 @@ async fn main() -> Result<()> {
                             None => {
                                 if let Some(task) = tasks.get_current_task() {
                                     println!("Change History for {}:", task.get_id());
-                                    for e in once(&task.event).chain(task.props.iter().rev()) {
+                                    for e in task.all_events() {
                                         println!("{} {} [{}]",
                                                  format_timestamp_full(&e.created_at),
                                                  match State::try_from(e.kind) {
@@ -567,7 +567,7 @@ async fn main() -> Result<()> {
                         match tasks.get_position() {
                             None => {
                                 warn!("First select a task to set its state!");
-                                info!("Usage: ![(Open|Procedure|Pending|Done|Closed): ][Statename]");
+                                info!("Usage: ![(Open|Procedure|Pending|Done|Closed): ][Statename] OR Time: Reason");
                             }
                             Some(id) => {
                                 'block: {
@@ -584,8 +584,8 @@ async fn main() -> Result<()> {
                                             tasks.set_state_for(id, right, State::Pending);
                                             tasks.custom_time = Some(stamp);
                                             tasks.set_state_for(id,
-                                                                &state.as_ref().map(TaskState::get_label).unwrap_or_default(),
-                                                                state.map(|ts| ts.state).unwrap_or(State::Open));
+                                                                &state.as_ref().map(StateChange::get_label).unwrap_or_default(),
+                                                                State::from(state));
                                             break 'block;
                                         }
                                     }
@@ -728,7 +728,7 @@ async fn main() -> Result<()> {
 
                             let filtered =
                                 tasks.get_filtered(pos, |t| {
-                                    transform(&t.event.content).contains(&remaining) ||
+                                    transform(&t.get_title()).contains(&remaining) ||
                                         t.list_hashtags().any(
                                             |tag| tag.contains(&remaining))
                                 });

@@ -1,9 +1,14 @@
+mod state;
+#[cfg(test)]
+mod tests;
+
 use fmt::Display;
 use std::cmp::Ordering;
+use std::collections::btree_set::Iter;
 use std::collections::BTreeSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::iter::once;
+use std::iter::{once, Chain, Once};
 use std::str::FromStr;
 use std::string::ToString;
 
@@ -11,6 +16,9 @@ use crate::hashtag::{is_hashtag, Hashtag};
 use crate::helpers::{format_timestamp_local, some_non_empty};
 use crate::kinds::{match_event_tag, Prio, PRIO, PROCEDURE_KIND, PROCEDURE_KIND_ID, TASK_KIND};
 use crate::tasks::now;
+
+pub use crate::task::state::State;
+pub use crate::task::state::StateChange;
 
 use colored::{ColoredString, Colorize};
 use itertools::Either::{Left, Right};
@@ -25,7 +33,7 @@ pub static MARKER_PROPERTY: &str = "property";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Task {
     /// Event that defines this task
-    pub(crate) event: Event,
+    pub(super) event: Event, // TODO make private
     /// Cached sorted tags of the event with references removed
     tags: Option<BTreeSet<Tag>>,
     /// Task references derived from the event tags
@@ -68,8 +76,13 @@ impl Task {
         }
     }
 
-    pub(crate) fn get_id(&self) -> &EventId {
-        &self.event.id
+    /// All Events including the task and its props in chronological order
+    pub(crate) fn all_events(&self) -> impl DoubleEndedIterator<Item=&Event> {
+        once(&self.event).chain(self.props.iter().rev())
+    }
+
+    pub(crate) fn get_id(&self) -> EventId {
+        self.event.id
     }
 
     pub(crate) fn get_participants(&self) -> impl Iterator<Item=PublicKey> + '_ {
@@ -84,26 +97,28 @@ impl Task {
             .unwrap_or_else(|| self.event.pubkey)
     }
 
-    pub(crate) fn find_refs<'a>(&'a self, marker: &'a str) -> impl Iterator<Item=&'a EventId> {
-        self.refs.iter().filter_map(move |(str, id)| Some(id).filter(|_| str == marker))
-    }
-
-    pub(crate) fn parent_id(&self) -> Option<&EventId> {
-        self.find_refs(MARKER_PARENT).next()
-    }
-
-    pub(crate) fn get_dependendees(&self) -> Vec<&EventId> {
-        self.find_refs(MARKER_DEPENDS).collect()
-    }
-
     /// Trimmed event content or stringified id
     pub(crate) fn get_title(&self) -> String {
         some_non_empty(self.event.content.trim())
             .unwrap_or_else(|| self.get_id().to_string())
     }
 
+    /// Title with leading hashtags removed
     pub(crate) fn get_filter_title(&self) -> String {
         self.event.content.trim().trim_start_matches('#').to_string()
+    }
+
+    pub(crate) fn find_refs<'a>(&'a self, marker: &'a str) -> impl Iterator<Item=&'a EventId> {
+        self.refs.iter().filter_map(move |(str, id)|
+            Some(id).filter(|_| str == marker))
+    }
+
+    pub(crate) fn parent_id(&self) -> Option<&EventId> {
+        self.find_refs(MARKER_PARENT).next()
+    }
+
+    pub(crate) fn find_dependents(&self) -> Vec<&EventId> {
+        self.find_refs(MARKER_DEPENDS).collect()
     }
 
     fn description_events(&self) -> impl DoubleEndedIterator<Item=&Event> + '_ {
@@ -139,9 +154,9 @@ impl Task {
             })
     }
 
-    fn states(&self) -> impl DoubleEndedIterator<Item=TaskState> + '_ {
+    fn states(&self) -> impl DoubleEndedIterator<Item=StateChange> + '_ {
         self.props.iter().filter_map(|event| {
-            event.kind.try_into().ok().map(|s| TaskState {
+            event.kind.try_into().ok().map(|s| StateChange {
                 name: some_non_empty(&event.content),
                 state: s,
                 time: event.created_at,
@@ -153,7 +168,7 @@ impl Task {
         self.state().map(|s| s.time).unwrap_or(self.event.created_at)
     }
 
-    pub fn state_at(&self, time: Timestamp) -> Option<TaskState> {
+    pub fn state_at(&self, time: Timestamp) -> Option<StateChange> {
         // TODO do not iterate constructed state objects
         let state = self.states().take_while_inclusive(|ts| ts.time > time);
         state.last().map(|ts| {
@@ -166,16 +181,16 @@ impl Task {
     }
 
     /// Returns the current state if this is a task rather than an activity
-    pub fn state(&self) -> Option<TaskState> {
+    pub fn state(&self) -> Option<StateChange> {
         let now = now();
         self.state_at(now)
     }
 
     pub(crate) fn pure_state(&self) -> State {
-        self.state().map_or(State::Open, |s| s.state)
+        State::from(self.state())
     }
 
-    pub(crate) fn state_or_default(&self) -> TaskState {
+    pub(crate) fn state_or_default(&self) -> StateChange {
         self.state().unwrap_or_else(|| self.default_state())
     }
 
@@ -186,8 +201,8 @@ impl Task {
             .map(|state| state.get_colored_label())
     }
 
-    fn default_state(&self) -> TaskState {
-        TaskState {
+    fn default_state(&self) -> StateChange {
+        StateChange {
             name: None,
             state: State::Open,
             time: self.event.created_at,
@@ -221,7 +236,7 @@ impl Task {
     pub(crate) fn get(&self, property: &str) -> Option<String> {
         match property {
             // Static
-            "id" => Some(self.event.id.to_string()),
+            "id" => Some(self.get_id().to_string()),
             "parentid" => self.parent_id().map(|i| i.to_string()),
             "name" => Some(self.event.content.clone()),
             "key" | "pubkey" => Some(self.event.pubkey.to_string()),
@@ -249,161 +264,5 @@ impl Task {
                 None
             }
         }
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub(crate) struct TaskState {
-    pub(crate) state: State,
-    name: Option<String>,
-    pub(crate) time: Timestamp,
-}
-impl TaskState {
-    pub(crate) fn get_label_for(state: &State, comment: &str) -> String {
-        some_non_empty(comment).unwrap_or_else(|| state.to_string())
-    }
-    pub(crate) fn get_label(&self) -> String {
-        self.name.clone().unwrap_or_else(|| self.state.to_string())
-    }
-    pub(crate) fn get_colored_label(&self) -> ColoredString {
-        self.state.colorize(&self.get_label())
-    }
-    pub(crate) fn matches_label(&self, label: &str) -> bool {
-        self.name.as_ref().is_some_and(|n| n.eq_ignore_ascii_case(label))
-            || self.state.to_string().eq_ignore_ascii_case(label)
-    }
-}
-impl Display for TaskState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let state_str = self.state.to_string();
-        write!(
-            f,
-            "{}",
-            self.name
-                .as_ref()
-                .map(|s| s.trim())
-                .filter(|s| !s.eq_ignore_ascii_case(&state_str))
-                .map_or(state_str, |s| format!("{}: {}", self.state, s))
-        )
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub(crate) enum State {
-    /// Actionable
-    Open = 1630,
-    /// Completed
-    Done,
-    /// Not Actionable (anymore)
-    Closed,
-    /// Temporarily not actionable
-    Pending,
-    /// Actionable ordered task list
-    Procedure = PROCEDURE_KIND_ID as isize,
-}
-impl TryFrom<&str> for State {
-    type Error = ();
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value.to_ascii_lowercase().as_str() {
-            "closed" => Ok(State::Closed),
-            "done" => Ok(State::Done),
-            "pending" => Ok(State::Pending),
-            "proc" | "procedure" | "list" => Ok(State::Procedure),
-            "open" => Ok(State::Open),
-            _ => Err(()),
-        }
-    }
-}
-impl TryFrom<Kind> for State {
-    type Error = ();
-
-    fn try_from(value: Kind) -> Result<Self, Self::Error> {
-        match value {
-            Kind::GitStatusOpen => Ok(State::Open),
-            Kind::GitStatusApplied => Ok(State::Done),
-            Kind::GitStatusClosed => Ok(State::Closed),
-            Kind::GitStatusDraft => Ok(State::Pending),
-            _ => {
-                if value == PROCEDURE_KIND {
-                    Ok(State::Procedure)
-                } else {
-                    Err(())
-                }
-            }
-        }
-    }
-}
-impl State {
-    pub(crate) fn is_open(&self) -> bool {
-        matches!(self, State::Open | State::Pending | State::Procedure)
-    }
-
-    pub(crate) fn kind(self) -> u16 {
-        self as u16
-    }
-
-    pub(crate) fn colorize(&self, str: &str) -> ColoredString {
-        match self {
-            State::Open => str.green(),
-            State::Done => str.bright_black(),
-            State::Closed => str.magenta(),
-            State::Pending => str.yellow(),
-            State::Procedure => str.blue(),
-        }
-    }
-}
-impl From<State> for Kind {
-    fn from(value: State) -> Self {
-        Kind::from(value.kind())
-    }
-}
-impl Display for State {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(self, f)
-    }
-}
-
-#[cfg(test)]
-mod tasks_test {
-    use super::*;
-    use nostr_sdk::{EventBuilder, Keys};
-
-    #[test]
-    fn test_state() {
-        let keys = Keys::generate();
-        let mut task = Task::new(
-            EventBuilder::new(TASK_KIND, "task").tags([Tag::hashtag("tag1")])
-                .sign_with_keys(&keys).unwrap());
-        assert_eq!(task.pure_state(), State::Open);
-        assert_eq!(task.list_hashtags().count(), 1);
-
-        let now = Timestamp::now();
-        task.props.insert(
-            EventBuilder::new(State::Done.into(), "")
-                .custom_created_at(now)
-                .sign_with_keys(&keys).unwrap());
-        assert_eq!(task.pure_state(), State::Done);
-        task.props.insert(
-            EventBuilder::new(State::Open.into(), "Ready").tags([Tag::hashtag("tag2")])
-                .custom_created_at(now - 2)
-                .sign_with_keys(&keys).unwrap());
-        assert_eq!(task.pure_state(), State::Done);
-        assert_eq!(task.list_hashtags().count(), 2);
-        task.props.insert(
-            EventBuilder::new(State::Closed.into(), "")
-                .custom_created_at(now + 9)
-                .sign_with_keys(&keys).unwrap());
-        assert_eq!(task.pure_state(), State::Closed);
-        assert_eq!(task.state_at(now), Some(TaskState {
-            state: State::Done,
-            name: None,
-            time: now,
-        }));
-        assert_eq!(task.state_at(now - 1), Some(TaskState {
-            state: State::Open,
-            name: Some("Ready".to_string()),
-            time: now - 2,
-        }));
     }
 }
