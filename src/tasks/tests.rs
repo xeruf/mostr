@@ -282,6 +282,20 @@ fn test_filter_or_create() {
 }
 
 #[test]
+fn test_history() {
+    let mut tasks = stub_tasks();
+    let zero = EventId::all_zeros();
+
+    tasks.track_at(Timestamp::now() - 3, Some(zero));
+    tasks.move_to(None);
+    assert_eq!(tasks.times_tracked(1).len(), 121);
+    let all = tasks.times_tracked(10);
+    assert_eq!(all.len(), 202, "{}", all);
+    assert!(all.contains(" 0000000000000000000000000000000000000000000000000000000000000000"), "{}", all);
+    assert!(all.ends_with(" ---"), "{}", all);
+}
+
+#[test]
 fn test_tracking() {
     let mut tasks = stub_tasks();
     let zero = EventId::all_zeros();

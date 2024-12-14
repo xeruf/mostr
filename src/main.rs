@@ -631,32 +631,17 @@ async fn main() -> Result<()> {
                                         Err(e) => warn!("Ignoring extra {:?}: {}\nSyntax: ((INT", remaining, e),
                                     }
                                 }
-                                let (label, times) = tasks.times_tracked();
-                                let vec = times.rev().take(max).collect_vec();
-                                println!("{}\n{}",
-                                         if vec.is_empty() {
-                                             label
-                                         } else {
-                                             format!("{} {}",
-                                                     if max == usize::MAX { "All".to_string() } else { format!("Latest {max} entries of") },
-                                                     label)
-                                         }.italic(),
-                                         vec.iter().rev().join("\n"));
+                                println!("{}", tasks.times_tracked(max));
                             } else if let Some((key, _)) = tasks.find_user(arg) {
                                 let (label, mut times) = tasks.times_tracked_for(&key);
-                                println!("{}\n{}", label.italic(),
-                                         times.join("\n"));
+                                println!("{}\n{}", label.italic(), times.join("\n"));
                             } else {
                                 if tasks.track_from(arg) {
-                                    let (label, times) = tasks.times_tracked();
-                                    println!("{}\n{}", label.italic(),
-                                             times.rev().take(15).collect_vec().iter().rev().join("\n"));
+                                    println!("{}", tasks.times_tracked(15));
                                 }
                             }
                         } else {
-                            let (label, times) = tasks.times_tracked();
-                            println!("{}\n{}", label.italic(),
-                                     times.rev().take(80).collect_vec().iter().rev().join("\n"));
+                            println!("{}", tasks.times_tracked(60));
                         }
                         continue 'repl;
                     }
@@ -666,9 +651,7 @@ async fn main() -> Result<()> {
                             None => tasks.move_to(None),
                             Some(arg) => {
                                 if parse_tracking_stamp(arg).and_then(|stamp| tasks.track_at(stamp, None)).is_some() {
-                                    let (label, times) = tasks.times_tracked();
-                                    println!("{}\n{}", label.italic(),
-                                             times.rev().take(15).collect_vec().iter().rev().join("\n"));
+                                    println!("{}", tasks.times_tracked(15));
                                 }
                                 // So the error message is not covered up
                                 continue 'repl;

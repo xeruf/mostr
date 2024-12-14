@@ -269,8 +269,20 @@ impl TasksRelay {
     }
 
     /// Dynamic time tracking overview for current task or current user.
-    pub(crate) fn times_tracked(&self) -> (String, Box<dyn DoubleEndedIterator<Item=String> + '_>) {
-        self.times_tracked_with(&self.sender.pubkey())
+    pub(crate) fn times_tracked(&self, limit: usize) -> String {
+        let (label, times) = self.times_tracked_with(&self.sender.pubkey());
+        let times = times.collect_vec();
+        format!("{}\n{}",
+                if times.is_empty() {
+                    label
+                } else {
+                    format!("{}{}",
+                            if limit > times.len() || limit == usize::MAX { "All ".to_string() }
+                            else if limit < 20 { "Recent ".to_string() }
+                            else { format!("Latest {limit} Entries of ") },
+                            label)
+                }.italic(),
+                &times[times.len().saturating_sub(limit)..].join("\n"))
     }
 
     pub(crate) fn history_for(
@@ -318,6 +330,8 @@ impl TasksRelay {
         }
     }
 
+    /// Time tracked for current position or key
+    /// Note: reversing the iterator skips most recent timetracking stops
     pub(crate) fn times_tracked_with(
         &self,
         key: &PublicKey,
@@ -1454,10 +1468,7 @@ impl Display for TasksRelay {
             if self.tasks.children_for(self.get_position()).next().is_some() {
                 writeln!(lock, "No tasks here matching{}", self.get_prompt_suffix())?;
             }
-            let (label, times) = self.times_tracked();
-            let mut times_recent = times.rev().take(6).collect_vec();
-            times_recent.reverse();
-            writeln!(lock, "{}\n{}", format!("Recent {}", label).italic(), times_recent.join("\n"))?;
+            writeln!(lock, "{}", self.times_tracked(6))?;
             return Ok(());
         }
 
