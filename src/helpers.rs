@@ -1,5 +1,3 @@
-use std::ops::Sub;
-
 use chrono::LocalResult::Single;
 use chrono::{DateTime, Local, NaiveTime, TimeDelta, TimeZone, Utc};
 use log::{debug, error, info, trace, warn};
@@ -34,16 +32,24 @@ impl<T: TimeZone> ToTimestamp for DateTime<T> {
     }
 }
 
-/// Parses the hour from a plain number in the String,
+
+/// Parses the hour optionally with minute from a plain number in a String,
 /// with max of max_future hours into the future.
-// TODO parse HHMM as well
 pub fn parse_hour(str: &str, max_future: i64) -> Option<DateTime<Local>> {
-    str.parse::<u32>().ok().and_then(|hour| {
-        let now = Local::now();
+    parse_hour_after(str, Local::now() - TimeDelta::hours(24 - max_future))
+}
+
+/// Parses the hour optionally with minute from a plain number in a String.
+pub fn parse_hour_after<T: TimeZone>(str: &str, after: DateTime<T>) -> Option<DateTime<T>> {
+    str.parse::<u32>().ok().and_then(|number| {
         #[allow(deprecated)]
-        now.date().and_hms_opt(hour, 0, 0).map(|time| {
-            if time - now > TimeDelta::hours(max_future) {
-                time.sub(TimeDelta::days(1))
+        after.date().and_hms_opt(
+            if number > 23 { number / 100 } else { number },
+            if number > 23 { number % 100 } else { 0 },
+            0,
+        ).map(|time| {
+            if time < after {
+                time + TimeDelta::days(1)
             } else {
                 time
             }
@@ -158,5 +164,43 @@ pub fn format_timestamp_relative_to(stamp: &Timestamp, reference: &Timestamp) ->
         0 => format_timestamp(stamp, "%H:%M"),
         -3..=3 => format_timestamp(stamp, "%a %H:%M"),
         _ => format_timestamp_local(stamp),
+    }
+}
+
+mod test {
+    use super::*;
+    use chrono::{NaiveDate, NaiveDateTime, Timelike};
+    use interim::datetime::DateTime;
+
+    #[test]
+    fn parse_hours() {
+        let now = Local::now();
+        #[allow(deprecated)]
+        let date = now.date();
+        if now.hour() > 2 {
+            assert_eq!(
+                parse_hour("23", 22).unwrap(),
+                date.and_hms_opt(23, 0, 0).unwrap()
+            );
+        }
+        if now.hour() < 22 {
+            assert_eq!(
+                parse_hour("02", 2).unwrap(),
+                date.and_hms_opt(2, 0, 0).unwrap()
+            );
+            assert_eq!(
+                parse_hour("2301", 1).unwrap(),
+                (date - TimeDelta::days(1)).and_hms_opt(23, 01, 0).unwrap()
+            );
+        }
+
+        let date = NaiveDate::from_ymd_opt(2020, 10, 10).unwrap();
+        let time = Utc.from_utc_datetime(
+            &date.and_hms_opt(10, 1,0).unwrap()
+        );
+        assert_eq!(parse_hour_after("2201", time).unwrap(), Utc.from_utc_datetime(&date.and_hms_opt(22, 1, 0).unwrap()));
+        assert_eq!(parse_hour_after("10", time).unwrap(), Utc.from_utc_datetime(&(date + TimeDelta::days(1)).and_hms_opt(10, 0, 0).unwrap()));
+
+        // TODO test timezone offset issues
     }
 }
