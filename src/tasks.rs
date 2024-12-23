@@ -4,13 +4,6 @@ mod tests;
 mod children_traversal;
 mod durations;
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
-use std::fmt::{Display, Formatter};
-use std::iter::{empty, once, FusedIterator};
-use std::ops::{Deref, Div, Rem};
-use std::str::FromStr;
-use std::time::Duration;
-
 use crate::event_sender::{EventSender, MostrMessage};
 use crate::hashtag::Hashtag;
 use crate::helpers::{
@@ -22,6 +15,8 @@ use crate::task::{State, StateChange, Task, MARKER_DEPENDS, MARKER_PARENT, MARKE
 use crate::tasks::children_traversal::ChildrenTraversal;
 use crate::tasks::durations::{referenced_events, timestamps, Durations};
 pub use crate::tasks::nostr_users::NostrUsers;
+
+use chrono::{Local, TimeDelta};
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
@@ -30,6 +25,12 @@ use nostr_sdk::{
     SingleLetterTag, Tag, TagKind, Timestamp, Url,
 };
 use regex::bytes::Regex;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::fmt::{Display, Formatter};
+use std::iter::{empty, once, FusedIterator};
+use std::ops::{Deref, Div, Rem};
+use std::str::FromStr;
+use std::time::Duration;
 use tokio::sync::mpsc::Sender;
 
 const DEFAULT_PRIO: Prio = 25;
@@ -240,6 +241,10 @@ impl TasksRelay {
         self.get_position_at(now()).1
     }
 
+    pub(crate) fn get_position_timestamped(&self) -> (Timestamp, Option<EventId>) {
+        self.get_position_at(now())
+    }
+
     fn sorting_key(&self, task: &Task) -> impl Ord {
         self.sorting
             .iter()
@@ -277,9 +282,7 @@ impl TasksRelay {
                     label
                 } else {
                     format!("{}{}",
-                            if limit > times.len() || limit == usize::MAX { "All ".to_string() }
-                            else if limit < 20 { "Recent ".to_string() }
-                            else { format!("Latest {limit} Entries of ") },
+                            if limit > times.len() || limit == usize::MAX { "All ".to_string() } else if limit < 20 { "Recent ".to_string() } else { format!("Latest {limit} Entries of ") },
                             label)
                 }.italic(),
                 &times[times.len().saturating_sub(limit)..].join("\n"))
@@ -1160,7 +1163,7 @@ impl TasksRelay {
     ///
     /// Returns false and prints a message if parsing failed
     pub(crate) fn track_from(&mut self, str: &str) -> bool {
-        parse_tracking_stamp(str)
+        parse_tracking_stamp(str, None)
             .and_then(|stamp| self.track_at(stamp, self.get_position()))
             .is_some()
     }

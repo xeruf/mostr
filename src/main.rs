@@ -14,7 +14,7 @@ use crate::helpers::*;
 use crate::kinds::{format_tag_basic, match_event_tag, Prio, BASIC_KINDS, PROPERTY_COLUMNS, PROP_KINDS};
 use crate::task::{State, StateChange, Task, MARKER_PROPERTY};
 use crate::tasks::{referenced_event, PropertyCollection, StateFilter, TasksRelay};
-use chrono::Local;
+use chrono::{DateTime, Local, TimeZone, Utc};
 use colored::Colorize;
 use directories::ProjectDirs;
 use env_logger::{Builder, Target, WriteStyle};
@@ -650,7 +650,8 @@ async fn main() -> Result<()> {
                         match arg {
                             None => tasks.move_to(None),
                             Some(arg) => {
-                                if parse_tracking_stamp(arg).and_then(|stamp| tasks.track_at(stamp, None)).is_some() {
+                                if parse_tracking_stamp(arg, Local.timestamp_millis_opt(tasks.get_position_timestamped().0.as_u64() as i64 * 1000).earliest())
+                                    .and_then(|stamp| tasks.track_at(stamp, None)).is_some() {
                                     println!("{}", tasks.times_tracked(15));
                                 }
                                 // So the error message is not covered up

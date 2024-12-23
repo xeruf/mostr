@@ -58,11 +58,15 @@ pub fn parse_hour_after<T: TimeZone>(str: &str, after: DateTime<T>) -> Option<Da
 }
 
 pub fn parse_date(str: &str) -> Option<DateTime<Utc>> {
+    parse_date_with_ref(str, Local::now())
+}
+
+pub fn parse_date_with_ref(str: &str, reference: DateTime<Local>) -> Option<DateTime<Utc>> {
     // Using two libraries for better exhaustiveness, see https://github.com/uutils/parse_datetime/issues/84
-    match interim::parse_date_string(str, Local::now(), interim::Dialect::Us) {
+    match interim::parse_date_string(str, reference, interim::Dialect::Us) {
         Ok(date) => Some(date.to_utc()),
         Err(e) => {
-            match parse_datetime::parse_datetime_at_date(Local::now(), str) {
+            match parse_datetime::parse_datetime_at_date(reference, str) {
                 Ok(date) => Some(date.to_utc()),
                 Err(_) => {
                     warn!("Could not parse date from \"{str}\": {e}");
@@ -85,8 +89,8 @@ pub fn parse_date(str: &str) -> Option<DateTime<Utc>> {
 /// - Plain number as hour, 18 hours back or 6 hours forward
 /// - Number with prefix as minute offset
 /// - Otherwise try to parse a relative date
-pub fn parse_tracking_stamp(str: &str) -> Option<Timestamp> {
-    if let Some(num) = parse_hour(str, 6) {
+pub fn parse_tracking_stamp(str: &str, after: Option<DateTime<Local>>) -> Option<Timestamp> {
+    if let Some(num) = parse_hour_after(str, after.unwrap_or(Local::now() - TimeDelta::hours(18))) {
         return Some(num.to_timestamp());
     }
     let stripped = str.trim().trim_start_matches('+').trim_start_matches("in ");
@@ -169,7 +173,7 @@ pub fn format_timestamp_relative_to(stamp: &Timestamp, reference: &Timestamp) ->
 
 mod test {
     use super::*;
-    use chrono::{NaiveDate, NaiveDateTime, Timelike};
+    use chrono::{FixedOffset, NaiveDate, Timelike};
     use interim::datetime::DateTime;
 
     #[test]
@@ -202,5 +206,13 @@ mod test {
         assert_eq!(parse_hour_after("10", time).unwrap(), Utc.from_utc_datetime(&(date + TimeDelta::days(1)).and_hms_opt(10, 0, 0).unwrap()));
 
         // TODO test timezone offset issues
+    }
+
+    #[test]
+    fn test_timezone() {
+        assert_eq!(
+            FixedOffset::east_opt(7200).unwrap().timestamp_millis_opt(1000).unwrap().time(),
+            NaiveTime::from_hms_opt(2, 0, 1).unwrap()
+        );
     }
 }
