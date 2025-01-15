@@ -1181,29 +1181,29 @@ impl TasksRelay {
                 time = time + 1;
             }
         }
-        let current_pos = self.get_position_at(time);
-        if (time < Timestamp::now() || target.is_none()) && current_pos.1 == target {
+        let pos_at = self.get_position_at(time);
+        if (time < Timestamp::now() || target.is_none()) && pos_at.1 == target {
             warn!(
                 "Already {} from {}",
                 target.map_or("stopped time-tracking".to_string(), |id| format!(
                     "tracking \"{}\"",
                     self.get_task_title(&id)
                 )),
-                format_timestamp_relative(&current_pos.0),
+                format_timestamp_relative(&pos_at.0),
             );
             return None;
         }
         info!("{}", match target {
             None => format!(
                 "Stopping time-tracking of \"{}\" at {}",
-                current_pos.1.map_or("???".to_string(), |id| self.get_task_title(&id)),
+                pos_at.1.map_or("???".to_string(), |id| self.get_task_title(&id)),
                 format_timestamp_relative(&time)
             ),
             Some(new_id) => format!(
                 "Tracking \"{}\" from {}{}",
                 self.get_task_title(&new_id),
                 format_timestamp_relative(&time),
-                current_pos.1.filter(|id| id != &new_id).map(|id|
+                pos_at.1.filter(|id| id != &new_id).map(|id|
                     format!(" replacing \"{}\"", self.get_task_title(&id)))
                     .unwrap_or_default()
             )
