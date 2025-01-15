@@ -140,7 +140,7 @@ async fn main() -> Result<()> {
     let client = ClientBuilder::new()
         .opts(Options::new()
             .automatic_authentication(true)
-            .notification_channel_size(8192)
+            .notification_channel_size(16384)
         )
         .signer(keys.clone())
         .build();
