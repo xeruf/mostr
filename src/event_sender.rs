@@ -13,9 +13,8 @@ const UNDO_DELAY: u64 = 60;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) enum MostrMessage {
-    Flush,
     NewRelay(RelayUrl),
-    AddTasks(RelayUrl, Vec<Event>),
+    SendTask(RelayUrl, Event),
 }
 
 type Events = Vec<Event>;
@@ -68,15 +67,9 @@ impl EventSender {
         debug!("Flushing {} events from queue", self.queue.borrow().len());
         let values = self.clear();
         self.url.as_ref().map(|url| {
-            self.tx
-                .try_send(MostrMessage::AddTasks(url.clone(), values))
-                .err()
-                .map(|e| {
-                    error!(
-                        "Nostr communication thread failure, changes will not be persisted: {}",
-                        e
-                    )
-                })
+            values.into_iter()
+                .find_map(|event| self.tx.try_send(MostrMessage::SendTask(url.clone(), event)).err())
+                .map(|e| error!("Nostr communication thread failure, changes will not be persisted: {}", e))
         });
     }
     /// Sends all pending events if there is a non-tracking event

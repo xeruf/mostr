@@ -22,6 +22,7 @@ use itertools::Itertools;
 use keyring::Entry;
 use log::{debug, error, info, trace, warn, LevelFilter};
 use nostr_sdk::prelude::*;
+use nostr_sdk::serde_json::Serializer;
 use regex::Regex;
 use rustyline::config::Configurer;
 use rustyline::error::ReadlineError;
@@ -37,7 +38,6 @@ mod kinds;
 mod event_sender;
 mod hashtag;
 
-const INACTVITY_DELAY: u64 = 200;
 const LOCAL_RELAY_NAME: &str = "TEMP";
 
 /// Turn a Result into an Option, showing a warning on error with optional prefix
@@ -86,8 +86,10 @@ fn read_keys(readline: &mut DefaultEditor) -> Result<Keys> {
 async fn main() -> Result<()> {
     println!("Running Mostr Version {}", env!("CARGO_PKG_VERSION"));
 
+    let mut debug = false;
     let mut args = args().skip(1).peekable();
     let mut builder = if args.peek().is_some_and(|arg| arg == "--debug") {
+        debug = true;
         args.next();
         let mut builder = Builder::new();
         builder.filter(None, LevelFilter::Debug)
@@ -211,14 +213,11 @@ async fn main() -> Result<()> {
         client.relays().await.into_keys().map(|url| (Some(url.clone()), tasks_for_url(Some(url)))).collect();
 
     let sender = tokio::spawn(async move {
-        let mut queue: Option<(RelayUrl, Vec<Event>)> = None;
-
         or_warn!(client.set_metadata(&metadata_clone).await, "Unable to set metadata");
 
-        'repl: loop {
-            let result_received = timeout(Duration::from_secs(INACTVITY_DELAY), rx.recv()).await;
-            match result_received {
-                Ok(Some(MostrMessage::NewRelay(url))) => {
+        'receiver: loop {
+            match rx.recv().await {
+                Some(MostrMessage::NewRelay(url)) => {
                     if client.add_relay(&url).await.unwrap() {
                         match client.connect_relay(&url).await {
                             Ok(()) => info!("Connected to {url}"),
@@ -228,38 +227,15 @@ async fn main() -> Result<()> {
                         warn!("Relay {url} already added");
                     }
                 }
-                Ok(Some(MostrMessage::AddTasks(url, mut events))) => {
-                    trace!("Queueing {:?}", &events);
-                    if let Some((queue_url, mut queue_events)) = queue {
-                        if queue_url == url {
-                            queue_events.append(&mut events);
-                            queue = Some((queue_url, queue_events));
-                        } else {
-                            info!("Sending {} events to {queue_url} due to relay change", queue_events.len());
-                            client.batch_event_to(vec![queue_url], queue_events).await;
-                            queue = None;
-                        }
-                    }
-                    if queue.is_none() {
-                        events.reserve(events.len() + 10);
-                        queue = Some((url, events))
-                    }
+                Some(MostrMessage::SendTask(url, event)) => {
+                    trace!("Sending {:?}", &event);
+                    client.send_event_to(vec![url], event);
                 }
-                Ok(Some(MostrMessage::Flush)) | Err(Elapsed { .. }) => if let Some((url, events)) = queue {
-                    info!("Sending {} events to {url} due to {}", events.len(),
-                        result_received.map_or("inactivity", |_| "flush message"));
-                    client.batch_event_to(vec![url], events).await;
-                    queue = None;
-                }
-                Ok(None) => {
+                None => {
                     debug!("Finalizing nostr communication thread because communication channel was closed");
-                    break 'repl;
+                    break 'receiver;
                 }
             }
-        }
-        if let Some((url, events)) = queue {
-            info!("Sending {} events to {url} before exiting", events.len());
-            client.batch_event_to(vec![url], events).await;
         }
         info!("Shutting down nostr communication thread");
     });
