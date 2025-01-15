@@ -14,21 +14,21 @@ const UNDO_DELAY: u64 = 60;
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) enum MostrMessage {
     Flush,
-    NewRelay(Url),
-    AddTasks(Url, Vec<Event>),
+    NewRelay(RelayUrl),
+    AddTasks(RelayUrl, Vec<Event>),
 }
 
 type Events = Vec<Event>;
 
 #[derive(Debug, Clone)]
 pub(crate) struct EventSender {
-    pub(crate) url: Option<Url>,
+    pub(crate) url: Option<RelayUrl>,
     pub(crate) tx: Sender<MostrMessage>,
     pub(crate) keys: Keys,
     pub(crate) queue: RefCell<Events>,
 }
 impl EventSender {
-    pub(crate) fn from(url: Option<Url>, tx: &Sender<MostrMessage>, keys: &Keys) -> Self {
+    pub(crate) fn from(url: Option<RelayUrl>, tx: &Sender<MostrMessage>, keys: &Keys) -> Self {
         EventSender {
             url,
             tx: tx.clone(),

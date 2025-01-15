@@ -206,12 +206,12 @@ async fn main() -> Result<()> {
     let metadata_clone = metadata.clone();
 
     let (tx, mut rx) = mpsc::channel::<MostrMessage>(64);
-    let tasks_for_url = |url: Option<Url>| TasksRelay::from(url, &tx, &keys, Some(metadata.clone()));
-    let mut relays: HashMap<Option<Url>, TasksRelay> =
+    let tasks_for_url = |url: Option<RelayUrl>| TasksRelay::from(url, &tx, &keys, Some(metadata.clone()));
+    let mut relays: HashMap<Option<RelayUrl>, TasksRelay> =
         client.relays().await.into_keys().map(|url| (Some(url.clone()), tasks_for_url(Some(url)))).collect();
 
     let sender = tokio::spawn(async move {
-        let mut queue: Option<(Url, Vec<Event>)> = None;
+        let mut queue: Option<(RelayUrl, Vec<Event>)> = None;
 
         or_warn!(client.set_metadata(&metadata_clone).await, "Unable to set metadata");
 
@@ -267,9 +267,7 @@ async fn main() -> Result<()> {
     if relays.is_empty() {
         relays.insert(None, tasks_for_url(None));
     }
-    let mut selected_relay: Option<Url> = relays.keys()
-        .find_or_first(|url| url.as_ref().is_some_and(|u| u.scheme() == "wss"))
-        .unwrap().clone();
+    let mut selected_relay: Option<RelayUrl> = relays.keys().next().unwrap().clone();
 
     {
         let tasks = relays.get_mut(&selected_relay).unwrap();
@@ -734,7 +732,7 @@ async fn main() -> Result<()> {
                                 println!("{}", tasks);
                                 continue 'repl;
                             }
-                            or_warn!(Url::parse(&command), "Failed to parse url {}", command).map(|url| {
+                            or_warn!(RelayUrl::parse(&command), "Failed to parse url {}", command).map(|url| {
                                 match tx.try_send(MostrMessage::NewRelay(url.clone())) {
                                     Err(e) => error!("Nostr communication thread failure, cannot add relay \"{url}\": {e}"),
                                     Ok(_) => {

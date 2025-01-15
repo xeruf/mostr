@@ -20,10 +20,7 @@ use chrono::{Local, TimeDelta};
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use nostr_sdk::{
-    Alphabet, Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey,
-    SingleLetterTag, Tag, TagKind, Timestamp, Url,
-};
+use nostr_sdk::{Alphabet, Event, EventBuilder, EventId, JsonUtil, Keys, Kind, Metadata, PublicKey, RelayUrl, SingleLetterTag, Tag, TagKind, Timestamp, Url};
 use regex::bytes::Regex;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt::{Display, Formatter};
@@ -155,7 +152,7 @@ impl Display for StateFilter {
 
 impl TasksRelay {
     pub(crate) fn from(
-        url: Option<Url>,
+        url: Option<RelayUrl>,
         tx: &Sender<MostrMessage>,
         keys: &Keys,
         metadata: Option<Metadata>,
