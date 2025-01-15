@@ -39,30 +39,29 @@ impl EventSender {
 
     // TODO this direly needs testing
     pub(crate) fn submit(&self, event_builder: EventBuilder) -> Result<Event> {
-        let min = Timestamp::now().sub(UNDO_DELAY);
+        let event = event_builder.sign_with_keys(&self.keys)?;
+
+        let time = event.created_at;
         {
-            // Always flush if oldest event older than a minute or newer than now
+            // Always flush if any event is newer or more than a minute older than the current event
             let borrow = self.queue.borrow();
             if borrow
                 .iter()
-                .any(|e| e.created_at < min || e.created_at > Timestamp::now())
+                .any(|e| e.created_at < time.sub(UNDO_DELAY) || e.created_at > time)
             {
                 drop(borrow);
-                debug!("Flushing event queue because it is older than a minute");
+                debug!("Flushing event queue because it is offset from the current event");
                 self.force_flush();
             }
         }
+
         let mut queue = self.queue.borrow_mut();
-        Ok(event_builder.sign_with_keys(&self.keys).inspect(|event| {
-            if event.kind == TRACKING_KIND
-                && event.created_at > min
-                && event.created_at < tasks::now()
-            {
-                // Do not send redundant movements
-                queue.retain(|e| e.kind != TRACKING_KIND);
-            }
-            queue.push(event.clone());
-        })?)
+        if event.kind == TRACKING_KIND {
+            // Remove extraneous movements if tracking event is not at a custom time
+            queue.retain(|e| e.kind != TRACKING_KIND);
+        }
+        queue.push(event.clone());
+        Ok(event)
     }
     /// Sends all pending events
     pub(crate) fn force_flush(&self) {
