@@ -229,7 +229,23 @@ async fn main() -> Result<()> {
                 }
                 Some(MostrMessage::SendTask(url, event)) => {
                     trace!("Sending {:?}", &event);
-                    client.send_event_to(vec![url], event);
+                    let id = event.id;
+                    let url_str = url.as_str_without_trailing_slash().to_string();
+                    if let Err(e) = client.send_event_to(vec![url], event.clone()).await {
+                        let url_s = url_str.split("//").last().map(ToString::to_string).unwrap_or(url_str);
+                        if debug {
+                            debug!("Error sending event: {:?}", e);
+                            continue 'receiver;
+                        }
+                        let path = format!("failed-events-{}/", url_s);
+                        let dir = fs::create_dir_all(&path).map(|_| path).unwrap_or("".to_string());
+                        let filename = dir.to_string() + &id.to_string();
+                        match File::create(&filename).and_then(|mut f|
+                            f.write_all(or_warn!(serde_json::to_string_pretty(&event), "Failed serializing event for file writing").unwrap_or(String::new()).as_bytes())) {
+                            Ok(_) => error!("Failed sending update, saved a copy at {filename}: {:?}", e),
+                            Err(fe) => error!("Failed sending update {:?} and saving copy of event {:?}", e, fe),
+                        }
+                    }
                 }
                 None => {
                     debug!("Finalizing nostr communication thread because communication channel was closed");
