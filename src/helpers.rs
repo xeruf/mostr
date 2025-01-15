@@ -44,8 +44,8 @@ pub fn parse_hour_after<T: TimeZone>(str: &str, after: DateTime<T>) -> Option<Da
     str.parse::<u32>().ok().and_then(|number| {
         #[allow(deprecated)]
         after.date().and_hms_opt(
-            if number > 23 { number / 100 } else { number },
-            if number > 23 { number % 100 } else { 0 },
+            if str.len() > 2 { number / 100 } else { number },
+            if str.len() > 2 { number % 100 } else { 0 },
             0,
         ).map(|time| {
             if time < after {
