@@ -86,7 +86,7 @@ pub fn parse_date_with_ref(str: &str, reference: DateTime<Local>) -> Option<Date
 }
 
 /// Turn a human-readable relative timestamp into a nostr Timestamp.
-/// - Plain number as hour, 18 hours back or 6 hours forward
+/// - Plain number as hour after given date, if none 18 hours back or 6 hours forward
 /// - Number with prefix as minute offset
 /// - Otherwise try to parse a relative date
 pub fn parse_tracking_stamp(str: &str, after: Option<DateTime<Local>>) -> Option<Timestamp> {

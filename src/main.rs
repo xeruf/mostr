@@ -640,7 +640,9 @@ async fn main() -> Result<()> {
                         match arg {
                             None => tasks.move_to(None),
                             Some(arg) => {
-                                if parse_tracking_stamp(arg, Local.timestamp_millis_opt(tasks.get_position_timestamped().0.as_u64() as i64 * 1000).earliest())
+                                let pos = tasks.get_position_timestamped();
+                                let time = pos.1.and_then(|_| Local.timestamp_millis_opt(pos.0.as_u64() as i64 * 1000).earliest());
+                                if parse_tracking_stamp(arg, time)
                                     .and_then(|stamp| tasks.track_at(stamp, None)).is_some() {
                                     println!("{}", tasks.times_tracked(15));
                                 }
