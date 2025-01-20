@@ -22,13 +22,15 @@ log = "0.4"
 env_logger = "0.11"
 colog = "1.3"
 colored = "2.2"
-rustyline = { git = "https://github.com/xeruf/rustyline", rev = "465b14d" }
+rustyline = { git = "https://github.com/xeruf/rustyline", rev = "5364854" }
 # OS-Specific Abstractions
 keyring = "3"
 directories = "5.0"
 whoami = "1.5"
 # slint = "1.8"
 # Application Utils
+base64 = "0.22"
+simple_crypt = "0.2"
 itertools = "0.12"
 chrono = "0.4"
 parse_datetime = "0.5"
