@@ -134,10 +134,8 @@ pub fn format_as_datetime<F>(stamp: &Timestamp, formatter: F) -> String
 where
     F: Fn(DateTime<Local>) -> String,
 {
-    match Local.timestamp_opt(stamp.as_u64() as i64 + 1, 0) {
-        Single(time) => formatter(time),
-        _ => stamp.to_human_datetime().to_string(),
-    }
+    Local.timestamp_opt(stamp.as_u64() as i64 + 1, 0).earliest()
+        .map_or_else(|| stamp.to_human_datetime().to_string(), formatter)
 }
 
 /// Format nostr Timestamp relative to local time

@@ -683,7 +683,7 @@ async fn main() -> Result<()> {
                             None => tasks.move_to(None),
                             Some(arg) => {
                                 let pos = tasks.get_position_timestamped();
-                                let time = pos.1.and_then(|_| Local.timestamp_millis_opt(pos.0.as_u64() as i64 * 1000).earliest());
+                                let time = pos.1.and_then(|_| Local.timestamp_opt(pos.0.as_u64() as i64, 0).earliest());
                                 if parse_tracking_stamp(arg, time)
                                     .and_then(|stamp| tasks.track_at(stamp, None)).is_some() {
                                     println!("{}", tasks.times_tracked(15));
@@ -714,7 +714,8 @@ async fn main() -> Result<()> {
                                     tasks.set_view_depth(depth);
                                 }
                                 _ => {
-                                    tasks.filter_or_create(pos, &remaining).map(|id| tasks.move_to(Some(id)));
+                                    tasks.filter_or_create(pos, &remaining)
+                                        .map(|id| tasks.move_to(Some(id)));
                                 }
                             }
                         }
