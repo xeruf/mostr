@@ -95,6 +95,7 @@ pub fn parse_tracking_stamp(str: &str, after: Option<DateTime<Local>>) -> Option
     }
     let stripped = str.trim().trim_start_matches('+').trim_start_matches("in ");
     if let Ok(num) = stripped.parse::<i64>() {
+        // Complication needed because timestamp can only add u64, but we also want reverse
         return Some(Timestamp::from(Timestamp::now().as_u64().saturating_add_signed(num * 60)));
     }
     parse_date(str).and_then(|time| {

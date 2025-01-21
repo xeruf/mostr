@@ -358,15 +358,17 @@ async fn main() -> Result<()> {
                         continue 'repl;
                     }
                     Some('@') => {}
-                    Some(_) => {
+                    Some(_) =>
                         if let Some((left, arg)) = command.split_once("@") {
-                            if let Some(time) = parse_hour(arg, 20)
-                                .or_else(|| parse_date(arg).map(|utc| utc.with_timezone(&Local))) {
-                                command = left.to_string();
-                                tasks.custom_time = Some(time.to_timestamp());
+                            if !arg.contains(|s: char| s.is_alphabetic()) {
+                                let pos = tasks.get_position_timestamped();
+                                let time = pos.1.and_then(|_| Local.timestamp_opt(pos.0.as_u64() as i64, 0).earliest());
+                                if let Some(time) = parse_tracking_stamp(arg, time) {
+                                    command = left.to_string();
+                                    tasks.custom_time = Some(time);
+                                }
                             }
                         }
-                    }
                 }
 
                 let arg = if command.len() > 1 {
