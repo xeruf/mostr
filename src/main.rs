@@ -5,8 +5,6 @@ use crate::kinds::{format_tag_basic, match_event_tag, Prio, BASIC_KINDS, PROPERT
 use crate::task::{State, StateChange, Task, MARKER_PROPERTY};
 use crate::tasks::{referenced_event, PropertyCollection, StateFilter, TasksRelay};
 
-use base64::prelude::BASE64_STANDARD;
-use base64::Engine;
 use chrono::{DateTime, Local, TimeZone, Utc};
 use colored::Colorize;
 use directories::ProjectDirs;
@@ -66,7 +64,7 @@ macro_rules! or_warn {
     }
 }
 
-fn read_keys(keys_entry: Entry, readline: &mut DefaultEditor) -> Result<Keys> {
+fn read_keys(keys_entry: &Entry, readline: &mut DefaultEditor) -> Result<Keys> {
     if let Ok(pass) = keys_entry.get_secret() {
         return Ok(SecretKey::from_slice(&pass).map(|s| Keys::new(s))
             .inspect_err(|e| eprintln!("Invalid key in keychain: {e}"))?);
@@ -152,28 +150,31 @@ async fn main() -> Result<()> {
     let keys_entry = Entry::new("mostr", "keys")?;
     let keys =
         if args.peek().is_some_and(|arg| arg.trim_start_matches('-') == "import") {
-            let key = rl.readline("Enter your encrypted or plaintext secret key: ")?;
+            args.next();
 
-            let mut guard = rl.set_cursor_visibility(false)?;
+            let key = rl.readline("Enter your encrypted secret key: ")?;
+            let sanitized_key: String = key.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+            let encrypted_key = EncryptedSecretKey::from_bech32(&sanitized_key)?;
+
             let enc_pwd = read_password(&mut rl, "Please enter the encryption password you used: ")?;
-            guard.take();
 
-            let data = simple_crypt::decrypt(&(BASE64_STANDARD.decode(key)?), enc_pwd.as_bytes())?;
-            let keys = Keys::new(SecretKey::from_slice(&data)?);
+            let keys = Keys::new(encrypted_key.to_secret_key(&enc_pwd)?);
             if keys_entry.get_secret().is_err_and(|e| matches!(e, NoEntry)) ||
                 rl.readline(&format!("Override stored key with given keypair, public key: {} (y/n)? ", keys.public_key()))? == "y" {
                 keys_entry.set_secret(keys.secret_key().as_secret_bytes())?;
             }
             keys
         } else {
-            read_keys(keys_entry, &mut rl)?
+            read_keys(&keys_entry, &mut rl)?
         };
 
     info!("My active public key: {}", keys.public_key());
     if args.peek().is_some_and(|arg| arg.trim_start_matches('-') == "export") {
         let enc_pwd = read_password(&mut rl, "Please enter an encryption password for your secret key: ")?;
-        let data = simple_crypt::encrypt(keys.secret_key().as_secret_bytes(), enc_pwd.as_bytes())?;
-        println!("Your encrypted key: {}", BASE64_STANDARD.encode(&data));
+        println!("Your encrypted key: {}", EncryptedSecretKey::new(keys.secret_key(), enc_pwd, 9, KeySecurity::Unknown)?.to_bech32()?);
+        if rl.readline("Do you want to erase your stored secret keys (y/n)? ")? == "y" {
+            keys_entry.delete_credential()?;
+        }
         // TODO optionally delete
         return Ok(());
     }

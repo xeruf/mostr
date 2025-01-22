@@ -33,6 +33,23 @@ This one-liner can help you stay on the latest version
 
 To exit the application, press `Ctrl-D`.
 
+### Migrating
+
+All data is stored on the relay.
+To use mostr on a new device,
+the only thing needed is your private key.
+
+To export your password-encrypted key,
+run mostr with the `--export` flag on the previous machine,
+optionally deleting the key from the system keystore.
+
+You can then import a password-encrypted key
+using the `--import` flag.
+
+To change your keypair on an existing machine,
+simply delete the current one through the `export` command
+and rerun mostr.
+
 ## Reference
 
 ### Command Syntax
