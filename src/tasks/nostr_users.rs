@@ -46,9 +46,8 @@ impl NostrUsers {
 
     pub(crate) fn get_username(&self, pubkey: &PublicKey) -> String {
         self.users.get(pubkey)
-            .and_then(|m| m.name.as_ref())
-            .map_or_else(|| format!("{:.6}", pubkey.to_string()),
-                         |m| format!("{}@{:.6}", m, pubkey.to_string()))
+            .and_then(|m| m.name.clone())
+            .unwrap_or_else(|| format!("{:.6}", pubkey.to_string()))
     }
 
     pub(super) fn insert(&mut self, pubkey: PublicKey, metadata: Metadata, timestamp: Timestamp) {
