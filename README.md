@@ -12,7 +12,7 @@ An immutable nested collaborative task manager, powered by nostr!
 
 Install rust(up) and run a development build with:
 
-    cargo run
+    cargo run -- ARGS
 
 A `relay` list can be placed in a config file
 under `${XDG_CONFIG_HOME:-$HOME/.config}/mostr/`.
@@ -31,7 +31,7 @@ This one-liner can help you stay on the latest version
 
     git pull && cargo install --path . && mostr
 
-To exit the application, press `Ctrl-D`.
+To exit mostr, press `Ctrl-D`.
 
 ### Migrating
 
@@ -49,6 +49,12 @@ using the `--import` flag.
 To change your keypair on an existing machine,
 simply delete the current one through the `export` command
 and rerun mostr.
+
+There is no harm in using mostr from multiple devices,
+though there may be delays in updates if it is used in parallel.
+For best user experience,
+exit mostr on a device when you are done
+to ensure all changes are propagated.
 
 ## Reference
 
