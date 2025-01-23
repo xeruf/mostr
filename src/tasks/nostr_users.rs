@@ -2,6 +2,7 @@ use itertools::Itertools;
 use nostr_sdk::{Keys, Metadata, PublicKey, Tag, Timestamp};
 use std::collections::HashMap;
 use std::str::FromStr;
+use log::debug;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct NostrUsers {
@@ -26,10 +27,7 @@ impl NostrUsers {
             return self.users.get_key_value(&key);
         }
         self.users.iter()
-            .sorted_unstable_by_key(|(k, v)| match self.user_times.get(k) {
-                Some(t) => t.as_u64(),
-                None => Timestamp::zero().as_u64(),
-            })
+            .sorted_unstable_by_key(|(k, v)| self.get_user_time(k))
             .rev()
             .find(|(k, v)|
                 // TODO regex word boundary
@@ -50,9 +48,21 @@ impl NostrUsers {
             .unwrap_or_else(|| format!("{:.6}", pubkey.to_string()))
     }
 
+    fn get_user_time(&self, pubkey: &PublicKey) -> u64 {
+        match self.user_times.get(pubkey) {
+            Some(t) => t.as_u64(),
+            None => Timestamp::zero().as_u64(),
+        }
+    }
+
     pub(super) fn insert(&mut self, pubkey: PublicKey, metadata: Metadata, timestamp: Timestamp) {
-        self.users.insert(pubkey, metadata);
-        self.user_times.insert(pubkey, timestamp);
+        if self.get_user_time(&pubkey) < timestamp.as_u64() {
+            debug!("Inserting user metadata for {}", pubkey);
+            self.users.insert(pubkey, metadata);
+            self.user_times.insert(pubkey, timestamp);
+        } else {
+            debug!("Skipping older user metadata for {}", pubkey);
+        }
     }
 
     pub(super) fn create(&mut self, pubkey: PublicKey) {
