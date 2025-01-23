@@ -158,7 +158,7 @@ impl TasksRelay {
         metadata: Option<Metadata>,
     ) -> Self {
         let mut new = Self::with_sender(EventSender::from(url, tx, keys));
-        metadata.map(|m| new.users.insert(keys.public_key(), m));
+        metadata.map(|m| new.users.insert(keys.public_key(), m, Timestamp::now()));
         new
     }
 
@@ -1228,7 +1228,7 @@ impl TasksRelay {
         match event.kind {
             Kind::GitIssue => self.add_task(event),
             Kind::Metadata => match Metadata::from_json(event.content.as_str()) {
-                Ok(metadata) => { self.users.insert(event.pubkey, metadata); }
+                Ok(metadata) => { self.users.insert(event.pubkey, metadata, event.created_at); }
                 Err(e) => warn!("Cannot parse metadata: {} from {:?}", e, event),
             },
             Kind::Bookmarks => {
