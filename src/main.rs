@@ -21,7 +21,8 @@ use rustyline::config::Configurer;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use std::collections::{HashMap, VecDeque};
-use std::env::{args, var};
+use std::env;
+use std::env::{args};
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
@@ -147,7 +148,7 @@ async fn main() -> Result<()> {
             .inspect(|_| { or_warn!(fs::remove_file(key_file)); }));
     }
 
-    let keys_entry = Entry::new("mostr", "keys")?;
+    let keys_entry = Entry::new("mostr", &env::var("MOSTR_ID").unwrap_or("keys".to_string()))?;
     let keys =
         if args.peek().is_some_and(|arg| arg.trim_start_matches('-') == "import") {
             args.next();
@@ -189,7 +190,7 @@ async fn main() -> Result<()> {
 
     let relays_file = config_dir.join("relays");
     // TODO use NewRelay message for all relays
-    match var("MOSTR_RELAY") {
+    match env::var("MOSTR_RELAY") {
         Ok(relay) => {
             or_warn!(client.add_relay(relay).await);
         }
