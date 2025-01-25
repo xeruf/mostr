@@ -364,9 +364,7 @@ async fn main() -> Result<()> {
                     Some(_) =>
                         if let Some((left, arg)) = command.split_once("@") {
                             if !arg.contains(|s: char| s.is_alphabetic()) {
-                                let pos = tasks.get_position_timestamped();
-                                let mut pos_time = pos.1.and_then(|_| Local.timestamp_opt(pos.0.as_u64() as i64, 0).earliest());
-                                if let Some(time) = parse_tracking_stamp(arg, pos_time.take_if(|t| Local::now() - *t > TimeDelta::hours(6))) {
+                                if let Some(time) = tasks.parse_tracking_stamp_relative(arg) {
                                     command = left.to_string();
                                     tasks.custom_time = Some(time);
                                 }
@@ -685,9 +683,7 @@ async fn main() -> Result<()> {
                         match arg {
                             None => tasks.move_to(None),
                             Some(arg) => {
-                                let pos = tasks.get_position_timestamped();
-                                let time = pos.1.and_then(|_| Local.timestamp_opt(pos.0.as_u64() as i64, 0).earliest());
-                                if parse_tracking_stamp(arg, time)
+                                if tasks.parse_tracking_stamp_relative(arg)
                                     .and_then(|stamp| tasks.track_at(stamp, None)).is_some() {
                                     println!("{}", tasks.times_tracked(15));
                                 }

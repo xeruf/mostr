@@ -16,7 +16,7 @@ use crate::tasks::children_traversal::ChildrenTraversal;
 use crate::tasks::durations::{referenced_events, timestamps, Durations};
 pub use crate::tasks::nostr_users::NostrUsers;
 
-use chrono::{Local, TimeDelta};
+use chrono::{Local, TimeDelta, TimeZone};
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
@@ -240,6 +240,12 @@ impl TasksRelay {
 
     pub(crate) fn get_position_timestamped(&self) -> (Timestamp, Option<EventId>) {
         self.get_position_at(now())
+    }
+
+    pub(super) fn parse_tracking_stamp_relative(&self, input: &str) -> Option<Timestamp> {
+        let pos = self.get_position_timestamped();
+        let mut pos_time = pos.1.and_then(|_| Local.timestamp_opt(pos.0.as_u64() as i64, 0).earliest());
+        parse_tracking_stamp(input, pos_time.take_if(|t| Local::now() - *t > TimeDelta::hours(6)))
     }
 
     fn sorting_key(&self, task: &Task) -> impl Ord {
