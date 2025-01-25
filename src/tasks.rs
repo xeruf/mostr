@@ -1119,11 +1119,19 @@ impl TasksRelay {
         Some(id)
     }
 
+    /// Create the task only incorporating context
     fn make_task_unchecked(
         &mut self,
         input: &str,
         tags: Vec<Tag>,
     ) -> EventId {
+        let assignee =
+            if tags.iter().any(|t| t.kind() == TagKind::p()) {
+                None
+            } else {
+                self.pubkey
+                    .map(|p| Tag::public_key(p))
+            };
         let prio =
             if tags.iter().any(|t| t.kind().to_string() == PRIO) {
                 None
@@ -1134,7 +1142,8 @@ impl TasksRelay {
             EventBuilder::new(TASK_KIND, input)
                 .tags(self.context_hashtags())
                 .tags(tags)
-                .tags(prio),
+                .tags(prio)
+                .tags(assignee),
         )
     }
 

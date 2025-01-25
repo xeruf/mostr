@@ -149,7 +149,16 @@ fn test_context() {
     // s2-4 are newest while s2,s3,hp are highest prio
     assert_tasks_visible!(tasks, [s4, s2, s3, anid, id_hp]);
 
-    tasks.pubkey = Some(Keys::generate().public_key);
+    let hoi = tasks.make_task("hoi").unwrap();
+    assert_eq!(tasks.get_by_id(&hoi).unwrap().get_owner(), tasks.sender.pubkey());
+    let pubkey = Keys::generate().public_key;
+    let test1id = tasks.make_task(&("test1 @".to_string() + &pubkey.to_string())).unwrap();
+    let test1 = tasks.get_by_id(&test1id).unwrap();
+    assert_eq!(test1.get_owner(), pubkey);
+    tasks.pubkey = Some(pubkey);
+    let test2id = tasks.make_task("test2").unwrap();
+    let test2 = tasks.get_by_id(&test2id).unwrap();
+    assert_eq!(test2.get_owner(), pubkey);
 }
 
 #[test]
