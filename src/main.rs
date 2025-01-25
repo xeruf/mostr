@@ -5,7 +5,7 @@ use crate::kinds::{format_tag_basic, match_event_tag, Prio, BASIC_KINDS, PROPERT
 use crate::task::{State, StateChange, Task, MARKER_PROPERTY};
 use crate::tasks::{referenced_event, PropertyCollection, StateFilter, TasksRelay};
 
-use chrono::{DateTime, Local, TimeZone, Utc};
+use chrono::{DateTime, Local, TimeDelta, TimeZone, Utc};
 use colored::Colorize;
 use directories::ProjectDirs;
 use env_logger::{Builder, Target, WriteStyle};
@@ -27,6 +27,7 @@ use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::iter::once;
+use std::ops::Add;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
@@ -364,8 +365,8 @@ async fn main() -> Result<()> {
                         if let Some((left, arg)) = command.split_once("@") {
                             if !arg.contains(|s: char| s.is_alphabetic()) {
                                 let pos = tasks.get_position_timestamped();
-                                let time = pos.1.and_then(|_| Local.timestamp_opt(pos.0.as_u64() as i64, 0).earliest());
-                                if let Some(time) = parse_tracking_stamp(arg, time) {
+                                let mut pos_time = pos.1.and_then(|_| Local.timestamp_opt(pos.0.as_u64() as i64, 0).earliest());
+                                if let Some(time) = parse_tracking_stamp(arg, pos_time.take_if(|t| Local::now() - *t > TimeDelta::hours(6))) {
                                     command = left.to_string();
                                     tasks.custom_time = Some(time);
                                 }
