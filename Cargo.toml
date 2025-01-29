@@ -5,7 +5,7 @@ repository  = "https://forge.ftt.gmbh/janek/mostr"
 readme = "README.md"
 license = "GPL 3.0"
 authors = ["melonion"]
-version = "0.9.1"
+version = "0.9.2"
 rust-version = "1.82"
 edition = "2021"
 default-run = "mostr"
@@ -13,7 +13,7 @@ default-run = "mostr"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-nostr-sdk = { version = "0.38", features = ["ndb", "nip49"] }
+nostr-sdk = { version = "0.38", features = ["nip49"] }
 # Basics
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 regex = "1.11"
