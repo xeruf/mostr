@@ -700,6 +700,7 @@ impl TasksRelay {
             "progress" => prog_string.clone(),
 
             "owner" => format!("{:.6}", self.users.get_username(&task.get_owner())),
+            "assignee" => format!("{:.6}", task.get_assignee().map(|u| self.users.get_username(&u)).unwrap_or_default()),
             "author" | "creator" => format!("{:.6}", self.users.get_username(&task.event.pubkey)), // FIXME temporary until proper column alignment
             "prio" => self
                 .traverse_up_from(Some(task.get_id()))

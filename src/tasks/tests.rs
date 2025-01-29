@@ -149,16 +149,36 @@ fn test_context() {
     // s2-4 are newest while s2,s3,hp are highest prio
     assert_tasks_visible!(tasks, [s4, s2, s3, anid, id_hp]);
 
+    //let keys = Keys::generate();
+    //let builder = EventBuilder::new(Kind::from(1234), "test").tags([Tag::public_key(k//eys.public_key)]);
+    //println!("{:?}", builder);
+    //println!("{:?}", builder.sign_with_keys(&keys));
+    //env_logger::init();
+
+    // ASSIGNEE
+    assert_eq!(tasks.pubkey, Some(tasks.sender.pubkey()));
     let hoi = tasks.make_task("hoi").unwrap();
-    assert_eq!(tasks.get_by_id(&hoi).unwrap().get_owner(), tasks.sender.pubkey());
+    let hoi = tasks.get_by_id(&hoi).unwrap();
+    assert_eq!(hoi.get_owner(), tasks.sender.pubkey());
+    // https://github.com/rust-nostr/nostr/issues/736
+    //assert_eq!(hoi.get_participants().collect_vec(), vec![tasks.sender.pubkey()]);
+    //assert_eq!(hoi.get_assignee(), Some(tasks.sender.pubkey()));
+
     let pubkey = Keys::generate().public_key;
     let test1id = tasks.make_task(&("test1 @".to_string() + &pubkey.to_string())).unwrap();
     let test1 = tasks.get_by_id(&test1id).unwrap();
     assert_eq!(test1.get_owner(), pubkey);
+
     tasks.pubkey = Some(pubkey);
     let test2id = tasks.make_task("test2").unwrap();
     let test2 = tasks.get_by_id(&test2id).unwrap();
     assert_eq!(test2.get_owner(), pubkey);
+
+    tasks.pubkey = None;
+    let all = tasks.make_task("all").unwrap();
+    let all = tasks.get_by_id(&all).unwrap();
+    assert_eq!(all.get_assignee(), None);
+    assert_eq!(all.get_owner(), tasks.sender.pubkey());
 }
 
 #[test]

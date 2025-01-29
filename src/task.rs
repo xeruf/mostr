@@ -87,13 +87,17 @@ impl Task {
 
     pub(crate) fn get_participants(&self) -> impl Iterator<Item=PublicKey> + '_ {
         self.tags()
-            .filter(|t| t.kind() == TagKind::SingleLetter(SingleLetterTag::lowercase(Alphabet::P)))
+            .filter(|t| t.kind() == TagKind::p())
             .filter_map(|t| t.content()
                 .and_then(|c| PublicKey::from_str(c).inspect_err(|e| warn!("Unparseable pubkey in {:?}", t)).ok()))
     }
 
-    pub(crate) fn get_owner(&self) -> PublicKey {
+    pub(crate) fn get_assignee(&self) -> Option<PublicKey> {
         self.get_participants().next()
+    }
+
+    pub(crate) fn get_owner(&self) -> PublicKey {
+        self.get_assignee()
             .unwrap_or_else(|| self.event.pubkey)
     }
 
