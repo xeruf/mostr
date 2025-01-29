@@ -1120,7 +1120,7 @@ impl TasksRelay {
         Some(id)
     }
 
-    /// Create the task only incorporating context
+    /// Create the task, only adding context tags
     fn make_task_unchecked(
         &mut self,
         input: &str,
@@ -1130,8 +1130,7 @@ impl TasksRelay {
             if tags.iter().any(|t| t.kind() == TagKind::p()) {
                 None
             } else {
-                self.pubkey
-                    .map(|p| Tag::public_key(p))
+                self.pubkey.map(|p| Tag::public_key(p))
             };
         let prio =
             if tags.iter().any(|t| t.kind().to_string() == PRIO) {
@@ -1139,13 +1138,15 @@ impl TasksRelay {
             } else {
                 self.priority.map(|p| to_prio_tag(p))
             };
-        self.submit(
+        debug!("Making task {} with Assignee {:?} Prio {:?} Tags {:?}", input, assignee, prio, tags);
+        let builder =
             EventBuilder::new(TASK_KIND, input)
                 .tags(self.context_hashtags())
                 .tags(tags)
                 .tags(prio)
-                .tags(assignee),
-        )
+                .tags(assignee);
+        debug!("{:?}", builder);
+        self.submit(builder)
     }
 
     /// Primarily for tests
