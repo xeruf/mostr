@@ -22,7 +22,7 @@ use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use std::collections::{HashMap, VecDeque};
 use std::env;
-use std::env::{args};
+use std::env::args;
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
@@ -469,7 +469,7 @@ async fn main() -> Result<()> {
                         if tasks.custom_time.is_none() { tasks.move_up(); }
                     }
 
-                    Some('&') => {
+                    Some('&') =>
                         match arg {
                             None => tasks.undo(),
                             Some(text) => {
@@ -506,9 +506,8 @@ async fn main() -> Result<()> {
                                 }
                             }
                         }
-                    }
 
-                    Some('@') => {
+                    Some('@') =>
                         match arg {
                             None => {
                                 let today = Timestamp::now() - 80_000;
@@ -538,10 +537,9 @@ async fn main() -> Result<()> {
                                     }
                                 }
                             }
-                        };
-                    }
+                        }
 
-                    Some('*') => {
+                    Some('*') =>
                         match arg {
                             None => match tasks.get_position() {
                                 None => {
@@ -565,7 +563,6 @@ async fn main() -> Result<()> {
                                 }
                             }
                         }
-                    }
 
                     Some('|') =>
                         match arg {
@@ -590,13 +587,12 @@ async fn main() -> Result<()> {
                             }
                         }
 
-                    Some('?') => {
+                    Some('?') =>
                         match arg {
                             None => tasks.set_state_filter(StateFilter::Default),
                             Some("?") => tasks.set_state_filter(StateFilter::All),
                             Some(arg) => tasks.set_state_filter(StateFilter::State(arg.to_string())),
                         }
-                    }
 
                     Some('!') =>
                         match tasks.get_position() {
@@ -631,11 +627,10 @@ async fn main() -> Result<()> {
                             }
                         }
 
-                    Some('#') => {
+                    Some('#') =>
                         if !tasks.update_tags(arg_default.split_whitespace().map(Hashtag::from)) {
                             continue;
                         }
-                    }
 
                     Some('+') =>
                         match arg {
@@ -681,7 +676,7 @@ async fn main() -> Result<()> {
                         continue 'repl;
                     }
 
-                    Some(')') => {
+                    Some(')') =>
                         match arg {
                             None => tasks.move_to(None),
                             Some(arg) => {
@@ -693,7 +688,6 @@ async fn main() -> Result<()> {
                                 continue 'repl;
                             }
                         }
-                    }
 
                     Some('.') => {
                         let (remaining, dots) = trim_start_count(&command, '.');
@@ -722,46 +716,47 @@ async fn main() -> Result<()> {
                         }
                     }
 
-                    Some('/') => if arg.is_none() {
-                        tasks.move_to(None);
-                    } else {
-                        let (remaining, dots) = trim_start_count(&command, '/');
-                        let pos = tasks.up_by(dots - 1);
-
-                        if remaining.is_empty() {
-                            tasks.move_to(pos);
-                            if dots > 1 {
-                                info!("Moving up {} tasks", dots - 1)
-                            }
-                        } else if let Ok(depth) = remaining.parse::<usize>() {
-                            if pos != tasks.get_position() {
-                                tasks.move_to(pos);
-                            }
-                            tasks.set_search_depth(depth);
+                    Some('/') =>
+                        if arg.is_none() {
+                            tasks.move_to(None);
                         } else {
-                            // TODO regex match
-                            let mut transform: Box<dyn Fn(&str) -> String> = Box::new(|s: &str| s.to_string());
-                            if !remaining.chars().any(|c| c.is_ascii_uppercase()) {
-                                // Smart-case - case-sensitive if any uppercase char is entered
-                                transform = Box::new(|s| s.to_ascii_lowercase());
-                            }
+                            let (remaining, dots) = trim_start_count(&command, '/');
+                            let pos = tasks.up_by(dots - 1);
 
-                            let filtered =
-                                tasks.get_filtered(pos, |t| {
-                                    transform(&t.get_title()).contains(&remaining) ||
-                                        t.list_hashtags().any(
-                                            |tag| tag.contains(&remaining))
-                                });
-                            if filtered.len() == 1 {
-                                tasks.move_to(filtered.into_iter().next());
-                            } else {
+                            if remaining.is_empty() {
                                 tasks.move_to(pos);
-                                if !tasks.set_view(filtered) {
-                                    continue 'repl;
+                                if dots > 1 {
+                                    info!("Moving up {} tasks", dots - 1)
+                                }
+                            } else if let Ok(depth) = remaining.parse::<usize>() {
+                                if pos != tasks.get_position() {
+                                    tasks.move_to(pos);
+                                }
+                                tasks.set_search_depth(depth);
+                            } else {
+                                // TODO regex match
+                                let mut transform: Box<dyn Fn(&str) -> String> = Box::new(|s: &str| s.to_string());
+                                if !remaining.chars().any(|c| c.is_ascii_uppercase()) {
+                                    // Smart-case - case-sensitive if any uppercase char is entered
+                                    transform = Box::new(|s| s.to_ascii_lowercase());
+                                }
+
+                                let filtered =
+                                    tasks.get_filtered(pos, |t| {
+                                        transform(&t.get_title()).contains(&remaining) ||
+                                            t.list_hashtags().any(
+                                                |tag| tag.contains(&remaining))
+                                    });
+                                if filtered.len() == 1 {
+                                    tasks.move_to(filtered.into_iter().next());
+                                } else {
+                                    tasks.move_to(pos);
+                                    if !tasks.set_view(filtered) {
+                                        continue 'repl;
+                                    }
                                 }
                             }
                         }
-                    }
 
                     _ =>
                         if Regex::new("^wss?://").unwrap().is_match(command.trim()) {
