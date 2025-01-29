@@ -93,7 +93,8 @@ pub(crate) struct TasksRelay {
     state: StateFilter,
     /// Current priority for filtering and new tasks
     priority: Option<Prio>,
-    pubkey: Option<PublicKey>,
+    keys: Vec<PublicKey>,
+    own_keys: Vec<PublicKey>,
 
     sender: EventSender,
     overflow: VecDeque<Event>,
@@ -192,7 +193,8 @@ impl TasksRelay {
             tags_excluded: Default::default(),
             state: Default::default(),
             priority: None,
-            pubkey: Some(sender.pubkey()),
+            keys: vec![sender.pubkey()],
+            own_keys: vec![sender.pubkey()],
 
             search_depth: 4,
             view_depth: 0,
@@ -233,6 +235,10 @@ impl TasksRelay {
 
     #[inline]
     pub(crate) fn len(&self) -> usize { self.tasks.len() }
+
+    fn own_keys(&self) -> &Vec<PublicKey> { &self.own_keys }
+
+    fn own_key(&self) -> PublicKey { self.sender.pubkey() }
 
     pub(crate) fn get_position(&self) -> Option<EventId> {
         self.get_position_at(now()).1
@@ -278,7 +284,7 @@ impl TasksRelay {
 
     /// Dynamic time tracking overview for current task or current user.
     pub(crate) fn times_tracked(&self, limit: usize) -> String {
-        let (label, times) = self.times_tracked_with(&self.sender.pubkey());
+        let (label, times) = self.times_tracked_with(&self.own_key()); // TODO self.own_keys
         let times = times.collect_vec();
         format!("{}\n{}",
                 if times.is_empty() {
@@ -438,10 +444,10 @@ impl TasksRelay {
     }
 
     pub(crate) fn pubkey_str(&self) -> Option<String> {
-        match self.pubkey {
+        match self.keys.first() {
             None => Some("ALL".to_string()),
             Some(key) => {
-                if key != self.sender.pubkey() {
+                if &self.keys != self.own_keys() {
                     Some(self.users.get_username(&key))
                 } else {
                     None
@@ -550,8 +556,9 @@ impl TasksRelay {
 
     fn filter(&self, task: &Task) -> bool {
         self.state.matches(task) &&
-            (!task.is_task() || self.pubkey.is_none_or(|p| p == task.get_owner() ||
-                task.list_hashtags().any(|t| t.matches(&self.users.get_username(&p))))) &&
+            (!task.is_task() || self.keys.is_empty() ||
+                self.keys.iter().any(|p| p == &task.get_owner() ||
+                    task.list_hashtags().any(|t| t.matches(&self.users.get_username(&p))))) &&
             self.priority.is_none_or(|prio| {
                 task.priority().unwrap_or(DEFAULT_PRIO) >= prio
             }) &&
@@ -722,8 +729,8 @@ impl TasksRelay {
         }
     }
 
-    pub(super) fn find_user(&self, name: &str) -> Option<(PublicKey, String)> {
-        self.users.find_user_with_displayname(name)
+    pub(super) fn find_users(&self, name: &str) -> Vec<(PublicKey, String)> {
+        self.users.find_user_with_displayname(name).collect()
     }
 
     // Movement and Selection
@@ -749,19 +756,18 @@ impl TasksRelay {
     }
 
     pub(crate) fn reset_key_filter(&mut self) {
-        let own = self.sender.pubkey();
-        if self.pubkey.is_some_and(|k| k == own) {
+        if self.keys == self.own_keys {
             self.view.clear();
             info!("Showing everybody's tasks");
-            self.pubkey = None
+            self.keys.clear()
         } else {
             info!("Showing own tasks");
-            self.pubkey = Some(own)
+            self.keys = self.own_keys().clone();
         }
     }
 
-    pub(crate) fn set_key_filter(&mut self, key: PublicKey) {
-        self.pubkey = Some(key)
+    pub(crate) fn set_key_filter(&mut self, key: Vec<PublicKey>) {
+        self.keys = key
     }
 
     pub(crate) fn set_filter_since(&mut self, time: Timestamp) -> bool {
@@ -805,7 +811,7 @@ impl TasksRelay {
 
     pub(crate) fn clear_filters(&mut self) {
         self.state = StateFilter::Default;
-        self.pubkey = Some(self.sender.pubkey());
+        self.keys = self.own_keys().clone();
         self.priority = None;
         self.view.clear();
         self.tags.clear();
@@ -1130,7 +1136,7 @@ impl TasksRelay {
             if tags.iter().any(|t| t.kind() == TagKind::p()) {
                 None
             } else {
-                self.pubkey.map(|p| Tag::public_key(p))
+                self.keys.first().map(|p| Tag::public_key(*p))
             };
         let prio =
             if tags.iter().any(|t| t.kind().to_string() == PRIO) {

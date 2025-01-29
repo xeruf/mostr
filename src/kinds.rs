@@ -108,8 +108,8 @@ pub(crate) fn extract_tags(input: &str, users: &NostrUsers) -> (String, Vec<Tag>
             if let Ok(key) = PublicKey::parse(&s[1..]) {
                 tags.push(Tag::public_key(key));
                 return false;
-            } else if let Some((key, _)) = users.find_user(&s[1..]) {
-                tags.push(Tag::public_key(*key));
+            } else if let Some((key, _)) = users.find_user(&s[1..]).first() {
+                tags.push(Tag::public_key(**key));
                 return false;
             }
         } else if s.starts_with('*') {

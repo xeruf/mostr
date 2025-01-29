@@ -517,12 +517,14 @@ async fn main() -> Result<()> {
                                     continue 'repl;
                                 }
                             }
+                            Some("@") => {
+                                tasks.reset_key_filter()
+                            }
                             Some(arg) => {
-                                if arg == "@" {
-                                    tasks.reset_key_filter()
-                                } else if let Some((key, name)) = tasks.find_user(arg) {
-                                    info!("Showing {}'s tasks", name);
-                                    tasks.set_key_filter(key)
+                                let users = tasks.find_users(arg);
+                                if !users.is_empty() {
+                                    info!("Showing tasks for {}", users.iter().map(|(k, v)| v).join(", "));
+                                    tasks.set_key_filter(users.iter().map(|(k, v)| *k).collect_vec())
                                 } else {
                                     if parse_hour(arg, 1)
                                         .or_else(|| parse_date(arg)
@@ -665,7 +667,7 @@ async fn main() -> Result<()> {
                                     }
                                 }
                                 println!("{}", tasks.times_tracked(max));
-                            } else if let Some((key, _)) = tasks.find_user(arg) {
+                            } else if let Some((key, _)) = tasks.find_users(arg).first() {
                                 let (label, mut times) = tasks.times_tracked_for(&key);
                                 println!("{}\n{}", label.italic(), times.join("\n"));
                             } else {

@@ -156,7 +156,7 @@ fn test_context() {
     //env_logger::init();
 
     // ASSIGNEE
-    assert_eq!(tasks.pubkey, Some(tasks.sender.pubkey()));
+    assert_eq!(tasks.keys, vec![tasks.sender.pubkey()]);
     let hoi = tasks.make_task("hoi").unwrap();
     let hoi = tasks.get_by_id(&hoi).unwrap();
     assert_eq!(hoi.get_owner(), tasks.sender.pubkey());
@@ -169,12 +169,14 @@ fn test_context() {
     let test1 = tasks.get_by_id(&test1id).unwrap();
     assert_eq!(test1.get_owner(), pubkey);
 
-    tasks.pubkey = Some(pubkey);
+    tasks.set_key_filter(vec![pubkey]);
     let test2id = tasks.make_task("test2").unwrap();
     let test2 = tasks.get_by_id(&test2id).unwrap();
     assert_eq!(test2.get_owner(), pubkey);
 
-    tasks.pubkey = None;
+    // First sets to own key then to all
+    tasks.reset_key_filter();
+    tasks.reset_key_filter();
     let all = tasks.make_task("all").unwrap();
     let all = tasks.get_by_id(&all).unwrap();
     assert_eq!(all.get_assignee(), None);
