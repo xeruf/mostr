@@ -358,8 +358,8 @@ impl TasksRelay {
                         let mut vec = Vec::with_capacity(set.len() / 2);
                         let mut iter = timestamps(set.values(), &ids).tuples();
                         while let Some(((start, _), (end, _))) = iter.next() {
-                            // Filter out intervals <2 mins
-                            if start.as_u64() + 120 < end.as_u64() {
+                            // Filter out intervals <3 mins
+                            if start.as_u64() + 200 < end.as_u64() {
                                 vec.push(format!(
                                     "{} - {} by {}",
                                     format_timestamp_local(start),

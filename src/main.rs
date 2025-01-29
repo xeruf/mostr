@@ -170,11 +170,11 @@ async fn main() -> Result<()> {
             read_keys(&keys_entry, &mut rl)?
         };
 
-    info!("My active public key: {}", keys.public_key());
+    info!("Your active public key: {}", keys.public_key());
     if args.peek().is_some_and(|arg| arg.trim_start_matches('-') == "export") {
         let enc_pwd = read_password(&mut rl, "Please enter an encryption password for your secret key: ")?;
         println!("Your encrypted key: {}", EncryptedSecretKey::new(keys.secret_key(), enc_pwd, 9, KeySecurity::Unknown)?.to_bech32()?);
-        if rl.readline("Do you want to erase your stored secret keys (y/n)? ")? == "y" {
+        if rl.readline("Do you want to erase your stored secret key (y/n)? ")? == "y" {
             keys_entry.delete_credential()?;
         }
         // TODO optionally delete
