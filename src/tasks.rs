@@ -244,12 +244,8 @@ impl TasksRelay {
         self.get_position_at(now()).1
     }
 
-    pub(crate) fn get_position_timestamped(&self) -> (Timestamp, Option<EventId>) {
-        self.get_position_at(now())
-    }
-
     pub(super) fn parse_tracking_stamp_relative(&self, input: &str) -> Option<Timestamp> {
-        let pos = self.get_position_timestamped();
+        let pos = self.get_position_at(now());
         let mut pos_time = pos.1.and_then(|_| Local.timestamp_opt(pos.0.as_u64() as i64, 0).earliest());
         parse_tracking_stamp(input, pos_time.take_if(|t| Local::now() - *t > TimeDelta::hours(6)))
     }
@@ -263,6 +259,7 @@ impl TasksRelay {
 
     // TODO binary search
     /// Gets last position change before the given timestamp
+    /// Returns the position together with when it was set
     fn get_position_at(&self, timestamp: Timestamp) -> (Timestamp, Option<EventId>) {
         self.history_from(timestamp)
             .last()
