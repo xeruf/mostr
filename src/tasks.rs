@@ -983,6 +983,7 @@ impl TasksRelay {
     fn history_from(&self, stamp: Timestamp) -> impl Iterator<Item=&Event> {
         self.history.get(&self.sender.pubkey())
             .map(|hist| {
+                // TODO deduplicate - get earlier time for duplicated tracking?
                 hist.values().rev().take_while_inclusive(move |e| e.created_at > stamp)
             }).into_iter().flatten()
     }
@@ -1005,6 +1006,7 @@ impl TasksRelay {
             .and_then(|id| self.get_by_id(&id))
             .is_some_and(|t| t.parent_id() == pos.as_ref())
         {
+            // FIXME this triggers when moving up and into created task
             debug!("Flushing Tasks because of move beyond child");
             self.sender.flush();
         }
