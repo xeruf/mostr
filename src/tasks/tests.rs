@@ -489,6 +489,19 @@ fn test_unknown_task() {
     assert_eq!(tasks.up_by(2), None);
 }
 
+#[test]
+fn test_relative_path_omits_content_after_newline() {
+    let mut tasks = stub_tasks();
+
+    let parent = tasks.make_task_unwrapped("parent line 1\nparent line 2");
+    tasks.move_to(Some(parent));
+    let child = tasks.make_task_unwrapped("child line 1\nchild line 2");
+    assert_eq!(tasks.get_relative_path(child), "child line 1");
+
+    tasks.move_to(None);
+    assert_eq!(tasks.get_relative_path(child), "parent line 1>child line 1");
+}
+
 #[allow(dead_code)] // #[test]
 fn test_itertools() {
     use itertools::Itertools;

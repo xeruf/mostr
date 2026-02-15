@@ -112,6 +112,15 @@ impl Task {
         self.event.content.trim().trim_start_matches('#').to_string()
     }
 
+    /// Title truncated to the first line.
+    pub(crate) fn get_title_single_line(&self) -> String {
+        self.get_title()
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .to_string()
+    }
+
     pub(crate) fn find_refs<'a>(&'a self, marker: &'a str) -> impl Iterator<Item=&'a EventId> {
         self.refs.iter().filter_map(move |(str, id)|
             Some(id).filter(|_| str == marker))

@@ -477,11 +477,13 @@ impl TasksRelay {
     }
 
     pub(crate) fn get_relative_path(&self, id: EventId) -> String {
-        join_tasks(
+        join_tasks_with(
             self.traverse_up_from(Some(id))
                 .take_while(|t| Some(t.get_id()) != self.get_position()),
             false,
-        ).unwrap_or(id.to_string())
+            Task::get_title_single_line,
+        )
+        .unwrap_or(id.to_string())
     }
 
     /// Iterate over the task referenced by the given id and all its available parents.
@@ -1592,10 +1594,18 @@ pub(crate) fn join_tasks<'a>(
     iter: impl Iterator<Item=&'a Task>,
     include_last_id: bool,
 ) -> Option<String> {
+    join_tasks_with(iter, include_last_id, Task::get_title)
+}
+
+fn join_tasks_with<'a>(
+    iter: impl Iterator<Item=&'a Task>,
+    include_last_id: bool,
+    title: fn(&Task) -> String,
+) -> Option<String> {
     let tasks: Vec<&Task> = iter.collect();
     tasks
         .iter()
-        .map(|t| t.get_title())
+        .map(|t| title(t))
         .chain(
             tasks.last()
                 .take_if(|_| include_last_id)
