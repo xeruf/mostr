@@ -23,7 +23,7 @@ Considering to use Calendar: https://github.com/nostr-protocol/nips/blob/master/
 Apart from user-specific temporary utilities such as the Bookmark List (Kind 10003),
 all shared data is immutable, and modifications are recorded as separate events,
 providing full audit security.
-Deletions are not considered.
+Deletions are not allowed.
 
 ### Timestamps
 

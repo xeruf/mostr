@@ -703,7 +703,7 @@ async fn main() -> Result<()> {
                         } else {
                             match remaining.parse::<usize>() {
                                 Ok(depth) if depth < 10 => {
-                                    if pos != tasks.get_position() {
+                                    if pos != tasks.calculate_position(None) {
                                         tasks.move_to(pos);
                                     }
                                     tasks.set_view_depth(depth);

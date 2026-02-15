@@ -62,6 +62,17 @@ macro_rules! assert_tasks {
     }
 
 #[test]
+fn test_automatic_context() {
+    let mut tasks = stub_tasks();
+
+    let zero = EventId::all_zeros();
+    tasks.move_to(zero.into());
+    assert_eq!(tasks.get_position(), None);
+    assert_eq!(tasks.update_position(), true);
+    assert_eq!(tasks.get_position(), zero.into());
+}
+
+#[test]
 fn test_recursive_closing() {
     let mut tasks = stub_tasks();
 
